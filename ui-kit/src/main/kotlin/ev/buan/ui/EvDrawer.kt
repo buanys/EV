@@ -64,6 +64,12 @@ data class EvHistoryGroup(val label: String, val titles: List<String>, val selec
  * and flings to its resting state on release; with reduced motion every layer degrades to a
  * plain fade.
  */
+/**
+ * Finger travel to progress multiplier. 1.0 is literal (one drawer width of travel = fully closed),
+ * which reads as sluggish; dismissal is a gesture, not a measurement, so it is amplified.
+ */
+private const val DRAG_GAIN = 1.6f
+
 @Composable
 fun EvDrawerScaffold(
     open: Boolean,
@@ -88,9 +94,20 @@ fun EvDrawerScaffold(
     }
     val p = progress.value
 
+    /** Explicit dismissal (tap on the scrim): no velocity heuristic, it always closes. */
+    fun close() {
+        scope.launch {
+            progress.animateTo(
+                targetValue = 0f,
+                animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.gentle() },
+            )
+            onClose()
+        }
+    }
+
     fun settle(velocity: Float = 0f) {
         scope.launch {
-            val closing = velocity < -600f || (velocity <= 600f && progress.value < 0.5f)
+            val closing = velocity < -450f || (velocity <= 450f && progress.value < 0.35f)
             progress.animateTo(
                 targetValue = if (closing) 0f else 1f,
                 animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.gentle() },
@@ -119,7 +136,7 @@ fun EvDrawerScaffold(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.45f * p))
                     .pointerInput(widthPx) {
-                        detectTapGestures(onTap = { settle() })
+                        detectTapGestures(onTap = { close() })
                     },
             )
             Column(
@@ -142,8 +159,14 @@ fun EvDrawerScaffold(
                                 change.consume()
                                 tracker.addPosition(change.uptimeMillis, change.position)
                                 if (dragAmount < 0 || progress.value < 1f) {
+                                    // Full drawer width made every drag feel heavy: 50dp of finger
+                                    // travel only moved progress by ~0.16. A gain above 1 restores
+                                    // the "it follows my thumb" feel without changing the travel.
                                     scope.launch {
-                                        progress.snapTo((progress.value + dragAmount / widthPx).coerceIn(0f, 1f))
+                                        progress.snapTo(
+                                            (progress.value + dragAmount * DRAG_GAIN / widthPx)
+                                                .coerceIn(0f, 1f),
+                                        )
                                     }
                                 }
                             },
