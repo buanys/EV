@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -689,10 +693,10 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 )
             },
         ) {
-            // The keyboard inset is claimed by the composer, not by this Column. Padding the root
-            // shrinks the whole page, so the top bar and the conversation were carried along with
-            // the keyboard; letting only the composer claim the inset keeps everything above it
-            // anchored where it was.
+            // The keyboard inset moves the composer, not the layout around it: offset shifts where
+            // the composer is drawn without reserving the keyboard's height, so the conversation
+            // above keeps its exact position and size while the keyboard is open.
+            val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
             Column(
                 modifier.fillMaxSize()
                     .background(MiuixTheme.colorScheme.background),
@@ -722,7 +726,10 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                 start = EvChatDefaults.PagePadding,
                                 end = EvChatDefaults.PagePadding,
                                 top = 8.dp,
-                                bottom = 12.dp,
+                                // Room for the composer itself: it is drawn above this list rather
+                                // than laid out beside it, so the last bubble would otherwise end up
+                                // underneath the input box.
+                                bottom = 100.dp,
                             ),
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
@@ -752,7 +759,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     onSend = { send(draft) },
                     busy = replying,
                     onStop = { stopReply() },
-                    modifier = Modifier.imePadding(),
+                    modifier = Modifier.offset(y = -imeBottom),
                 )
             }
         }
