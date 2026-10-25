@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -20,7 +20,7 @@ internal object SkillDocuments {
     /** Bumped only when a change could not be read by the previous decoder. */
     const val VERSION: Int = 1
 
-    fun encode(skills: List<EtaSkill>): ByteArray {
+    fun encode(skills: List<EvSkill>): ByteArray {
         val entries = JSONArray()
         skills.forEach { entries.put(it.toJson()) }
         return JSONObject()
@@ -31,7 +31,7 @@ internal object SkillDocuments {
     }
 
     /** The stored skills, or null when these bytes are not a document this codec knows. */
-    fun decode(bytes: ByteArray): List<EtaSkill>? {
+    fun decode(bytes: ByteArray): List<EvSkill>? {
         val document = runCatching { JSONObject(bytes.decodeToString()) }.getOrNull() ?: return null
         val entries = document.optJSONArray("skills") ?: return null
         return buildList {
@@ -42,17 +42,17 @@ internal object SkillDocuments {
     }
 }
 
-private fun EtaSkill.toJson(): JSONObject = JSONObject()
+private fun EvSkill.toJson(): JSONObject = JSONObject()
     .put("id", id)
     .put("name", name)
     .put("description", description)
     .put("instruction", instruction)
     .put("updatedAt", updatedAt)
 
-private fun JSONObject.toSkill(): EtaSkill? {
+private fun JSONObject.toSkill(): EvSkill? {
     // Without an id the entry cannot be selected, edited or deleted.
     val skillId = optString("id").takeIf { it.isNotBlank() } ?: return null
-    return EtaSkill(
+    return EvSkill(
         id = skillId,
         name = optString("name").trim(),
         description = optString("description").trim(),

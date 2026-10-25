@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import ev.buan.plugins.agent.api.ModelDescriptor
 import ev.buan.plugins.agent.api.ModelParameters

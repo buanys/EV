@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import ev.buan.plugins.agent.api.ApprovalDecision
 import kotlinx.coroutines.CancellationException
@@ -53,7 +53,7 @@ class ApprovalGateTest {
     }
 
     @Test
-    fun `a session allow answers later calls of the same tool without a prompt`() = runBlocking {
+    fun `a session allow answers later calls of the same tool without a prompt`() = runBlocking<Unit> {
         val gate = ApprovalGate()
         val first = async { gate.request("run_shell", "{}") }
         delay(50)

@@ -4,6 +4,7 @@ import ev.buan.plugins.agent.api.AgentEvent
 import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentReply
 import ev.buan.plugins.agent.api.AgentRole
+import ev.buan.plugins.agent.api.AgentStop
 import ev.buan.plugins.agent.api.AgentToolCall
 import ev.buan.plugins.agent.api.AgentUsage
 import ev.buan.plugins.agent.api.ApprovalDecision
@@ -223,7 +224,10 @@ class AgentBrainServiceTest {
     }
 
     @Test
-    fun `tool rounds are bounded and synthesise an answer when the model stops producing text`() {
+    fun `repeated identical tool calls stop the turn and a summary call follows`() {
+        // Same tool, same arguments, same result every round: the repeat guard, not a round cap,
+        // is what ends this now. The third attempt stops the turn, then one tool-free summary call
+        // runs so the user is not left with half an answer.
         val replies = MutableList(MAX_REPLIES) { index ->
             AgentReply(
                 message = AgentMessage(AgentRole.ASSISTANT, ""),
@@ -235,9 +239,10 @@ class AgentBrainServiceTest {
 
         val reply = runBlocking { brain(model = model, tools = registry).send("session", "循环") }
 
-        assertEquals(3, model.requests.size)
-        assertEquals("工具已执行，但模型没有给出文字总结。", reply.message.content)
-        assertEquals(6, reply.events.size)
+        assertEquals(AgentStop.Reason.REPEATED_CALLS, reply.stop?.reason)
+        assertEquals("3 tool rounds then the summary call", 4, model.requests.size)
+        assertTrue("summary call carries no tools", model.requests[3].tools.isEmpty())
+        assertEquals(reply.stop?.toolCalls, 3)
     }
 
     @Test
@@ -417,7 +422,7 @@ class AgentBrainServiceTest {
         assertEquals(0, tool.invocations)
         val result = reply.events.filter { it.kind == AgentEvent.Kind.TOOL_RESULT }.single()
         assertTrue(result.text.orEmpty(), result.text.orEmpty().contains("已拦截"))
-        assertTrue(result.text.orEmpty().contains("eta-ui"))
+        assertTrue(result.text.orEmpty().contains("ev-ui"))
         // The refusal is fed back as the tool result, so the model can explain it.
         assertEquals("被拦下了", reply.message.content)
     }
@@ -514,6 +519,187 @@ class AgentBrainServiceTest {
         assertTrue(gate.asked.isEmpty())
     }
 
+    /**
+     * L3 acceptance: one task that needs five tool calls.
+     *
+     * Rounds count model calls, not actions, so a three-round cap cannot finish this: the loop stops
+     * after the second action with no summary. This is the case the budget work has to make pass.
+     */
+    @Test
+    fun `L3 a five-call task completes and ends with a summary`() {
+        val plan = listOf("fs_mkdir", "fs_write", "fs_write", "fs_write", "fs_list")
+        val replies = plan.mapIndexed { index, name ->
+            AgentReply(
+                message = AgentMessage(AgentRole.ASSISTANT, ""),
+                events = listOf(toolCall(name, id = "call_$index", arguments = """{"n":$index}""")),
+            )
+        }.toMutableList()
+        replies += textReply("已建目录并写入三个文件")
+        val model = ScriptedModel(replies)
+        val tools = plan.distinct().map { FakeTool(ToolSpec(it, "工具 $it", "{}"), "ok") }
+        val registry = FakeRegistry(tools)
+
+        val reply = runBlocking { brain(model, registry).send("session", "建目录，写三个文件，再列出来") }
+
+        assertEquals("已建目录并写入三个文件", reply.message.content)
+        assertEquals("所有工具都应执行", plan.size, tools.sumOf { it.invocations })
+        assertEquals(plan.size + 1, model.requests.size)
+    }
+
+    // ------------------------------------------------------- budgets, guards, recovery
+
+    @Test
+    fun `the round budget stops the turn and one summary call follows`() {
+        // Distinct arguments each round so the repeat guard cannot fire first.
+        val replies = MutableList(3) { index ->
+            AgentReply(
+                message = AgentMessage(AgentRole.ASSISTANT, ""),
+                events = listOf(
+                    toolCall("file_read", id = "call_$index", arguments = """{"n":$index}"""),
+                ),
+            )
+        }.toMutableList()
+        replies += textReply("已完成的部分：读了三段")
+        val model = ScriptedModel(replies)
+        val registry = FakeRegistry(listOf(FakeTool(ToolSpec("file_read", "读文件", "{}"), "ok")))
+
+        val reply = runBlocking {
+            brain(Budget(maxRounds = 3), model, registry).send("session", "多步")
+        }
+
+        assertEquals(AgentStop.Reason.ROUNDS, reply.stop?.reason)
+        assertEquals(3, reply.stop?.rounds)
+        assertEquals(4, model.requests.size)
+        assertTrue("收尾调用不带工具", model.requests.last().tools.isEmpty())
+        assertEquals("已完成的部分：读了三段", reply.message.content)
+    }
+
+    @Test
+    fun `a tool budget spent mid-round answers every remaining call`() {
+        val names = listOf("t1", "t2", "t3")
+        val firstRound = AgentReply(
+            message = AgentMessage(AgentRole.ASSISTANT, ""),
+            events = names.mapIndexed { index, name ->
+                toolCall(name, id = "c$index", arguments = """{"i":$index}""")
+            },
+        )
+        val model = ScriptedModel(mutableListOf(firstRound, textReply("只做完了一个")))
+        val tools = names.map { FakeTool(ToolSpec(it, "工具 $it", "{}"), "ok") }
+
+        val reply = runBlocking {
+            brain(Budget(maxToolCalls = 1), model, FakeRegistry(tools)).send("session", "三件事")
+        }
+
+        assertEquals(AgentStop.Reason.TOOL_BUDGET, reply.stop?.reason)
+        assertEquals("只有一个工具真正执行", 1, tools.sumOf { it.invocations })
+        // Every call must be answered or the follow-up request is an invalid conversation.
+        val toolMessages = model.requests[1].messages.filter { it.role == AgentRole.TOOL }
+        assertEquals("每条 call 都要有 TOOL 回复", 3, toolMessages.size)
+        assertEquals(2, toolMessages.count { it.content.contains("预算用尽") })
+    }
+
+    @Test
+    fun `a tool that exceeds its timeout becomes a timeout result`() {
+        val model = ScriptedModel(
+            mutableListOf(
+                AgentReply(
+                    message = AgentMessage(AgentRole.ASSISTANT, ""),
+                    events = listOf(toolCall("slow_tool")),
+                ),
+                textReply("工具超时了"),
+            ),
+        )
+        val registry = FakeRegistry(
+            listOf(SlowTool(ToolSpec("slow_tool", "慢工具", "{}"), delayMs = 2_000)),
+        )
+
+        val reply = runBlocking {
+            brain(Budget(toolTimeoutMs = 100), model, registry).send("session", "试试")
+        }
+
+        val result = reply.events.filter { it.kind == AgentEvent.Kind.TOOL_RESULT }.single()
+        assertTrue(result.text.orEmpty(), result.text.orEmpty().contains("超时"))
+        assertEquals("工具超时了", reply.message.content)
+    }
+
+    @Test
+    fun `a failed summary call still returns the turn with its stop reason`() {
+        val model = ScriptedModel(
+            mutableListOf(
+                AgentReply(
+                    message = AgentMessage(AgentRole.ASSISTANT, ""),
+                    events = listOf(toolCall("file_read")),
+                ),
+            ),
+        )
+        model.failure = IOException("summary died")
+        model.failFromRequest = 2 // first call fine, the wrap-up call blows up
+        val registry = FakeRegistry(listOf(FakeTool(ToolSpec("file_read", "读文件", "{}"), "ok")))
+
+        val reply = runBlocking {
+            brain(Budget(maxRounds = 1), model, registry).send("session", "读一下")
+        }
+
+        assertEquals(AgentStop.Reason.ROUNDS, reply.stop?.reason)
+        assertTrue(reply.message.content, reply.message.content.contains("预算用尽"))
+    }
+
+    @Test
+    fun `a repeated call gets one reflection before the guard stops the turn`() {
+        val repeat = { id: String ->
+            AgentReply(
+                message = AgentMessage(AgentRole.ASSISTANT, ""),
+                events = listOf(toolCall("file_read", id = id)),
+            )
+        }
+        val model = ScriptedModel(
+            mutableListOf(repeat("c1"), repeat("c2"), repeat("c3"), textReply("停了")),
+        )
+        val registry = FakeRegistry(listOf(FakeTool(ToolSpec("file_read", "读文件", "{}"), "same")))
+
+        runBlocking { brain(model = model, tools = registry).send("session", "重复") }
+
+        assertTrue(
+            "第二次相同调用后应注入反思",
+            model.requests[2].messages.any { it.content.contains("结果没有变化") },
+        )
+    }
+
+    @Test
+    fun `L4 the model recovers from a tool error and finishes`() {
+        val write = ScriptedTool(
+            spec = ToolSpec("file_write", "写文件", "{}"),
+            results = listOf("错误：父目录不存在", "ok"),
+        )
+        val model = ScriptedModel(
+            mutableListOf(
+                AgentReply(
+                    message = AgentMessage(AgentRole.ASSISTANT, ""),
+                    events = listOf(
+                        toolCall("file_write", id = "c1", arguments = """{"path":"/bad/x"}"""),
+                    ),
+                ),
+                AgentReply(
+                    message = AgentMessage(AgentRole.ASSISTANT, ""),
+                    events = listOf(
+                        toolCall("file_write", id = "c2", arguments = """{"path":"/good/x"}"""),
+                    ),
+                ),
+                textReply("已修正路径并写入"),
+            ),
+        )
+
+        val reply = runBlocking {
+            brain(model = model, tools = FakeRegistry(listOf(write))).send("session", "写一个文件")
+        }
+
+        assertEquals(AgentStop.Reason.FINISHED, reply.stop?.reason)
+        assertEquals("已修正路径并写入", reply.message.content)
+        assertEquals(2, write.arguments.size)
+        // The error text has to reach the model, otherwise it cannot correct itself.
+        assertTrue(model.requests[1].messages.any { it.content.contains("父目录不存在") })
+    }
+
     // ------------------------------------------------------------------ fakes
 
     private fun brain(
@@ -521,7 +707,18 @@ class AgentBrainServiceTest {
         tools: ToolRegistry? = null,
         memory: MemoryService? = null,
         approval: ApprovalService? = null,
-    ): AgentBrainService = AgentBrainService { BrainCapabilities(model, tools, memory, approval) }
+    ): AgentBrainService = AgentBrainService(capabilities = { BrainCapabilities(model, tools, memory, approval) })
+
+    private fun brain(
+        budget: Budget,
+        model: ModelService,
+        tools: ToolRegistry? = null,
+        approval: ApprovalService? = null,
+        memory: MemoryService? = null,
+    ): AgentBrainService = AgentBrainService(
+        capabilities = { BrainCapabilities(model, tools, memory, approval) },
+        budget = budget,
+    )
 
     private fun textReply(text: String, usage: AgentUsage? = null): AgentReply =
         AgentReply(
@@ -551,13 +748,18 @@ class AgentBrainServiceTest {
         val requests = mutableListOf<Request>()
         var failure: Throwable? = null
 
+        /** Request number (1-based) from which [failure] is thrown; null means never. */
+        var failFromRequest: Int? = null
+
         override suspend fun complete(
             model: ModelRef,
             messages: List<AgentMessage>,
             tools: List<ToolSpec>,
         ): AgentReply {
             requests += Request(model, messages.toList(), tools.toList())
-            failure?.let { throw it }
+            val failAt = failFromRequest
+            val boom = failure
+            if (boom != null && (failAt == null || requests.size >= failAt)) throw boom
             check(replies.isNotEmpty()) { "ScriptedModel ran out of replies" }
             return replies.removeAt(0)
         }
@@ -610,6 +812,27 @@ class AgentBrainServiceTest {
         }
     }
 
+    /** Returns a different result per invocation, in order; the last one repeats. */
+    private class ScriptedTool(
+        override val spec: ToolSpec,
+        private val results: List<String>,
+    ) : Tool {
+        val arguments = mutableListOf<String>()
+
+        override suspend fun invoke(argumentsJson: String): String {
+            arguments += argumentsJson
+            return results.getOrElse(arguments.size - 1) { results.last() }
+        }
+    }
+
+    /** Never answers within the test's timeout. */
+    private class SlowTool(override val spec: ToolSpec, private val delayMs: Long) : Tool {
+        override suspend fun invoke(argumentsJson: String): String {
+            kotlinx.coroutines.delay(delayMs)
+            return "too late"
+        }
+    }
+
     /** A gate that answers every request the same way, or fails like a dead UI would. */
     private class ScriptedGate(
         private val decision: ApprovalDecision,
@@ -625,7 +848,7 @@ class AgentBrainServiceTest {
     }
 
     private companion object {
-        /** More than the brain's per-turn limit, so the bound is actually exercised. */
+        /** Enough scripted tool replies to exercise the guard under test, whatever it is. */
         const val MAX_REPLIES = 5
     }
 }

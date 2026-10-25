@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
@@ -9,8 +9,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import ev.buan.plugins.eta.ui.EtaCharacter
-import ev.buan.plugins.eta.ui.newCharacter
+import ev.buan.plugins.ev.ui.EvCharacter
+import ev.buan.plugins.ev.ui.newCharacter
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsDivider
@@ -33,19 +33,19 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * The screen owns only editing state; library changes go through [onSave] / [onDelete] / [onSelect]
  * so the plugin can write `characters.json` and `sessions.json` in one place.
  *
- * Internal because [EtaCharacter] is a plugin-internal model: this page is not part of any contract.
+ * Internal because [EvCharacter] is a plugin-internal model: this page is not part of any contract.
  */
 @Composable
-internal fun EtaCharactersScreen(
-    characters: List<EtaCharacter>,
+internal fun EvCharactersScreen(
+    characters: List<EvCharacter>,
     selectedId: String?,
     onBack: () -> Unit,
     onSelect: (String?) -> Unit,
-    onSave: (EtaCharacter) -> Unit,
+    onSave: (EvCharacter) -> Unit,
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var editing by remember { mutableStateOf<EtaCharacter?>(null) }
+    var editing by remember { mutableStateOf<EvCharacter?>(null) }
 
     val current = editing
     if (current != null) {
@@ -115,7 +115,7 @@ internal fun EtaCharactersScreen(
 
 @Composable
 private fun CharacterRow(
-    character: EtaCharacter,
+    character: EvCharacter,
     selected: Boolean,
     onEdit: () -> Unit,
     onSelectedChange: (Boolean) -> Unit,
@@ -135,10 +135,10 @@ private fun CharacterRow(
 /** The editor: three fields, one save rule, and a two-step delete for an existing character. */
 @Composable
 private fun CharacterEditor(
-    character: EtaCharacter,
+    character: EvCharacter,
     isNew: Boolean,
     onCancel: () -> Unit,
-    onSave: (EtaCharacter) -> Unit,
+    onSave: (EvCharacter) -> Unit,
     onDelete: () -> Unit,
 ) {
     var name by remember(character.id) { mutableStateOf(character.name) }

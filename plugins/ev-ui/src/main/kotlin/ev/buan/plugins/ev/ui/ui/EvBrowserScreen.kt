@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -60,7 +60,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * host's own INTERNET.
  */
 @Composable
-fun EtaBrowserScreen(
+fun EvBrowserScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {

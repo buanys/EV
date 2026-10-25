@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -103,7 +103,7 @@ class SkillDocumentsTest {
         description: String = "描述",
         instruction: String = "指令",
         updatedAt: Long = 1L,
-    ) = EtaSkill(
+    ) = EvSkill(
         id = id,
         name = name,
         description = description,

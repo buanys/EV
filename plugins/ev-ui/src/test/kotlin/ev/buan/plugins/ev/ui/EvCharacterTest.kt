@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,7 +10,7 @@ import org.junit.Test
  * Pins the character library's rules: what may be saved, how the library is ordered, and - the part
  * the chat page depends on - which prompt (if any) a session's next turn carries.
  */
-class EtaCharacterTest {
+class EvCharacterTest {
 
     @Test
     fun `a character needs both a name and an instruction`() {
@@ -102,7 +102,7 @@ class EtaCharacterTest {
         id: String = "c1",
         name: String = "审阅者",
         prompt: String = "你是审阅者",
-    ) = EtaCharacter(
+    ) = EvCharacter(
         id = id,
         name = name,
         description = "描述",

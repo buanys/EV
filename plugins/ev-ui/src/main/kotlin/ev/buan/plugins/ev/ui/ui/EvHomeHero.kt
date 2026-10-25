@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
@@ -32,7 +32,7 @@ data class EvSuggestion(
 )
 
 /**
- * Empty state of the chat page, following Eta's home: one centered question, then a 2-column grid
+ * Empty state of the chat page, following Ev's home: one centered question, then a 2-column grid
  * of suggestion cards (16dp corner, hairline outline, 18dp glyph in the accent color).
  */
 @Composable

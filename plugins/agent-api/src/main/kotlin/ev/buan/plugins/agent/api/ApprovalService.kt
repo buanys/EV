@@ -17,7 +17,7 @@ enum class ApprovalDecision {
 /**
  * The approval gate between the brain and a dangerous tool.
  *
- * Published by whichever plugin owns the human - today that is the chat UI (eta-ui). The brain
+ * Published by whichever plugin owns the human - today that is the chat UI (ev-ui). The brain
  * looks this up before running any [ToolSpec.dangerous] call and suspends on [request] until the
  * human decides. Fail-closed by design: a dangerous tool with no gate published does not run, and
  * the refusal becomes result text for the model, so the turn degrades instead of dying.

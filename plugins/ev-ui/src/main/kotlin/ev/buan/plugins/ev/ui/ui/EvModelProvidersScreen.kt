@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -57,7 +57,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * carry instructions per turn, not provider configuration.
  */
 @Composable
-internal fun EtaModelProvidersScreen(
+internal fun EvModelProvidersScreen(
     service: () -> ModelProviderService?,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,

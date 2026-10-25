@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "ev.buan.plugins.eta.ui"
+    namespace = "ev.buan.plugins.ev.ui"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "ev.buan.plugins.eta.ui"
+        applicationId = "ev.buan.plugins.ev.ui"
         minSdk = 33
         targetSdk = 37
         versionCode = 1
@@ -89,31 +89,31 @@ val pluginDist = layout.buildDirectory.dir("dist")
 val bundlePluginJar = tasks.register<Zip>("bundlePluginJar") {
     group = "distribution"
     dependsOn("assembleDebug")
-    from(zipTree(layout.buildDirectory.file("outputs/apk/debug/eta-ui-debug.apk"))) {
+    from(zipTree(layout.buildDirectory.file("outputs/apk/debug/ev-ui-debug.apk"))) {
         include("classes*.dex")
     }
     destinationDirectory.set(pluginDist)
-    archiveFileName.set("eta-ui.jar")
+    archiveFileName.set("ev-ui.jar")
 }
 
 tasks.register("bundlePlugin") {
     group = "distribution"
-    description = "Produce eta-ui.jar and eta-ui.json for EV/mods"
+    description = "Produce ev-ui.jar and ev-ui.json for EV/mods"
     dependsOn(bundlePluginJar)
     doLast {
         // The sidecar is the metadata a jar container is installed from: without the permission
         // array the host would load this plugin ungated and never lend it storage.
         val metadata = """
             {
-              "id": "ev.buan.plugins.eta.ui",
+              "id": "ev.buan.plugins.ev.ui",
               "version": "1.0.0",
-              "entryClass": "ev.buan.plugins.eta.ui.EtaUiPlugin",
+              "entryClass": "ev.buan.plugins.ev.ui.EvUiPlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.api"],
               "permissions": ["PLUGIN_STORAGE"]
             }
         """.trimIndent()
-        File(pluginDist.get().asFile, "eta-ui.json").writeText(metadata)
+        File(pluginDist.get().asFile, "ev-ui.json").writeText(metadata)
     }
 }
 

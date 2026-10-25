@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -21,7 +21,7 @@ internal object CharacterDocuments {
     /** Bumped only when a change could not be read by the previous decoder. */
     const val VERSION: Int = 1
 
-    fun encode(characters: List<EtaCharacter>): ByteArray {
+    fun encode(characters: List<EvCharacter>): ByteArray {
         val entries = JSONArray()
         characters.forEach { entries.put(it.toJson()) }
         return JSONObject()
@@ -32,7 +32,7 @@ internal object CharacterDocuments {
     }
 
     /** The stored characters, or null when these bytes are not a document this codec knows. */
-    fun decode(bytes: ByteArray): List<EtaCharacter>? {
+    fun decode(bytes: ByteArray): List<EvCharacter>? {
         val document = runCatching { JSONObject(bytes.decodeToString()) }.getOrNull() ?: return null
         val entries = document.optJSONArray("characters") ?: return null
         return buildList {
@@ -43,17 +43,17 @@ internal object CharacterDocuments {
     }
 }
 
-private fun EtaCharacter.toJson(): JSONObject = JSONObject()
+private fun EvCharacter.toJson(): JSONObject = JSONObject()
     .put("id", id)
     .put("name", name)
     .put("description", description)
     .put("systemPrompt", systemPrompt)
     .put("updatedAt", updatedAt)
 
-private fun JSONObject.toCharacter(): EtaCharacter? {
+private fun JSONObject.toCharacter(): EvCharacter? {
     // Without an id the entry cannot be selected, edited or deleted.
     val characterId = optString("id").takeIf { it.isNotBlank() } ?: return null
-    return EtaCharacter(
+    return EvCharacter(
         id = characterId,
         name = optString("name").trim(),
         description = optString("description").trim(),

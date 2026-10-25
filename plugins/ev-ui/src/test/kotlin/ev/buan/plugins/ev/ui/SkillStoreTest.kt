@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import org.cordis.api.PluginStorage
 import org.cordis.api.PluginStorageQuotaExceededException
@@ -99,7 +99,7 @@ class SkillStoreTest {
         assertEquals(library, store.load())
     }
 
-    private fun skill(id: String) = EtaSkill(
+    private fun skill(id: String) = EvSkill(
         id = id,
         name = "Skill $id",
         description = "",

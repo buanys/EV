@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import java.util.UUID
 
@@ -10,7 +10,7 @@ import java.util.UUID
  * a skill cannot run code in the host, it can only tell the model how to answer, exactly like a
  * character persona. It never becomes a chat bubble and never enters agent memory.
  */
-internal data class EtaSkill(
+internal data class EvSkill(
     val id: String,
     val name: String,
     val description: String,
@@ -24,7 +24,7 @@ internal data class EtaSkill(
 internal fun newSkillId(): String = UUID.randomUUID().toString()
 
 /** A blank skill for the "new" editor: it owns an id before the user has typed anything. */
-internal fun newSkill(now: Long = System.currentTimeMillis()): EtaSkill = EtaSkill(
+internal fun newSkill(now: Long = System.currentTimeMillis()): EvSkill = EvSkill(
     id = newSkillId(),
     name = "",
     description = "",
@@ -37,11 +37,11 @@ internal fun newSkill(now: Long = System.currentTimeMillis()): EtaSkill = EtaSki
  *
  * The library is newest-first, so the skill just saved is the one the user sees on top.
  */
-internal fun List<EtaSkill>.upsert(skill: EtaSkill): List<EtaSkill> =
+internal fun List<EvSkill>.upsert(skill: EvSkill): List<EvSkill> =
     listOf(skill) + filterNot { it.id == skill.id }
 
 /** Drops [id]; an unknown id leaves the library untouched. */
-internal fun List<EtaSkill>.without(id: String): List<EtaSkill> = filterNot { it.id == id }
+internal fun List<EvSkill>.without(id: String): List<EvSkill> = filterNot { it.id == id }
 
 /** Clears references to a deleted skill, so no session points at a skill that no longer exists. */
 internal fun List<ChatSession>.clearingSkill(skillId: String): List<ChatSession> = map { session ->
@@ -55,7 +55,7 @@ internal const val SKILL_PROMPT_HEADING: String = "## Skill"
  * The instruction [session]'s selected skill contributes, or null when the session has no skill, the
  * skill was deleted, or its instruction is blank.
  */
-internal fun skillInstruction(skills: List<EtaSkill>, session: ChatSession?): String? = session
+internal fun skillInstruction(skills: List<EvSkill>, session: ChatSession?): String? = session
     ?.skillId
     ?.let { id -> skills.firstOrNull { it.id == id } }
     ?.instruction
@@ -68,8 +68,8 @@ internal fun skillInstruction(skills: List<EtaSkill>, session: ChatSession?): St
  * conversation still sends no prompt at all (the brain then behaves exactly as before).
  */
 internal fun sessionSystemPrompt(
-    characters: List<EtaCharacter>,
-    skills: List<EtaSkill>,
+    characters: List<EvCharacter>,
+    skills: List<EvSkill>,
     session: ChatSession?,
 ): String? {
     val character = characterPrompt(characters, session)

@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import org.cordis.api.PluginStorage
 import org.cordis.api.PluginStorageQuotaExceededException

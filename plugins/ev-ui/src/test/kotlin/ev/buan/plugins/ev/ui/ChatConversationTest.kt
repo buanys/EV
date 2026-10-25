@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import ev.buan.plugins.agent.api.AgentEvent
 import org.junit.Assert.assertEquals

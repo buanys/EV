@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,7 +43,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * send the user to different places.
  */
 @Composable
-fun EtaToolsScreen(
+fun EvToolsScreen(
     registry: () -> ToolRegistry?,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,

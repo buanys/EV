@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
@@ -9,8 +9,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import ev.buan.plugins.eta.ui.EtaSkill
-import ev.buan.plugins.eta.ui.newSkill
+import ev.buan.plugins.ev.ui.EvSkill
+import ev.buan.plugins.ev.ui.newSkill
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsDivider
@@ -34,16 +34,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * so the plugin can write `skills.json` and `sessions.json` in one place.
  */
 @Composable
-internal fun EtaSkillsScreen(
-    skills: List<EtaSkill>,
+internal fun EvSkillsScreen(
+    skills: List<EvSkill>,
     selectedId: String?,
     onBack: () -> Unit,
     onSelect: (String?) -> Unit,
-    onSave: (EtaSkill) -> Unit,
+    onSave: (EvSkill) -> Unit,
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var editing by remember { mutableStateOf<EtaSkill?>(null) }
+    var editing by remember { mutableStateOf<EvSkill?>(null) }
 
     val current = editing
     if (current != null) {
@@ -113,7 +113,7 @@ internal fun EtaSkillsScreen(
 
 @Composable
 private fun SkillRow(
-    skill: EtaSkill,
+    skill: EvSkill,
     selected: Boolean,
     onEdit: () -> Unit,
     onSelectedChange: (Boolean) -> Unit,
@@ -133,10 +133,10 @@ private fun SkillRow(
 /** The editor: three fields, one save rule, and a two-step delete for an existing skill. */
 @Composable
 private fun SkillEditor(
-    skill: EtaSkill,
+    skill: EvSkill,
     isNew: Boolean,
     onCancel: () -> Unit,
-    onSave: (EtaSkill) -> Unit,
+    onSave: (EvSkill) -> Unit,
     onDelete: () -> Unit,
 ) {
     var name by remember(skill.id) { mutableStateOf(skill.name) }

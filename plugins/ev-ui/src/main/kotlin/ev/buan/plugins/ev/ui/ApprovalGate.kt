@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue

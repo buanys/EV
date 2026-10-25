@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import android.util.Log
 import org.cordis.api.PluginStorage
@@ -52,6 +52,6 @@ internal class ChatSessionStore(
     }
 
     private companion object {
-        const val TAG = "eta-ui"
+        const val TAG = "ev-ui"
     }
 }

@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import android.util.Log
 import org.cordis.api.PluginStorage
@@ -20,7 +20,7 @@ internal class CharacterStore(
     },
 ) {
     /** The stored characters in file order, or an empty library when there are none to read. */
-    fun load(): List<EtaCharacter> {
+    fun load(): List<EvCharacter> {
         val bytes = try {
             storage.read(CharacterDocuments.PATH)
         } catch (error: Exception) {
@@ -34,7 +34,7 @@ internal class CharacterStore(
     }
 
     /** Replaces the document with [characters]; a failure is logged and loses only this snapshot. */
-    fun save(characters: List<EtaCharacter>) {
+    fun save(characters: List<EvCharacter>) {
         val bytes = try {
             CharacterDocuments.encode(characters)
         } catch (error: Exception) {
@@ -49,6 +49,6 @@ internal class CharacterStore(
     }
 
     private companion object {
-        const val TAG = "eta-ui"
+        const val TAG = "ev-ui"
     }
 }

@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,7 +10,7 @@ import org.junit.Test
  * Pins the skills library rules and - the part the chat page depends on - how a session's character
  * and skill are folded into one system prompt.
  */
-class EtaSkillTest {
+class EvSkillTest {
 
     @Test
     fun `a skill needs both a name and an instruction`() {
@@ -142,7 +142,7 @@ class EtaSkillTest {
         id: String = "k1",
         name: String = "先列风险",
         instruction: String = "先列三个风险",
-    ) = EtaSkill(
+    ) = EvSkill(
         id = id,
         name = name,
         description = "描述",
@@ -150,7 +150,7 @@ class EtaSkillTest {
         updatedAt = 1L,
     )
 
-    private fun character(id: String, prompt: String) = EtaCharacter(
+    private fun character(id: String, prompt: String) = EvCharacter(
         id = id,
         name = "角色",
         description = "",

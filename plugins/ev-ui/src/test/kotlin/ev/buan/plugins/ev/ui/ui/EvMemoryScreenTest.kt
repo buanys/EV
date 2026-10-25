@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentRole
@@ -12,7 +12,7 @@ import org.junit.Test
  * failing plugin surfaces as a message instead of a crash, and clearing drops only this session's
  * agent memory.
  */
-class EtaMemoryScreenTest {
+class EvMemoryScreenTest {
 
     @Test
     fun `no memory service is the missing state`() = runBlocking {
@@ -132,7 +132,7 @@ class EtaMemoryScreenTest {
     }
 
     private companion object {
-        const val SESSION = "ev.buan.plugins.eta.ui/session-1"
+        const val SESSION = "ev.buan.plugins.ev.ui/session-1"
     }
 }
 

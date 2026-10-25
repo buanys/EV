@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
@@ -35,8 +35,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import ev.buan.plugins.agent.api.AgentEvent
-import ev.buan.plugins.eta.ui.ToolSteps
-import ev.buan.plugins.eta.ui.toolStepsOf
+import ev.buan.plugins.ev.ui.ToolSteps
+import ev.buan.plugins.ev.ui.toolStepsOf
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvMotionTokens
@@ -261,7 +261,7 @@ private fun ToolStepToggle(label: String, expanded: Boolean, onToggle: () -> Uni
 /**
  * The expanded steps: one card per tool call, with a status the human can audit at a glance.
  *
- * Arguments and results render as [ev.buan.plugins.eta.ui.preview] text by default; a "展开全文"
+ * Arguments and results render as [ev.buan.plugins.ev.ui.preview] text by default; a "展开全文"
  * toggle swaps in the complete text, so reviewing what a tool actually saw never means guessing
  * from a cut-off line. A call without a result says so explicitly instead of looking finished.
  */
@@ -289,7 +289,7 @@ private fun ToolStepPanel(steps: ToolSteps, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ToolStepCard(number: Int, step: ev.buan.plugins.eta.ui.ToolStep) {
+private fun ToolStepCard(number: Int, step: ev.buan.plugins.ev.ui.ToolStep) {
     val tokens = EvThemeTokens.colors
     val answered = step.result != null
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -319,7 +319,7 @@ private fun ToolStepCard(number: Int, step: ev.buan.plugins.eta.ui.ToolStep) {
 @Composable
 private fun StepBlock(label: String, text: String, expandable: Boolean = true) {
     val tokens = EvThemeTokens.colors
-    val full = text.length > ev.buan.plugins.eta.ui.TOOL_TEXT_LIMIT
+    val full = text.length > ev.buan.plugins.ev.ui.TOOL_TEXT_LIMIT
     var expanded by remember(text) { mutableStateOf(false) }
     val mono = EvThemeTokens.type.caption.style(tokens.textSecondary).copy(
         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
@@ -328,7 +328,7 @@ private fun StepBlock(label: String, text: String, expandable: Boolean = true) {
     Text(text = label, style = EvThemeTokens.type.micro.style(tokens.textTertiary))
     Spacer(Modifier.height(2.dp))
     Text(
-        text = if (expanded || !full || !expandable) text else ev.buan.plugins.eta.ui.preview(text),
+        text = if (expanded || !full || !expandable) text else ev.buan.plugins.ev.ui.preview(text),
         style = mono,
     )
     if (full && expandable) {

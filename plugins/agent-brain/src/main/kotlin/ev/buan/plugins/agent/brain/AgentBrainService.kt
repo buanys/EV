@@ -5,6 +5,7 @@ import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentReply
 import ev.buan.plugins.agent.api.AgentRole
 import ev.buan.plugins.agent.api.AgentService
+import ev.buan.plugins.agent.api.AgentStop
 import ev.buan.plugins.agent.api.AgentToolCall
 import ev.buan.plugins.agent.api.AgentUsage
 import ev.buan.plugins.agent.api.ApprovalDecision
@@ -18,6 +19,7 @@ import ev.buan.plugins.agent.api.ToolSpec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The conversation brain: one [AgentService] over three optional capability plugins.
@@ -37,11 +39,23 @@ import kotlinx.coroutines.withContext
  * message travels ahead of one [AgentRole.TOOL] message per result, ids matching - and both are
  * persisted to memory, so the model's view of a turn can always be rebuilt from stored history.
  *
- * Usage of every model call in the turn is aggregated into [AgentReply.usage] (see
- * [AgentUsageTotals]); a turn whose calls reported nothing has no usage.
+ * ## Why a turn stops
+ *
+ * The loop is bounded by a budget, not by a fixed round count, and it always reports the reason it
+ * stopped ([AgentStop]). Three separate guards, because each one failed for a different reason in
+ * practice:
+ *  - [Budget] caps rounds, tool calls, prompt size and wall clock (approval waiting excluded);
+ *  - a repeated tool call with an unchanged result gets one reflection, a third try ends the turn;
+ *  - two consecutive turns producing the same normalized text end the turn as `NO_PROGRESS`.
+ *
+ * When the budget - not the model - ends the turn, one final completion without tools asks the
+ * model to summarize. The user then gets "here is what I did and what is left" instead of a
+ * half-finished answer, and `stop` explains why.
  */
-class AgentBrainService(
+class AgentBrainService internal constructor(
     private val capabilities: CapabilityProvider,
+    /** Injectable so tests can shrink the budget instead of scripting 60 tool calls. */
+    private val budget: Budget = Budget(),
 ) : AgentService {
 
     /** True when a model plugin is published and serves at least one configured model. */
@@ -73,32 +87,52 @@ class AgentBrainService(
             "未找到模型 ${model?.model}；当前可用：${available.joinToString("、") { it.model }}。",
         )
 
-        val memory = current.memory
-        val userMessage = AgentMessage(role = AgentRole.USER, content = text)
-        // A role instruction belongs to this request only: it goes in front of history and is never
-        // handed to memory, so it cannot leak into the stored conversation or later turns.
-        val systemMessage = systemPrompt?.trim()?.takeIf { it.isNotEmpty() }
-            ?.let { AgentMessage(role = AgentRole.SYSTEM, content = it) }
-        // The stored log is complete; only the model's view is bounded (see HistoryTrim).
-        val history = HistoryTrim.trim(
-            historyOf(memory, sessionId),
-            maxTurns = MAX_HISTORY_TURNS,
-            maxChars = MAX_HISTORY_CHARS,
-        )
-        val inputs = listOfNotNull(systemMessage) + history + userMessage
-        remember(memory, sessionId, userMessage)
-
         val tools = current.tools
         val specs: List<ToolSpec> = tools?.specs().orEmpty()
+        val memory = current.memory
         val events = mutableListOf<AgentEvent>()
         val usages = mutableListOf<AgentUsage?>()
-        var inputsForModel = inputs
-        var last: AgentReply? = null
-        var round = 0
-        while (round < MAX_TOOL_ROUNDS) {
-            round++
+
+        val userMessage = AgentMessage(role = AgentRole.USER, content = text)
+        // A role instruction belongs to this request only: it goes in front of history and
+        // the current user message, and is never appended to memory.
+        val inputs = mutableListOf<AgentMessage>()
+        systemPrompt?.trim()?.takeIf { it.isNotEmpty() }?.let { inputs += AgentMessage(AgentRole.SYSTEM, it) }
+        inputs += historyOf(memory, sessionId)
+        inputs += userMessage
+        remember(memory, sessionId, userMessage)
+
+        val startedAt = System.nanoTime()
+        // Time the user spends deciding is not the agent's time: a phone in a pocket must not eat
+        // the wall-clock budget of the turn.
+        var approvalNanos = 0L
+
+        var rounds = 0
+        var toolCalls = 0
+        var lastReply: AgentReply? = null
+        var previousNormalized: String? = null
+        val seenResults = mutableMapOf<String, String>()
+        var repeatStreak = 0
+        var stop = AgentStop(AgentStop.Reason.ROUNDS, 0, 0)
+
+        while (true) {
+            val elapsedMs = (System.nanoTime() - startedAt - approvalNanos) / 1_000_000
+            if (rounds >= budget.maxRounds) {
+                stop = AgentStop(AgentStop.Reason.ROUNDS, rounds, toolCalls)
+                break
+            }
+            if (elapsedMs > budget.deadlineMs) {
+                stop = AgentStop(AgentStop.Reason.DEADLINE, rounds, toolCalls)
+                break
+            }
+            if (promptChars(inputs) > budget.maxPromptChars) {
+                stop = AgentStop(AgentStop.Reason.ROUNDS, rounds, toolCalls, "上下文超出预算")
+                break
+            }
+
+            rounds++
             val reply = try {
-                modelService.complete(target, inputsForModel, specs)
+                modelService.complete(target, inputs, specs)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Throwable) {
@@ -107,43 +141,157 @@ class AgentBrainService(
             }
             events += reply.events
             usages += reply.usage
-            last = reply
+            lastReply = reply
+
             val calls = reply.events.filter { it.kind == AgentEvent.Kind.TOOL_CALL }
-            if (calls.isEmpty()) break
+            if (calls.isEmpty()) {
+                stop = AgentStop(AgentStop.Reason.FINISHED, rounds, toolCalls)
+                break
+            }
+
+            val normalized = normalize(reply.message.content)
+            if (normalized.isNotEmpty() && normalized == previousNormalized) {
+                stop = AgentStop(AgentStop.Reason.NO_PROGRESS, rounds, toolCalls)
+                break
+            }
+            previousNormalized = normalized
+
             // Native protocol: the assistant's tool-call turn goes back ahead of the results, so
             // the provider sees its own calls followed by the tool messages that answer them.
-            val toolCalls = calls.mapIndexed { index, call -> toolCallOf(index, call) }
-            val assistantTurn = reply.message.copy(toolCalls = toolCalls)
-            inputsForModel = inputsForModel + assistantTurn
+            val roundCalls = calls.mapIndexed { index, call -> toolCallOf(index, call) }
+            val assistantTurn = reply.message.copy(toolCalls = roundCalls)
+            inputs += assistantTurn
             remember(memory, sessionId, assistantTurn)
-            execute(toolCalls, tools, current.approval, events).forEach { outcome ->
-                val toolMessage = AgentMessage(
-                    role = AgentRole.TOOL,
-                    content = outcome.result,
-                    name = outcome.name,
-                    toolCallId = outcome.id,
-                )
-                inputsForModel = inputsForModel + toolMessage
-                remember(memory, sessionId, toolMessage)
+
+            // Every call in this turn must be answered, including the ones a guard skipped:
+            // an assistant turn with unanswered tool_calls is an invalid request for the final
+            // summary call.
+            val outcomes = mutableListOf<Outcome>()
+            var stopAfterRound: AgentStop? = null
+            for (call in roundCalls) {
+                if (stopAfterRound != null) {
+                    outcomes += Outcome.ToolResult(call, SKIPPED_RESULT)
+                    continue
+                }
+                if (toolCalls >= budget.maxToolCalls) {
+                    outcomes += Outcome.ToolResult(call, SKIPPED_RESULT)
+                    stopAfterRound = AgentStop(AgentStop.Reason.TOOL_BUDGET, rounds, toolCalls)
+                    continue
+                }
+                toolCalls++
+                val executed = executeGuarded(tools, call, current.approval)
+                approvalNanos += executed.approvalNanos
+                val result = truncateUtf16Safe(executed.result, MAX_TOOL_RESULT_CHARS)
+                val fingerprint = call.name + '\u0000' + call.argumentsJson
+                val prior = seenResults.put(fingerprint, result)
+                outcomes += Outcome.ToolResult(call, result)
+                if (prior != null && prior == result) {
+                    repeatStreak++
+                    if (repeatStreak >= REPEAT_LIMIT) {
+                        stopAfterRound = AgentStop(
+                            reason = AgentStop.Reason.REPEATED_CALLS,
+                            rounds = rounds,
+                            toolCalls = toolCalls,
+                            detail = call.name,
+                        )
+                    } else {
+                        outcomes += Outcome.Reflection(reflection(call))
+                    }
+                }
+            }
+
+            for (outcome in outcomes) {
+                when (outcome) {
+                    is Outcome.ToolResult -> {
+                        val toolMessage = AgentMessage(
+                            role = AgentRole.TOOL,
+                            content = outcome.result,
+                            name = outcome.call.name,
+                            toolCallId = outcome.call.id,
+                        )
+                        inputs += toolMessage
+                        remember(memory, sessionId, toolMessage)
+                        events += AgentEvent(
+                            kind = AgentEvent.Kind.TOOL_RESULT,
+                            text = outcome.result,
+                            toolName = outcome.call.name,
+                            toolCallId = outcome.call.id,
+                        )
+                    }
+
+                    is Outcome.Reflection -> {
+                        // A system message in the middle of a conversation is rejected or ignored
+                        // by some OpenAI-compatible servers, so the nudge rides as a user message
+                        // and says explicitly that it comes from the runtime.
+                        val nudge = AgentMessage(AgentRole.USER, outcome.text)
+                        inputs += nudge
+                        remember(memory, sessionId, nudge)
+                    }
+                }
+            }
+
+            stopAfterRound?.let {
+                stop = it
+                break
             }
         }
 
-        val reply = last ?: return@withContext degraded(model, "模型没有返回任何结果，请稍后重试。")
-        val content = reply.message.content.ifBlank {
-            if (events.any { it.kind == AgentEvent.Kind.TOOL_RESULT }) {
-                "工具已执行，但模型没有给出文字总结。"
-            } else {
-                "模型没有返回文本。"
-            }
+        val finished = stop.reason == AgentStop.Reason.FINISHED
+        val content = if (finished) {
+            lastReply?.message?.content?.takeIf { it.isNotBlank() } ?: FALLBACK_NO_TEXT
+        } else {
+            wrapUp(stop, inputs, target, modelService, usages, events)
         }
-        if (reply.message.content.isNotBlank()) {
+        if (content.isNotBlank()) {
             remember(memory, sessionId, AgentMessage(role = AgentRole.ASSISTANT, content = content))
         }
-        reply.copy(
+
+        AgentReply(
             message = AgentMessage(role = AgentRole.ASSISTANT, content = content),
+            model = target,
             events = events,
             usage = AgentUsageTotals.aggregate(usages),
+            stop = stop,
         )
+    }
+
+    /**
+     * One last completion without tools, so a budget stop still produces a readable answer.
+     *
+     * Failure is not fatal: the caller gets [FALLBACK_STOPPED] plus the [AgentStop] reason instead
+     * of an exception, because losing the whole turn to a failed summary would be worse than the
+     * half-finished answer this exists to avoid.
+     */
+    private suspend fun wrapUp(
+        stop: AgentStop,
+        inputs: List<AgentMessage>,
+        target: ModelRef,
+        modelService: ModelService,
+        usages: MutableList<AgentUsage?>,
+        events: MutableList<AgentEvent>,
+    ): String {
+        if (stop.reason == AgentStop.Reason.ERROR) return FALLBACK_STOPPED
+        val instruction = AgentMessage(
+            role = AgentRole.USER,
+            content = "（运行时提示）本轮预算已用尽：${stop.rounds} 轮、${stop.toolCalls} 次工具调用。" +
+                "请只总结当前进展、已完成的部分和下一步建议，不要再调用工具。",
+        )
+        // After DEADLINE the budget is already gone; waiting the full wrap timeout would make the
+        // overrun much worse than a short summary is worth.
+        val timeout = if (stop.reason == AgentStop.Reason.DEADLINE) {
+            WRAP_TIMEOUT_AFTER_DEADLINE_MS
+        } else {
+            WRAP_TIMEOUT_MS
+        }
+        val reply = withTimeoutOrNull(timeout) {
+            runCatching { modelService.complete(target, inputs + instruction, emptyList()) }
+                .getOrNull()
+        }
+        if (reply != null) {
+            reply.usage?.let { usages += it }
+            events += reply.events
+        }
+        return reply?.message?.content?.takeIf { it.isNotBlank() } ?: FALLBACK_STOPPED
     }
 
     /** Null when the caller asked for a model this provider does not serve. */
@@ -154,7 +302,7 @@ class AgentBrainService(
     private suspend fun historyOf(memory: MemoryService?, sessionId: String): List<AgentMessage> {
         if (memory == null) return emptyList()
         return try {
-            memory.history(sessionId)
+            HistoryTrim.trim(memory.history(sessionId), MAX_HISTORY_TURNS, MAX_HISTORY_CHARS)
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Throwable) {
@@ -186,70 +334,56 @@ class AgentBrainService(
     )
 
     /**
-     * Runs every requested tool and records a `TOOL_RESULT` event for each, including failures.
+     * Runs one requested tool and reports how long the human spent deciding.
+     *
      * A missing registry or an unknown tool becomes result *text* for the next model turn instead
      * of an exception, so a model hallucinating a tool name cannot abort the conversation.
-     *
      * Dangerous tools go through the approval gate first (fail-closed when none is published);
      * the refusal is result text too, so the model can explain instead of retrying blindly.
+     *
+     * The approval wait sits **outside** the execution timeout: a person deciding must not be
+     * "timed out", they are the reason the call is slow. The timeout only bounds the tool itself.
      */
-    private suspend fun execute(
-        calls: List<AgentToolCall>,
+    private suspend fun executeGuarded(
         registry: ToolRegistry?,
-        approval: ApprovalService?,
-        events: MutableList<AgentEvent>,
-    ): List<ToolOutcome> = calls.map { call ->
-        val rawResult = when {
-            registry == null -> "工具系统未启用（未安装 $TOOLS_PLUGIN）"
-            else -> {
-                val tool = registry.lookup(call.name)
-                if (tool == null) {
-                    "没有名为 ${call.name} 的工具"
-                } else {
-                    invokeGuarded(tool, call, approval)
-                }
-            }
-        }
-        val result = truncateUtf16Safe(rawResult, MAX_TOOL_RESULT_CHARS)
-        events += AgentEvent(
-            kind = AgentEvent.Kind.TOOL_RESULT,
-            text = result,
-            toolName = call.name,
-            toolCallId = call.id,
-        )
-        ToolOutcome(call.id, call.name, result)
-    }
-
-    /**
-     * The one place a tool actually runs. A dangerous spec means the model's request is not
-     * enough: no gate published refuses outright (fail-closed - the human's voice is absent, not
-     * merely quiet), a denial returns the refusal as the result, and only an explicit allow runs
-     * the tool. Ordinary tools skip all of this.
-     */
-    private suspend fun invokeGuarded(
-        tool: Tool,
         call: AgentToolCall,
         approval: ApprovalService?,
-    ): String {
+    ): Executed {
+        if (registry == null) return Executed("工具系统未启用（未安装 $TOOLS_PLUGIN）", 0)
+        val tool = registry.lookup(call.name) ?: return Executed("没有名为 ${call.name} 的工具", 0)
+
+        var approvalNanos = 0L
         if (tool.spec.dangerous) {
-            val gate = approval ?: return "已拦截：${call.name} 属于高危操作，需要人工审批，但审批界面未启用（请启用 eta-ui 后重试）"
+            val gate = approval ?: return Executed(
+                "已拦截：${call.name} 属于高危操作，需要人工审批，但审批界面未启用（请启用 ev-ui 后重试）",
+                0,
+            )
+            val startedApproval = System.nanoTime()
             val decision = try {
                 gate.request(call.name, call.argumentsJson)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Throwable) {
                 // A broken gate must never become an approval.
-                return "已拦截：审批通道出错（${error.message ?: error::class.simpleName}），本次未执行"
+                return Executed(
+                    "已拦截：审批通道出错（${error.message ?: error::class.simpleName}），本次未执行",
+                    System.nanoTime() - startedApproval,
+                )
             }
-            if (decision == ApprovalDecision.DENY) return "用户拒绝了本次执行"
+            approvalNanos = System.nanoTime() - startedApproval
+            if (decision == ApprovalDecision.DENY) return Executed("用户拒绝了本次执行", approvalNanos)
         }
-        return try {
-            tool.invoke(call.argumentsJson)
+
+        val timeout = timeoutFor(tool.spec.name)
+        val result = try {
+            withTimeoutOrNull(timeout) { tool.invoke(call.argumentsJson) }
+                ?: "工具 ${call.name} 超时（${timeout / 1000}s），本次未完成"
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Throwable) {
             "工具调用失败：${error.message ?: error::class.simpleName}"
         }
+        return Executed(result, approvalNanos)
     }
 
     private fun degraded(model: ModelRef?, reason: String, usage: AgentUsage? = null): AgentReply =
@@ -266,14 +400,61 @@ class AgentBrainService(
         usage,
     )
 
-    private data class ToolOutcome(val id: String, val name: String, val result: String)
+    private fun reflection(call: AgentToolCall): String =
+        "（运行时提示）你刚才用相同参数再次调用了 ${call.name}，结果没有变化。" +
+            "换一种方法，或直接说明为什么无法继续。"
+
+    private fun promptChars(messages: List<AgentMessage>): Int =
+        messages.sumOf { it.content.length + PER_MESSAGE_OVERHEAD_CHARS }
+
+    /** Whitespace-free, lowercase, trailing punctuation dropped: "no progress" is about meaning. */
+    private fun normalize(text: String): String =
+        text.lowercase()
+            .filterNot { it.isWhitespace() }
+            .trimEnd('。', '！', '？', '.', '!', '?')
+
+    private fun timeoutFor(toolName: String): Long =
+        if (toolName == SHELL_TOOL_NAME) budget.shellTimeoutMs else budget.toolTimeoutMs
+
+    /** What a tool call produced, in the order it must be fed back to the model. */
+    private sealed interface Outcome {
+        data class ToolResult(val call: AgentToolCall, val result: String) : Outcome
+        data class Reflection(val text: String) : Outcome
+    }
+
+    private data class Executed(val result: String, val approvalNanos: Long)
 
     private companion object {
         const val MODEL_PLUGIN = "ev.buan.plugins.agent.model"
         const val TOOLS_PLUGIN = "ev.buan.plugins.agent.tools"
 
-        /** One user turn may ask for tools at most this many times; stops a model that loops. */
-        const val MAX_TOOL_ROUNDS = 3
+        /** Model calls one user turn may make. A guard against loops, not a task-size estimate. */
+        const val MAX_ROUNDS = 20
+
+        /** Tool invocations one user turn may make. */
+        const val MAX_TOOL_CALLS = 60
+
+        /** Wall-clock budget, excluding time the human spends on approval. */
+        const val DEADLINE_MS = 300_000L
+
+        /** Prompt size budget; the history view is bounded separately by [MAX_HISTORY_CHARS]. */
+        const val MAX_PROMPT_CHARS = 200_000
+
+        /** Counting overhead per message (role markers, separators) when budgeting a prompt. */
+        const val PER_MESSAGE_OVERHEAD_CHARS = 32
+
+        const val SHELL_TOOL_NAME = "run_shell"
+
+        /** Second repeated call gets a reflection; the third ends the turn. */
+        const val REPEAT_LIMIT = 2
+
+        /** Summary call after a budget stop. */
+        const val WRAP_TIMEOUT_MS = 60_000L
+
+        /** ... and after a DEADLINE stop, where the budget is already spent. */
+        const val WRAP_TIMEOUT_AFTER_DEADLINE_MS = 15_000L
+
+        const val SKIPPED_RESULT = "预算用尽，本次调用未执行"
 
         /** Tool output is fed back into the prompt, so one file cannot swallow the context window. */
         const val MAX_TOOL_RESULT_CHARS = 8_000
@@ -284,5 +465,30 @@ class AgentBrainService(
          */
         const val MAX_HISTORY_TURNS = 20
         const val MAX_HISTORY_CHARS = 24_000
+
+        const val FALLBACK_NO_TEXT = "模型没有返回文本。"
+        const val FALLBACK_STOPPED =
+            "本轮因预算用尽而停止，收尾总结也未能生成。已完成的操作已保存在会话历史里。"
     }
 }
+
+/**
+ * How much one user turn may spend.
+ *
+ * These caps replaced the old three-round limit. They exist to stop a runaway loop, not to model
+ * how much work a task needs: 20 rounds covers a realistic multi-file task, and the wall clock is
+ * what actually protects a user from a stuck turn.
+ */
+internal data class Budget(
+    val maxRounds: Int = 20,
+    val maxToolCalls: Int = 60,
+    val deadlineMs: Long = 300_000L,
+    val maxPromptChars: Int = 200_000,
+    /** Default per-tool execution timeout. */
+    val toolTimeoutMs: Long = 30_000L,
+    /**
+     * Shell gets its own budget: `run_shell` bounds itself at 120s and force-kills the process, so
+     * the brain must not give up earlier and report "timed out" while work still runs.
+     */
+    val shellTimeoutMs: Long = 120_000L,
+)

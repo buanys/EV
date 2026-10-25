@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,16 +32,16 @@ import ev.buan.ui.EvThemeTokens
 import top.yukonga.miuix.kmp.basic.Text
 
 /** One conversation row in the drawer, already reduced to what the drawer renders. */
-data class EtaSessionSummary(
+data class EvSessionSummary(
     val id: String,
     val title: String,
     val selected: Boolean,
 )
 
 /** Drawer history is grouped by local calendar day, newest group first. */
-data class EtaHistoryGroup(
+data class EvHistoryGroup(
     val label: String,
-    val sessions: List<EtaSessionSummary>,
+    val sessions: List<EvSessionSummary>,
 )
 
 /**
@@ -54,8 +54,8 @@ data class EtaHistoryGroup(
  * search state. The plugin owns the data; this file owns the look.
  */
 @Composable
-fun EtaDrawerContent(
-    groups: List<EtaHistoryGroup>,
+fun EvDrawerContent(
+    groups: List<EvHistoryGroup>,
     searching: Boolean,
     query: String,
     onQueryChange: (String) -> Unit,
@@ -127,7 +127,7 @@ private fun DrawerHeader(statusLine: String, onNewChat: () -> Unit) {
         Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        EtaLogo()
+        EvLogo()
         Spacer(Modifier.width(12.dp))
         Column {
             Text("EV", style = EvThemeTokens.type.title.style(tokens.textPrimary))
@@ -146,7 +146,7 @@ private fun DrawerHeader(statusLine: String, onNewChat: () -> Unit) {
 }
 
 @Composable
-private fun EtaLogo() {
+private fun EvLogo() {
     Box(
         Modifier.size(40.dp).clip(EvThemeTokens.radii.smallShape)
             .background(EvThemeTokens.colors.surface2),
@@ -184,7 +184,7 @@ private fun DrawerNav(label: String, glyph: EvGlyphKind, onClick: () -> Unit) {
 }
 
 @Composable
-private fun HistoryItem(session: EtaSessionSummary, onSelect: (String) -> Unit) {
+private fun HistoryItem(session: EvSessionSummary, onSelect: (String) -> Unit) {
     val tokens = EvThemeTokens.colors
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 1.dp)

@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import java.util.UUID
 
@@ -13,7 +13,7 @@ import java.util.UUID
  * only as `AgentService.send(systemPrompt = ...)`, and the brain places it ahead of the stored
  * history without persisting it. It never becomes a chat bubble and never enters agent memory.
  */
-internal data class EtaCharacter(
+internal data class EvCharacter(
     val id: String,
     val name: String,
     val description: String,
@@ -27,7 +27,7 @@ internal data class EtaCharacter(
 internal fun newCharacterId(): String = UUID.randomUUID().toString()
 
 /** A blank character for the "new" editor: it owns an id before the user has typed anything. */
-internal fun newCharacter(now: Long = System.currentTimeMillis()): EtaCharacter = EtaCharacter(
+internal fun newCharacter(now: Long = System.currentTimeMillis()): EvCharacter = EvCharacter(
     id = newCharacterId(),
     name = "",
     description = "",
@@ -40,11 +40,11 @@ internal fun newCharacter(now: Long = System.currentTimeMillis()): EtaCharacter 
  *
  * The library is newest-first, so the character just saved is the one the user sees on top.
  */
-internal fun List<EtaCharacter>.upsert(character: EtaCharacter): List<EtaCharacter> =
+internal fun List<EvCharacter>.upsert(character: EvCharacter): List<EvCharacter> =
     listOf(character) + filterNot { it.id == character.id }
 
 /** Drops [id]; an unknown id leaves the library untouched. */
-internal fun List<EtaCharacter>.without(id: String): List<EtaCharacter> = filterNot { it.id == id }
+internal fun List<EvCharacter>.without(id: String): List<EvCharacter> = filterNot { it.id == id }
 
 /** Clears references to a deleted character, so no session points at a role that no longer exists. */
 internal fun List<ChatSession>.clearingCharacter(characterId: String): List<ChatSession> = map { session ->
@@ -55,7 +55,7 @@ internal fun List<ChatSession>.clearingCharacter(characterId: String): List<Chat
  * The instruction to send with [session]'s next turn: the selected character's prompt, or null when
  * the session has no character, the character was deleted, or its prompt is blank.
  */
-internal fun characterPrompt(characters: List<EtaCharacter>, session: ChatSession?): String? = session
+internal fun characterPrompt(characters: List<EvCharacter>, session: ChatSession?): String? = session
     ?.characterId
     ?.let { id -> characters.firstOrNull { it.id == id } }
     ?.systemPrompt

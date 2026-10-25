@@ -29,14 +29,16 @@ class AgentBrainPlugin : Plugin<Unit>, AgentSurface {
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
-        val service = AgentBrainService {
-            BrainCapabilities(
+        val service = AgentBrainService(
+            capabilities = {
+                BrainCapabilities(
                 model = directory.lookup(ModelService.Key),
                 tools = directory.lookup(ToolRegistry.Key),
                 memory = directory.lookup(MemoryService.Key),
-                approval = directory.lookup(ApprovalService.Key),
-            )
-        }
+                    approval = directory.lookup(ApprovalService.Key),
+                )
+            },
+        )
         directory.publish(AgentService.Key, service)
         // The identity check keeps this stale disposer from retracting a newer instance published
         // after a re-activation, mirroring the tools/memory plugins.

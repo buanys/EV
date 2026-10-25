@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import ev.buan.plugins.agent.api.AgentEvent
 import org.junit.Assert.assertEquals
@@ -20,7 +20,7 @@ class ChatSessionDocumentsTest {
     fun `sessions survive a round trip`() {
         val sessions = listOf(
             ChatSession(
-                id = "ev.buan.plugins.eta.ui/session-1",
+                id = "ev.buan.plugins.ev.ui/session-1",
                 title = "分析屏幕",
                 messages = listOf(
                     userMessage("分析一下当前屏幕"),
@@ -46,7 +46,7 @@ class ChatSessionDocumentsTest {
                 updatedAt = 1_760_000_000_000L,
             ),
             ChatSession(
-                id = "ev.buan.plugins.eta.ui/session-2",
+                id = "ev.buan.plugins.ev.ui/session-2",
                 title = DEFAULT_SESSION_TITLE,
                 messages = emptyList(),
                 updatedAt = 1_760_000_500_000L,

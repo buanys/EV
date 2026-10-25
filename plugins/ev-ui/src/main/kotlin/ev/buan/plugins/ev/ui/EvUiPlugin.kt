@@ -412,7 +412,14 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         )
                         val answer = reply.message.content.ifBlank { "（模型没有返回文本）" }
                         lastTurnTokens = reply.usage?.totalTokens
-                        append(sessionId, assistantMessage(answer, events = reply.events))
+                        append(
+                                                sessionId,
+                                                assistantMessage(
+                                                    answer,
+                                                    events = reply.events,
+                                                    stopNote = stopNoteOf(reply.stop),
+                                                ),
+                                            )
                     }
                 } catch (cancel: CancellationException) {
                     // The stop button lands here: leave a tombstone so the transcript shows the
@@ -811,6 +818,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                     animate = message.id !in seenIds,
                                     modifier = Modifier.padding(top = gap),
                                 ) {
+                                  Column {
                                     EvChatBubble(
                                         text = message.text,
                                         fromUser = message.fromUser,
@@ -824,6 +832,16 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                             { delete(message.id) }
                                         },
                                     )
+                                    message.stopNote?.let { note ->
+                                        Text(
+                                            text = note,
+                                            style = EvThemeTokens.type.caption.style(
+                                                EvThemeTokens.colors.textTertiary,
+                                            ),
+                                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                                        )
+                                    }
+                                  }
                                 }
                             }
                             // Declared last so it sits under the newest message, where the reply

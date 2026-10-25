@@ -1,6 +1,7 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import ev.buan.plugins.agent.api.AgentEvent
+import ev.buan.plugins.agent.api.AgentStop
 import java.util.UUID
 
 /**
@@ -37,6 +38,11 @@ internal data class ChatMessage(
     val text: String,
     val fromUser: Boolean,
     val events: List<AgentEvent> = emptyList(),
+    /**
+     * Why the agent turn ended, when it did not end because the model was done. Rendered under the
+     * bubble; keeping it on the message means a reloaded session still explains itself.
+     */
+    val stopNote: String? = null,
 )
 
 /** A string that is stable for the lifetime of the message, however the list is reordered. */
@@ -50,8 +56,35 @@ internal fun userMessage(text: String): ChatMessage =
  * An assistant turn. [events] is whatever the agent reported: the "not connected" placeholder and
  * the failure text are UI states, so they carry none.
  */
-internal fun assistantMessage(text: String, events: List<AgentEvent> = emptyList()): ChatMessage =
-    ChatMessage(id = newMessageId(), text = text, fromUser = false, events = events)
+internal fun assistantMessage(
+    text: String,
+    events: List<AgentEvent> = emptyList(),
+    stopNote: String? = null,
+): ChatMessage = ChatMessage(
+    id = newMessageId(),
+    text = text,
+    fromUser = false,
+    events = events,
+    stopNote = stopNote,
+)
+
+/**
+ * Human wording for a non-FINISHED stop. FINISHED is the only reason that needs no line: the model
+ * decided it was done, and saying so would just add noise under every answer.
+ */
+internal fun stopNoteOf(stop: AgentStop?): String? {
+    if (stop == null || stop.reason == AgentStop.Reason.FINISHED) return null
+    val reason = when (stop.reason) {
+        AgentStop.Reason.ROUNDS -> "轮数用尽"
+        AgentStop.Reason.TOOL_BUDGET -> "工具调用次数用尽"
+        AgentStop.Reason.DEADLINE -> "超时"
+        AgentStop.Reason.NO_PROGRESS -> "连续两轮没有进展"
+        AgentStop.Reason.REPEATED_CALLS -> "重复调用同一工具"
+        AgentStop.Reason.ERROR -> "出错"
+        AgentStop.Reason.FINISHED -> return null
+    }
+    return "已停止：$reason（${stop.rounds} 轮）"
+}
 
 /** Removes exactly the bubble with [id]; an unknown id leaves the conversation untouched. */
 internal fun withoutMessage(messages: List<ChatMessage>, id: String): List<ChatMessage> =
@@ -100,7 +133,7 @@ internal data class ToolSteps(
     /** An empty step list is not rendered at all: a plain answer must not grow a "0 tools" row. */
     val isEmpty: Boolean get() = steps.isEmpty()
 
-    /** The caption Eta uses; the one place the numbers are turned into text. */
+    /** The caption Ev uses; the one place the numbers are turned into text. */
     val label: String get() = "思考 $thinkingCount 次 · 调用 $toolCount 个工具"
 }
 

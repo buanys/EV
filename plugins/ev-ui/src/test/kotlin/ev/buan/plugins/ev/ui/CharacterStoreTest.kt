@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import org.cordis.api.PluginStorage
 import org.cordis.api.PluginStorageQuotaExceededException
@@ -99,7 +99,7 @@ class CharacterStoreTest {
         assertEquals(library, store.load())
     }
 
-    private fun character(id: String) = EtaCharacter(
+    private fun character(id: String) = EvCharacter(
         id = id,
         name = "角色 $id",
         description = "",

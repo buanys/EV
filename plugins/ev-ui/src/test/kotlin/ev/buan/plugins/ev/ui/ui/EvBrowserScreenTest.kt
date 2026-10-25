@@ -1,11 +1,11 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 /** Pins what the address bar accepts: a bare host is a URL, a bare host:port is not a scheme. */
-class EtaBrowserScreenTest {
+class EvBrowserScreenTest {
 
     @Test
     fun `blank input has no url`() {

@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -20,7 +20,7 @@ import org.cordis.api.PLUGIN_API_VERSION
 import kotlin.math.roundToInt
 
 /**
- * Eta-style settings, owned by this plugin rather than by a second settings plugin.
+ * Ev-style settings, owned by this plugin rather than by a second settings plugin.
  *
  * Appearance is the one place that proves the plugin does not own theme state: every row reads
  * [AppearanceService.current] during composition and writes through [AppearanceService.update]. The
@@ -32,7 +32,7 @@ import kotlin.math.roundToInt
  * plugin, because those two screens belong to the host.
  */
 @Composable
-fun EtaSettingsScreen(
+fun EvSettingsScreen(
     appearance: AppearanceService,
     onBack: () -> Unit,
     onOpenPlugins: () -> Unit,
@@ -133,7 +133,7 @@ fun EtaSettingsScreen(
         item {
             EvSettingsGroup {
                 EvSettingsRow(
-                    title = "Eta UI",
+                    title = "Ev UI",
                     glyph = EvGlyphKind.Info,
                     summary = "插件 API $PLUGIN_API_VERSION",
                     trailing = EvSettingsTrailing.None,

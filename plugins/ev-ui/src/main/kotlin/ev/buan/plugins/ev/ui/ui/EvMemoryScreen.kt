@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -37,7 +37,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * What the agent remembers about one conversation, read from whichever plugin publishes a
  * [MemoryService].
  *
- * This is EV's memory, not Eta's: the panel shows the turns the agent brain stored for the active
+ * This is EV's memory, not Ev's: the panel shows the turns the agent brain stored for the active
  * session and can drop them. It is deliberately a view over the contract - enabling, configuring and
  * storing stay in the memory plugin's own `PluginStorage`.
  *
@@ -46,7 +46,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * transcript stays readable after clearing.
  */
 @Composable
-fun EtaMemoryScreen(
+fun EvMemoryScreen(
     sessionId: String,
     memory: () -> MemoryService?,
     onBack: () -> Unit,
@@ -220,7 +220,7 @@ internal fun memoryEntrySummary(message: AgentMessage): String {
 }
 
 internal const val CLEAR_NOTE: String =
-    "清空只影响 agent-memory 的这份记忆，不删除 eta-ui 的聊天历史。"
+    "清空只影响 agent-memory 的这份记忆，不删除 ev-ui 的聊天历史。"
 
 private fun reason(error: Throwable): String =
     error.message ?: error::class.simpleName ?: "未知错误"

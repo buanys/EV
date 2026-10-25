@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolRegistry
@@ -14,7 +14,7 @@ import org.junit.Test
  * Pins the read-only tools panel's state machine and its text shaping: the two "empty" states must
  * stay distinguishable, and a long schema must not be allowed to stretch a row.
  */
-class EtaToolsScreenTest {
+class EvToolsScreenTest {
 
     @Test
     fun `no registry is the missing state`() {

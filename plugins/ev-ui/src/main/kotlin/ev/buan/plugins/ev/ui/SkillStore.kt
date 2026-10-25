@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import android.util.Log
 import org.cordis.api.PluginStorage
@@ -20,7 +20,7 @@ internal class SkillStore(
     },
 ) {
     /** The stored skills in file order, or an empty library when there are none to read. */
-    fun load(): List<EtaSkill> {
+    fun load(): List<EvSkill> {
         val bytes = try {
             storage.read(SkillDocuments.PATH)
         } catch (error: Exception) {
@@ -34,7 +34,7 @@ internal class SkillStore(
     }
 
     /** Replaces the document with [skills]; a failure is logged and loses only this snapshot. */
-    fun save(skills: List<EtaSkill>) {
+    fun save(skills: List<EvSkill>) {
         val bytes = try {
             SkillDocuments.encode(skills)
         } catch (error: Exception) {
@@ -49,6 +49,6 @@ internal class SkillStore(
     }
 
     private companion object {
-        const val TAG = "eta-ui"
+        const val TAG = "ev-ui"
     }
 }
