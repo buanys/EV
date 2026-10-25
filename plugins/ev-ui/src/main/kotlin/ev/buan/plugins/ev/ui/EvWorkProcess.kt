@@ -51,7 +51,10 @@ internal fun EvWorkProcess(
 ) {
     if (steps.isEmpty()) return
     val tokens = EvThemeTokens.colors
-    val caption = EvThemeTokens.type.caption.style(tokens.textTertiary)
+    // Body size for the header: it is the only line that says what happened, and at caption size
+    // it read as fine print next to the reply. Nodes stay a step quieter.
+    val headerStyle = EvThemeTokens.type.body.style(tokens.textSecondary)
+    val caption = EvThemeTokens.type.label.style(tokens.textTertiary)
     val reduced = EvThemeTokens.reducedMotion
 
     Column(
@@ -69,15 +72,15 @@ internal fun EvWorkProcess(
         ) {
             Text(
                 text = label,
-                style = caption,
-                color = if (failed > 0) tokens.textSecondary else tokens.textTertiary,
+                style = headerStyle,
+                color = if (failed > 0) tokens.textPrimary else tokens.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 text = if (expanded) "▾" else "▸",
-                style = caption,
+                style = headerStyle,
                 color = tokens.textTertiary,
             )
         }
@@ -201,7 +204,7 @@ private fun looksFailed(text: String): Boolean =
 @Composable
 private fun WorkStepNode(step: WorkStep, isLast: Boolean, compact: Boolean) {
     val tokens = EvThemeTokens.colors
-    val caption = EvThemeTokens.type.caption.style(tokens.textTertiary)
+    val caption = EvThemeTokens.type.label.style(tokens.textTertiary)
     val failed = when (step) {
         is WorkStep.One -> step.step.state == StepState.Failed
         is WorkStep.Group -> step.failed > 0
@@ -211,11 +214,11 @@ private fun WorkStepNode(step: WorkStep, isLast: Boolean, compact: Boolean) {
         // The spine: a dot per node and a line down to the next one.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.width(14.dp).padding(top = 5.dp),
+            modifier = Modifier.width(16.dp).padding(top = 6.dp),
         ) {
             Box(
                 Modifier
-                    .size(5.dp)
+                    .size(6.dp)
                     .clip(CircleShape)
                     .background(
                         if (failed) tokens.textSecondary else tokens.textTertiary.copy(alpha = 0.6f),
@@ -225,12 +228,12 @@ private fun WorkStepNode(step: WorkStep, isLast: Boolean, compact: Boolean) {
                 Box(
                     Modifier
                         .width(1.dp)
-                        .size(width = 1.dp, height = 16.dp)
+                        .size(width = 1.dp, height = 20.dp)
                         .background(tokens.textTertiary.copy(alpha = 0.25f)),
                 )
             }
         }
-        Column(Modifier.weight(1f).padding(bottom = if (isLast) 0.dp else 6.dp)) {
+        Column(Modifier.weight(1f).padding(bottom = if (isLast) 0.dp else 8.dp)) {
             when (step) {
                 is WorkStep.One -> StepLine(step.step, caption, compact)
                 is WorkStep.Group -> {
