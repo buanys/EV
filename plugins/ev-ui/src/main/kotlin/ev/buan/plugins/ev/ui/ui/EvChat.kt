@@ -348,7 +348,7 @@ private fun StepBlock(label: String, text: String, expandable: Boolean = true) {
  * tool turn reads as ongoing work rather than a stuck label.
  */
 @Composable
-fun EvTypingIndicator(modifier: Modifier = Modifier) {
+fun EvTypingIndicator(modifier: Modifier = Modifier, label: String? = null) {
     val reduced = EvThemeTokens.reducedMotion
     val transition = rememberInfiniteTransition(label = "typing")
     Row(modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -372,6 +372,15 @@ fun EvTypingIndicator(modifier: Modifier = Modifier) {
                     .size(6.dp)
                     .clip(CircleShape)
                     .background(EvThemeTokens.colors.textTertiary.copy(alpha = alpha)),
+            )
+        }
+        // The dots alone cannot distinguish "waiting for the model" from "writing the summary",
+        // and the wrap-up call is the one moment the user is most likely to think it hung.
+        if (label != null) {
+            Text(
+                text = label,
+                style = EvThemeTokens.type.caption.style(EvThemeTokens.colors.textTertiary),
+                modifier = Modifier.padding(start = 3.dp),
             )
         }
     }

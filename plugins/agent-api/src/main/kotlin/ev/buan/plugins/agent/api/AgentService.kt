@@ -1,5 +1,7 @@
 package ev.buan.plugins.agent.api
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import org.cordis.ServiceKey
 
 /**
@@ -34,6 +36,24 @@ interface AgentService {
         model: ModelRef? = null,
         systemPrompt: String? = null,
     ): AgentReply
+
+    /**
+     * Same turn as [send], but reporting progress while it runs.
+     *
+     * The default implementation keeps every existing implementor working: it runs [send] and emits
+     * a single [AgentProgress.Done]. A brain that can report progress overrides it.
+     *
+     * The stream always ends with [AgentProgress.Done] unless it is cancelled; a cancelled stream
+     * throws [kotlinx.coroutines.CancellationException] and emits nothing more.
+     */
+    fun sendStreaming(
+        sessionId: String,
+        text: String,
+        model: ModelRef? = null,
+        systemPrompt: String? = null,
+    ): Flow<AgentProgress> = flow {
+        emit(AgentProgress.Done(send(sessionId, text, model, systemPrompt)))
+    }
 
     companion object {
         val Key = ServiceKey<AgentService>("agent/service")

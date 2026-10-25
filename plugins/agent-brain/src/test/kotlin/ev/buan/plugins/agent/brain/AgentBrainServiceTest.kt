@@ -2,6 +2,8 @@ package ev.buan.plugins.agent.brain
 
 import ev.buan.plugins.agent.api.AgentEvent
 import ev.buan.plugins.agent.api.AgentMessage
+import ev.buan.plugins.agent.api.AgentProgress
+import ev.buan.plugins.agent.api.StepState
 import ev.buan.plugins.agent.api.AgentReply
 import ev.buan.plugins.agent.api.AgentRole
 import ev.buan.plugins.agent.api.AgentStop
@@ -16,6 +18,7 @@ import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.agent.api.ToolSpec
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -731,6 +734,92 @@ class AgentBrainServiceTest {
         assertTrue(nudge?.content.orEmpty().contains("结果没有变化"))
     }
 
+    // ------------------------------------------------------------- progress stream
+
+    @Test
+    fun `progress events follow the documented order`() {
+        val model = ScriptedModel(
+            mutableListOf(
+                AgentReply(
+                    message = AgentMessage(AgentRole.ASSISTANT, ""),
+                    events = listOf(toolCall("file_read")),
+                ),
+                textReply("读完了"),
+            ),
+        )
+        val registry = FakeRegistry(listOf(FakeTool(ToolSpec("file_read", "读文件", "{}"), "data")))
+        val seen = mutableListOf<AgentProgress>()
+
+        runBlocking {
+            brain(model = model, tools = registry).sendStreaming("session", "读").collect { seen += it }
+        }
+
+        assertEquals(
+            listOf(
+                AgentProgress.RoundStarted::class,
+                AgentProgress.ToolStarted::class,
+                AgentProgress.ToolFinished::class,
+                AgentProgress.RoundFinished::class,
+                AgentProgress.RoundStarted::class,
+                AgentProgress.Done::class,
+            ),
+            seen.map { it::class },
+        )
+        assertEquals(StepState.Ok, (seen[2] as AgentProgress.ToolFinished).state)
+    }
+
+    @Test
+    fun `approval waiting does not count against the wall clock`() {
+        // The budget is 150ms; the human "thinks" for 300ms. If waiting were charged, the second
+        // round would be killed by DEADLINE instead of finishing normally.
+        val tool = FakeTool(ToolSpec("run_shell", "执行命令", "{}", dangerous = true), "exit=0")
+        val gate = ScriptedGate(ApprovalDecision.ALLOW_ONCE, delayMs = 300)
+        val model = ScriptedModel(
+            mutableListOf(
+                AgentReply(
+                    message = AgentMessage(AgentRole.ASSISTANT, ""),
+                    events = listOf(toolCall("run_shell")),
+                ),
+                textReply("执行完成"),
+            ),
+        )
+
+        val reply = runBlocking {
+            brain(Budget(deadlineMs = 150), model, FakeRegistry(listOf(tool)), gate)
+                .send("session", "重启")
+        }
+
+        assertEquals(AgentStop.Reason.FINISHED, reply.stop?.reason)
+        assertEquals("执行完成", reply.message.content)
+    }
+
+    @Test
+    fun `cancelling the stream propagates instead of turning into a failure reply`() {
+        val hangingModel = object : ModelService {
+            override val models: List<ModelRef> = listOf(ModelRef("fake", "test-model"))
+            override suspend fun complete(
+                model: ModelRef,
+                messages: List<AgentMessage>,
+                tools: List<ToolSpec>,
+            ): AgentReply = kotlinx.coroutines.awaitCancellation()
+        }
+        val seen = mutableListOf<AgentProgress>()
+        var cancelled = false
+
+        runBlocking {
+            try {
+                kotlinx.coroutines.withTimeout(200) {
+                    brain(model = hangingModel).sendStreaming("session", "挂起").collect { seen += it }
+                }
+            } catch (cancel: CancellationException) {
+                cancelled = true
+            }
+        }
+
+        assertTrue("取消必须向外传播", cancelled)
+        assertTrue("取消后不应再产生 Done", seen.none { it is AgentProgress.Done })
+    }
+
     // ------------------------------------------------------------------ fakes
 
     private fun brain(
@@ -868,11 +957,13 @@ class AgentBrainServiceTest {
     private class ScriptedGate(
         private val decision: ApprovalDecision,
         private val failWith: Throwable? = null,
+        private val delayMs: Long = 0,
     ) : ApprovalService {
         val asked = mutableListOf<String>()
 
         override suspend fun request(toolName: String, argumentsJson: String): ApprovalDecision {
             asked += toolName
+            if (delayMs > 0) kotlinx.coroutines.delay(delayMs)
             failWith?.let { throw it }
             return decision
         }

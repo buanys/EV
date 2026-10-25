@@ -2,6 +2,7 @@ package ev.buan.plugins.ev.ui
 
 import ev.buan.plugins.agent.api.AgentEvent
 import ev.buan.plugins.agent.api.AgentStop
+import ev.buan.plugins.agent.api.StepState
 import java.util.UUID
 
 /**
@@ -43,7 +44,47 @@ internal data class ChatMessage(
      * bubble; keeping it on the message means a reloaded session still explains itself.
      */
     val stopNote: String? = null,
+    /**
+     * Per-round summary of the tool work behind this reply.
+     *
+     * Only counts and one error line are stored: keeping every tool argument and result would make
+     * a session file grow without bound, and the point of the summary is to answer "what happened"
+     * at a glance, not to replay the payloads. Empty for messages written before this existed,
+     * which keeps old transcripts rendering through the legacy `events` path.
+     */
+    val traces: List<TraceSummary> = emptyList(),
 )
+
+/**
+ * What one round did, as stored in the transcript.
+ *
+ * [firstError] is one truncated line: enough to recognise the failure on reload, small enough that
+ * a hundred failed rounds still cost a few kilobytes.
+ */
+internal data class TraceSummary(
+    val round: Int,
+    val toolCalls: Int,
+    val failed: Int,
+    val elapsedMs: Long,
+    val firstError: String?,
+)
+
+/** The stored form of a live round; the reducer's state is the single source of these numbers. */
+internal fun RoundTrace.toSummary(): TraceSummary = TraceSummary(
+    round = round,
+    toolCalls = executed,
+    failed = failed,
+    elapsedMs = steps.sumOf { it.elapsedMs ?: 0L },
+    firstError = steps
+        .firstOrNull { it.state == StepState.Failed }
+        ?.preview
+        ?.lineSequence()
+        ?.firstOrNull()
+        ?.take(FIRST_ERROR_CHARS),
+)
+
+/** One line, bounded: the whole point is that the stored trace stays tiny. */
+internal const val FIRST_ERROR_CHARS = 100
 
 /** A string that is stable for the lifetime of the message, however the list is reordered. */
 internal fun newMessageId(): String = UUID.randomUUID().toString()
@@ -60,12 +101,14 @@ internal fun assistantMessage(
     text: String,
     events: List<AgentEvent> = emptyList(),
     stopNote: String? = null,
+    traces: List<TraceSummary> = emptyList(),
 ): ChatMessage = ChatMessage(
     id = newMessageId(),
     text = text,
     fromUser = false,
     events = events,
     stopNote = stopNote,
+    traces = traces,
 )
 
 /**

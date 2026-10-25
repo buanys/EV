@@ -2,6 +2,7 @@ package ev.buan.plugins.agent.brain
 
 import ev.buan.plugins.agent.api.AgentEvent
 import ev.buan.plugins.agent.api.AgentMessage
+import ev.buan.plugins.agent.api.AgentProgress
 import ev.buan.plugins.agent.api.AgentReply
 import ev.buan.plugins.agent.api.AgentRole
 import ev.buan.plugins.agent.api.AgentService
@@ -13,12 +14,16 @@ import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelRef
 import ev.buan.plugins.agent.api.ModelService
+import ev.buan.plugins.agent.api.StepState
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.agent.api.ToolSpec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -39,11 +44,16 @@ import kotlinx.coroutines.withTimeoutOrNull
  * message travels ahead of one [AgentRole.TOOL] message per result, ids matching - and both are
  * persisted to memory, so the model's view of a turn can always be rebuilt from stored history.
  *
+ * ## One loop, two entry points
+ *
+ * The loop lives in [sendStreaming] and reports [AgentProgress] as it runs; [send] is a thin
+ * collector of that stream. Writing the logic twice would eventually let the two drift apart, and
+ * the streaming variant is the one the UI needs.
+ *
  * ## Why a turn stops
  *
  * The loop is bounded by a budget, not by a fixed round count, and it always reports the reason it
- * stopped ([AgentStop]). Three separate guards, because each one failed for a different reason in
- * practice:
+ * stopped ([AgentStop]). Three separate guards, because each one failed for a different reason:
  *  - [Budget] caps rounds, tool calls, prompt size and wall clock (approval waiting excluded);
  *  - a repeated tool call with an unchanged result gets one reflection, a third try ends the turn;
  *  - two consecutive turns producing the same normalized text end the turn as `NO_PROGRESS`.
@@ -66,26 +76,55 @@ class AgentBrainService internal constructor(
             false
         }
 
+    /** Collects [sendStreaming] down to its final reply. */
     override suspend fun send(
         sessionId: String,
         text: String,
         model: ModelRef?,
         systemPrompt: String?,
-    ): AgentReply = withContext(Dispatchers.IO) {
+    ): AgentReply {
+        var finished: AgentReply? = null
+        sendStreaming(sessionId, text, model, systemPrompt).collect { progress ->
+            if (progress is AgentProgress.Done) finished = progress.reply
+        }
+        return finished ?: degraded(model, "智能体没有返回任何结果，请稍后重试。")
+    }
+
+    override fun sendStreaming(
+        sessionId: String,
+        text: String,
+        model: ModelRef?,
+        systemPrompt: String?,
+    ): Flow<AgentProgress> = flow {
+        turn(sessionId, text, model, systemPrompt)
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * The loop itself. Every event is emitted from this one coroutine: [flowOn] moves the whole
+     * flow, it does not cross contexts per emission.
+     */
+    private suspend fun FlowCollector<AgentProgress>.turn(
+        sessionId: String,
+        text: String,
+        model: ModelRef?,
+        systemPrompt: String?,
+    ) {
         val current = capabilities.current()
-        val modelService = current.model ?: return@withContext degraded(
-            model,
-            "未连接模型插件：请在插件管理页启用 $MODEL_PLUGIN，授予 NETWORK / PLUGIN_STORAGE 并完成配置。",
-        )
+        val modelService = current.model
+        if (modelService == null) {
+            emit(AgentProgress.Done(degraded(model, "未连接模型插件：请在插件管理页启用 $MODEL_PLUGIN，授予 NETWORK / PLUGIN_STORAGE 并完成配置。")))
+            return
+        }
         val available = modelService.models
-        if (available.isEmpty()) return@withContext degraded(
-            model,
-            "模型插件已启用但尚未配置：打开插件管理 → 模型服务，填写接口地址、API Key 与模型名后保存。",
-        )
-        val target = selectModel(available, model) ?: return@withContext degraded(
-            model,
-            "未找到模型 ${model?.model}；当前可用：${available.joinToString("、") { it.model }}。",
-        )
+        if (available.isEmpty()) {
+            emit(AgentProgress.Done(degraded(model, "模型插件已启用但尚未配置：打开插件管理 → 模型服务，填写接口地址、API Key 与模型名后保存。")))
+            return
+        }
+        val target = selectModel(available, model)
+        if (target == null) {
+            emit(AgentProgress.Done(degraded(model, "未找到模型 ${model?.model}；当前可用：${available.joinToString("、") { it.model }}。")))
+            return
+        }
 
         val tools = current.tools
         val specs: List<ToolSpec> = tools?.specs().orEmpty()
@@ -94,8 +133,8 @@ class AgentBrainService internal constructor(
         val usages = mutableListOf<AgentUsage?>()
 
         val userMessage = AgentMessage(role = AgentRole.USER, content = text)
-        // A role instruction belongs to this request only: it goes in front of history and
-        // the current user message, and is never appended to memory.
+        // A role instruction belongs to this request only: it goes in front of history and the
+        // current user message, and is never appended to memory.
         val inputs = mutableListOf<AgentMessage>()
         systemPrompt?.trim()?.takeIf { it.isNotEmpty() }?.let { inputs += AgentMessage(AgentRole.SYSTEM, it) }
         inputs += historyOf(memory, sessionId)
@@ -131,13 +170,15 @@ class AgentBrainService internal constructor(
             }
 
             rounds++
+            emit(AgentProgress.RoundStarted(rounds))
             val reply = try {
                 modelService.complete(target, inputs, specs)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Throwable) {
                 // The successful earlier rounds still consumed tokens; report what was measured.
-                return@withContext failure(target, error, AgentUsageTotals.aggregate(usages))
+                emit(AgentProgress.Done(failure(target, error, AgentUsageTotals.aggregate(usages))))
+                return
             }
             events += reply.events
             usages += reply.usage
@@ -151,6 +192,7 @@ class AgentBrainService internal constructor(
 
             val normalized = normalize(reply.message.content)
             if (normalized.isNotEmpty() && normalized == previousNormalized) {
+                emit(AgentProgress.RoundFinished(rounds))
                 stop = AgentStop(AgentStop.Reason.NO_PROGRESS, rounds, toolCalls)
                 break
             }
@@ -163,28 +205,50 @@ class AgentBrainService internal constructor(
             inputs += assistantTurn
             remember(memory, sessionId, assistantTurn)
 
-            // Every call in this turn must be answered, including the ones a guard skipped:
-            // an assistant turn with unanswered tool_calls is an invalid request for the final
-            // summary call.
+            // Every call in this turn must be answered, including the ones a guard skipped: an
+            // assistant turn with unanswered tool_calls is an invalid request for the final call.
             val outcomes = mutableListOf<Outcome>()
             var stopAfterRound: AgentStop? = null
             for (call in roundCalls) {
+                val toolStartedAt = System.nanoTime()
+                emit(
+                    AgentProgress.ToolStarted(
+                        round = rounds,
+                        id = call.id,
+                        name = call.name,
+                        argsJson = call.argumentsJson,
+                        startedAt = toolStartedAt,
+                    ),
+                )
                 if (stopAfterRound != null) {
-                    outcomes += Outcome.ToolResult(call, SKIPPED_RESULT)
+                    outcomes += Outcome.ToolResult(call, SKIPPED_RESULT, StepState.Skipped)
+                    emit(AgentProgress.ToolFinished(call.id, StepState.Skipped, 0, null))
                     continue
                 }
                 if (toolCalls >= budget.maxToolCalls) {
-                    outcomes += Outcome.ToolResult(call, SKIPPED_RESULT)
+                    outcomes += Outcome.ToolResult(call, SKIPPED_RESULT, StepState.Skipped)
+                    emit(AgentProgress.ToolFinished(call.id, StepState.Skipped, 0, null))
                     stopAfterRound = AgentStop(AgentStop.Reason.TOOL_BUDGET, rounds, toolCalls)
                     continue
                 }
                 toolCalls++
-                val executed = executeGuarded(tools, call, current.approval)
+                val executed = executeGuarded(tools, call, current.approval) {
+                    emit(AgentProgress.ToolAwaitingApproval(call.id))
+                }
                 approvalNanos += executed.approvalNanos
+                val elapsedToolNanos = System.nanoTime() - toolStartedAt - executed.approvalNanos
                 val result = truncateUtf16Safe(executed.result, MAX_TOOL_RESULT_CHARS)
+                emit(
+                    AgentProgress.ToolFinished(
+                        id = call.id,
+                        state = executed.state,
+                        elapsedMs = elapsedToolNanos / 1_000_000,
+                        preview = result.take(PREVIEW_CHARS),
+                    ),
+                )
                 val fingerprint = call.name + '\u0000' + call.argumentsJson
                 val prior = seenResults.put(fingerprint, result)
-                outcomes += Outcome.ToolResult(call, result)
+                outcomes += Outcome.ToolResult(call, result, executed.state)
                 if (prior != null && prior == result) {
                     repeatStreak++
                     if (repeatStreak >= REPEAT_LIMIT) {
@@ -205,8 +269,6 @@ class AgentBrainService internal constructor(
             // makes the conversation invalid for strict providers:
             //   "An assistant message with 'tool_calls' must be followed by tool messages
             //    responding to each 'tool_call_id' (insufficient tool messages)".
-            // That is what happened when one round asked for the same tool three times: the
-            // reflection landed between result 2 and result 3.
             for (outcome in outcomes.filterIsInstance<Outcome.ToolResult>()) {
                 val toolMessage = AgentMessage(
                     role = AgentRole.TOOL,
@@ -233,6 +295,7 @@ class AgentBrainService internal constructor(
                 remember(memory, sessionId, message)
             }
 
+            emit(AgentProgress.RoundFinished(rounds))
             stopAfterRound?.let {
                 stop = it
                 break
@@ -243,18 +306,23 @@ class AgentBrainService internal constructor(
         val content = if (finished) {
             lastReply?.message?.content?.takeIf { it.isNotBlank() } ?: FALLBACK_NO_TEXT
         } else {
+            emit(AgentProgress.Finalizing)
             wrapUp(stop, inputs, target, modelService, usages, events)
         }
         if (content.isNotBlank()) {
             remember(memory, sessionId, AgentMessage(role = AgentRole.ASSISTANT, content = content))
         }
 
-        AgentReply(
-            message = AgentMessage(role = AgentRole.ASSISTANT, content = content),
-            model = target,
-            events = events,
-            usage = AgentUsageTotals.aggregate(usages),
-            stop = stop,
+        emit(
+            AgentProgress.Done(
+                AgentReply(
+                    message = AgentMessage(role = AgentRole.ASSISTANT, content = content),
+                    model = target,
+                    events = events,
+                    usage = AgentUsageTotals.aggregate(usages),
+                    stop = stop,
+                ),
+            ),
         )
     }
 
@@ -351,16 +419,22 @@ class AgentBrainService internal constructor(
         registry: ToolRegistry?,
         call: AgentToolCall,
         approval: ApprovalService?,
+        onAwaitingApproval: suspend () -> Unit,
     ): Executed {
-        if (registry == null) return Executed("工具系统未启用（未安装 $TOOLS_PLUGIN）", 0)
-        val tool = registry.lookup(call.name) ?: return Executed("没有名为 ${call.name} 的工具", 0)
+        if (registry == null) {
+            return Executed("工具系统未启用（未安装 $TOOLS_PLUGIN）", 0, StepState.Failed)
+        }
+        val tool = registry.lookup(call.name)
+            ?: return Executed("没有名为 ${call.name} 的工具", 0, StepState.Failed)
 
         var approvalNanos = 0L
         if (tool.spec.dangerous) {
             val gate = approval ?: return Executed(
                 "已拦截：${call.name} 属于高危操作，需要人工审批，但审批界面未启用（请启用 ev-ui 后重试）",
                 0,
+                StepState.Failed,
             )
+            onAwaitingApproval()
             val startedApproval = System.nanoTime()
             val decision = try {
                 gate.request(call.name, call.argumentsJson)
@@ -371,22 +445,28 @@ class AgentBrainService internal constructor(
                 return Executed(
                     "已拦截：审批通道出错（${error.message ?: error::class.simpleName}），本次未执行",
                     System.nanoTime() - startedApproval,
+                    StepState.Failed,
                 )
             }
             approvalNanos = System.nanoTime() - startedApproval
-            if (decision == ApprovalDecision.DENY) return Executed("用户拒绝了本次执行", approvalNanos)
+            if (decision == ApprovalDecision.DENY) {
+                return Executed("用户拒绝了本次执行", approvalNanos, StepState.Failed)
+            }
         }
 
         val timeout = timeoutFor(tool.spec.name)
+        var failed = false
         val result = try {
             withTimeoutOrNull(timeout) { tool.invoke(call.argumentsJson) }
                 ?: "工具 ${call.name} 超时（${timeout / 1000}s），本次未完成"
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Throwable) {
+            failed = true
             "工具调用失败：${error.message ?: error::class.simpleName}"
         }
-        return Executed(result, approvalNanos)
+        if (result.startsWith("工具 ${call.name} 超时")) failed = true
+        return Executed(result, approvalNanos, if (failed) StepState.Failed else StepState.Ok)
     }
 
     private fun degraded(model: ModelRef?, reason: String, usage: AgentUsage? = null): AgentReply =
@@ -395,6 +475,7 @@ class AgentBrainService internal constructor(
             model = model,
             events = listOf(AgentEvent(kind = AgentEvent.Kind.ERROR, text = reason)),
             usage = usage,
+            stop = AgentStop(AgentStop.Reason.ERROR, 0, 0, reason),
         )
 
     private fun failure(model: ModelRef, error: Throwable, usage: AgentUsage?): AgentReply = degraded(
@@ -421,11 +502,16 @@ class AgentBrainService internal constructor(
 
     /** What a tool call produced, in the order it must be fed back to the model. */
     private sealed interface Outcome {
-        data class ToolResult(val call: AgentToolCall, val result: String) : Outcome
+        data class ToolResult(
+            val call: AgentToolCall,
+            val result: String,
+            val state: StepState,
+        ) : Outcome
+
         data class Reflection(val text: String) : Outcome
     }
 
-    private data class Executed(val result: String, val approvalNanos: Long)
+    private data class Executed(val result: String, val approvalNanos: Long, val state: StepState)
 
     private companion object {
         const val MODEL_PLUGIN = "ev.buan.plugins.agent.model"
@@ -461,6 +547,9 @@ class AgentBrainService internal constructor(
 
         /** Tool output is fed back into the prompt, so one file cannot swallow the context window. */
         const val MAX_TOOL_RESULT_CHARS = 8_000
+
+        /** Display-only excerpt carried by [AgentProgress.ToolFinished]. */
+        const val PREVIEW_CHARS = 300
 
         /**
          * Bounds of the model-facing history view (the stored log itself is never trimmed):

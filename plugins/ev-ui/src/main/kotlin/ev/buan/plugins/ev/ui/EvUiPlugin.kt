@@ -42,6 +42,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ev.buan.plugins.agent.api.AgentService
+import ev.buan.plugins.agent.api.AgentProgress
+import ev.buan.plugins.agent.api.AgentReply
 import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelProviderService
@@ -77,6 +79,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import org.cordis.Context
 import org.cordis.Dependencies
 import org.cordis.EffectScope
@@ -181,6 +184,18 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
      * surface the user is looking at.
      */
     private var replyingSessionId by mutableStateOf<String?>(null)
+
+    /** Live rounds of the in-flight turn; empty when nothing is running. */
+    private var liveRounds by mutableStateOf<List<RoundTrace>>(emptyList())
+
+    /**
+     * Three dots mean exactly one thing: the model is thinking. While a tool runs there is real
+     * progress to show, so the dots disappear instead of animating over work that has an answer.
+     */
+    private var awaitingModel by mutableStateOf(false)
+
+    /** True during the wrap-up summary call, so the dots can say what they are waiting for. */
+    private var finalizing by mutableStateOf(false)
 
     /** The job behind each in-flight turn, so the composer's stop button can cancel exactly one. */
     private val replyJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
@@ -303,6 +318,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
 
         val activeSession = sessions.firstOrNull { it.id == activeSessionId } ?: sessions.first()
         val replying = replyingSessionId == activeSession.id
+        // Which live rounds the user opened (true) or closed (false); absent means "auto", i.e.
+        // expanded while running and collapsed once done.
+        val roundExpansion = remember(activeSession.id) { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
 
         /**
          * Writes the whole document after an edit. Synchronous because the file is small and a
@@ -394,6 +412,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         fun requestReply(sessionId: String, prompt: String) {
             if (replyingSessionId == sessionId) return
             replyingSessionId = sessionId
+            liveRounds = emptyList()
+            awaitingModel = true
+            finalizing = false
             val job = scope.launch {
                 try {
                     val agent = directory?.lookup(AgentService.Key)
@@ -401,7 +422,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         delay(420)
                         append(sessionId, assistantMessage(UNCONNECTED_PREFIX + prompt))
                     } else {
-                        val reply = agent.send(
+                        var finished: AgentReply? = null
+                        var rounds = emptyList<RoundTrace>()
+                        agent.sendStreaming(
                             sessionId = sessionId,
                             text = prompt,
                             systemPrompt = sessionSystemPrompt(
@@ -409,21 +432,60 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                 skills = skills,
                                 session = sessions.firstOrNull { it.id == sessionId },
                             ),
-                        )
+                        ).collect { progress ->
+                            when (progress) {
+                                is AgentProgress.RoundStarted -> {
+                                    awaitingModel = false
+                                    rounds = reduce(rounds, progress)
+                                    liveRounds = rounds
+                                }
+
+                                is AgentProgress.ToolStarted,
+                                is AgentProgress.ToolAwaitingApproval,
+                                is AgentProgress.ToolFinished,
+                                -> {
+                                    awaitingModel = false
+                                    rounds = reduce(rounds, progress)
+                                    liveRounds = rounds
+                                }
+
+                                is AgentProgress.RoundFinished -> {
+                                    // The next thing that happens is another model call.
+                                    awaitingModel = true
+                                    rounds = reduce(rounds, progress)
+                                    liveRounds = rounds
+                                }
+
+                                is AgentProgress.Finalizing -> {
+                                    awaitingModel = true
+                                    finalizing = true
+                                    rounds = reduce(rounds, progress)
+                                    liveRounds = rounds
+                                }
+
+                                is AgentProgress.Done -> finished = progress.reply
+                            }
+                        }
+                        val reply = finished ?: error("智能体没有返回最终结果")
                         val answer = reply.message.content.ifBlank { "（模型没有返回文本）" }
                         lastTurnTokens = reply.usage?.totalTokens
                         append(
-                                                sessionId,
-                                                assistantMessage(
-                                                    answer,
-                                                    events = reply.events,
-                                                    stopNote = stopNoteOf(reply.stop),
-                                                ),
-                                            )
+                            sessionId,
+                            assistantMessage(
+                                answer,
+                                // New messages are summarised by `traces`; carrying the flat
+                                // event list as well would render the same work twice after a
+                                // reload. Old messages keep their events and render as before.
+                                events = emptyList(),
+                                stopNote = stopNoteOf(reply.stop),
+                                traces = rounds.map { it.toSummary() },
+                            ),
+                        )
                     }
                 } catch (cancel: CancellationException) {
-                    // The stop button lands here: leave a tombstone so the transcript shows the
-                    // turn was cut short, then let the cancellation keep propagating.
+                    // The stop button lands here: close the spinners first, otherwise they would
+                    // keep turning forever because no ToolFinished will ever arrive.
+                    liveRounds = cancelOutstanding(liveRounds)
                     append(sessionId, assistantMessage("（已停止）"))
                     throw cancel
                 } catch (error: Throwable) {
@@ -433,6 +495,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     )
                 } finally {
                     if (replyingSessionId == sessionId) replyingSessionId = null
+                    liveRounds = emptyList()
+                    awaitingModel = false
+                    finalizing = false
                     replyJobs.remove(sessionId)
                 }
             }
@@ -819,10 +884,11 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                     modifier = Modifier.padding(top = gap),
                                 ) {
                                   Column {
+                                    message.traces.forEach { trace -> EvTraceSummaryBlock(trace) }
                                     EvChatBubble(
                                         text = message.text,
                                         fromUser = message.fromUser,
-                                        events = message.events,
+                                        events = if (message.traces.isEmpty()) message.events else emptyList(),
                                         lastInCluster = message.fromUser && next?.fromUser != true,
                                         streaming = replying && index == ordered.lastIndex && !message.fromUser,
                                         onRegenerate = if (message.fromUser) null else {
@@ -844,10 +910,32 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                   }
                                 }
                             }
-                            // Declared last so it sits under the newest message, where the reply
-                            // will land once it arrives.
-                            if (replying) {
-                                item { EvTypingIndicator() }
+                            // Live rounds first: they appear while the agent works, in the spot
+                            // the reply will occupy. Each round auto-expands while running and
+                            // collapses to one line when it ends - unless the user opened it.
+                            liveRounds.forEach { live ->
+                                val auto = live.state == RoundState.Running
+                                val expandedNow = roundExpansion.value[live.round] ?: auto
+                                item(key = "live-${live.round}") {
+                                    EvRoundBlock(
+                                        round = live,
+                                        expanded = expandedNow,
+                                        onToggle = {
+                                            roundExpansion.value = roundExpansion.value.toMutableMap().apply {
+                                                put(live.round, !expandedNow)
+                                            }
+                                        },
+                                        modifier = Modifier.padding(
+                                            start = EvChatDefaults.PagePadding,
+                                            end = EvChatDefaults.PagePadding,
+                                        ),
+                                    )
+                                }
+                            }
+                            // Dots mean one thing only: the model is thinking. While a tool runs
+                            // there is real progress on screen, so they disappear.
+                            if (replying && awaitingModel) {
+                                item { EvTypingIndicator(label = if (finalizing) "正在总结…" else null) }
                             }
                         }
                     }
