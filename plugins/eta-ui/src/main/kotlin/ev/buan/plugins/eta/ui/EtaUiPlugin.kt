@@ -3,6 +3,7 @@ package ev.buan.plugins.eta.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import ev.buan.plugins.agent.api.AgentService
@@ -689,21 +692,24 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 )
             },
         ) {
-            // The composer floats over the conversation instead of sharing its column. Anything that
-            // reserves the keyboard height inside the column shrinks the list and drags the messages
-            // up with the keyboard; an overlay that pads itself with imePadding moves alone, because
-            // the column above it never learns that the IME exists.
-            Box(
+            // The composer shares the column with the conversation. The keyboard then shrinks the
+            // list instead of covering it, which is the only arrangement where the newest message
+            // stays visible while typing. Scrolling deliberately does not dismiss the keyboard (no
+            // imeNestedScroll); tapping the conversation does.
+            Column(
                 modifier.fillMaxSize()
                     .background(MiuixTheme.colorScheme.background),
             ) {
-            Column(Modifier.fillMaxSize()) {
                 if (isRoot) HomeTopBar(onHost, onMenu = {
                     keyboard?.hide()
                     drawerOpen = true
                 }) else PageTopBar(onHost)
 
-                Box(Modifier.weight(1f).fillMaxWidth()) {
+                Box(
+                    Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
+                        detectTapGestures(onTap = { keyboard?.hide() })
+                    },
+                ) {
                     if (activeSession.messages.isEmpty()) {
                         EvHomeHero(
                             suggestions = Suggestions,
@@ -723,10 +729,9 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                 start = EvChatDefaults.PagePadding,
                                 end = EvChatDefaults.PagePadding,
                                 top = 8.dp,
-                                // Room for the composer itself: it is drawn above this list rather
-                                // than laid out beside it, so the last bubble would otherwise end up
-                                // underneath the input box.
-                                bottom = 100.dp,
+                                // The composer is laid out beside the list, not over it, so this is
+                                // only breathing room - no reserved composer height.
+                                bottom = 16.dp,
                             ),
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
@@ -750,15 +755,13 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     }
                 }
 
-                }
-
                 EvComposer(
                     value = draft,
                     onValueChange = { draft = it },
                     onSend = { send(draft) },
                     busy = replying,
                     onStop = { stopReply() },
-                    modifier = Modifier.align(Alignment.BottomCenter).imePadding(),
+                    modifier = Modifier.imePadding(),
                 )
             }
         }
