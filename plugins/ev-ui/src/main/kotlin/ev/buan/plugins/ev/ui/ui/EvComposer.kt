@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui.ui
+package ev.buan.plugins.ev.ui.ui
 
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
@@ -50,7 +50,8 @@ object EvComposerDefaults {
     val ActionSize = 36.dp
     val ActionGlyph = 17.dp
     val FieldMinResting = 24.dp
-    val FieldMinActive = 72.dp
+    /** Two lines tall: enough to read as an expanded card without leaving a gap under one line. */
+    val FieldMinActive = 48.dp
     val PanelIconSize = 48.dp
     val PanelGlyph = 20.dp
 }
@@ -133,14 +134,19 @@ fun EvComposer(
             Box(
                 Modifier
                     .weight(1f)
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                contentAlignment = if (active) Alignment.TopStart else Alignment.CenterStart,
+                    .padding(horizontal = 4.dp, vertical = 4.dp)
+                    // The minimum height belongs to the container, not to the field: with it on the
+                    // field a one-line message is pinned to the top of a tall box, leaving a gap
+                    // underneath. Centred here, one line sits in the middle and multi-line input
+                    // still grows the container because the field is taller than the minimum.
+                    .heightIn(min = fieldMinHeight),
+                contentAlignment = Alignment.CenterStart,
             ) {
                 if (value.isEmpty()) {
                     Text(
                         text = placeholder,
                         style = EvThemeTokens.type.body.style(tokens.textTertiary),
-                        modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                        modifier = Modifier.padding(start = 4.dp),
                     )
                 }
                 BasicTextField(
@@ -150,7 +156,6 @@ fun EvComposer(
                     cursorBrush = SolidColor(tokens.accent),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = fieldMinHeight)
                         .padding(start = 4.dp)
                         .onFocusChanged {
                             focused = it.isFocused
