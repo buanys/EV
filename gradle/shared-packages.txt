@@ -1,0 +1,30 @@
+# EV 共享包清单 —— 唯一来源
+#
+# 这里的每一项都同时约束三件事：
+#   1. 插件类加载器优先从宿主解析该包（HostPackages.shared，插件编译期可见）
+#   2. release 的 R8 keep 必须整包保留（proguard 规则）
+#   3. release dex 中该包必须有类（:host:verifySharedPackagesInDex 校验）
+#
+# 注意：写的是 Java 包名，不是 Maven group。`com.squareup.okhttp3` 是 group，
+# 真正的包是 `okhttp3`——写错时第 3 条会失败并打印包名。
+#
+# 改这里之后必须同步 plugin-api/.../HostPackages.kt，否则 :host:testReleaseUnitTest 失败。
+ev.buan.ui
+androidx.compose
+androidx.activity
+androidx.lifecycle
+androidx.navigationevent
+androidx.datastore
+androidx.room
+androidx.sqlite
+top.yukonga.miuix
+okhttp3
+okio
+kotlinx.serialization
+org.intellij.markdown
+org.jsoup
+org.apache.commons.compress
+org.tukaani.xz
+org.luckypray.dexkit
+org.lsposed.hiddenapibypass
+io.github.libxposed

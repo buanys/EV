@@ -1,0 +1,15 @@
+# EV 内核冻结白名单
+#
+# 内核（loader core hmr include packages）在 EV 里只当依赖用：EV 只能消费内核 API，
+# 不能为了自己的需要改内核签名或行为。scripts/kernel-freeze.sh 把内核目录与基线提交
+# 比对，只有下面列出的文件允许出现差异，其余一律判定为违规。
+#
+# 当前内容只包含两处「构建/测试接线」：
+#   loader/build.gradle.kts        EV 去掉上游的 instrumented test 接线，改用 androidHostTest
+#   loader/src/androidHostTest/**  EV 自己加的内核单测（不参与内核运行时代码）
+#
+# 语法：一行一个 shell case 模式（`*` 可跨目录匹配），`#` 之后是注释。
+# 新增例外必须在评审里写明理由；不得为了「让门禁通过」而放宽本文件。
+
+loader/build.gradle.kts
+loader/src/androidHostTest/**

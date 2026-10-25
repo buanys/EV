@@ -1,0 +1,70 @@
+name: Publish to Maven Central
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_target:
+        description: Publications to upload
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - packager-snapshot
+      run_tests:
+        description: Run the JVM test suite before publishing
+        required: true
+        type: boolean
+        default: true
+  release:
+    types: [released, prereleased]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish Maven artifacts
+    runs-on: macos-latest
+    env:
+      PUBLISH_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_target || 'all' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Run tests
+        if: github.event_name == 'release' || inputs.run_tests
+        run: |
+          if [[ "$PUBLISH_TARGET" == "packager-snapshot" ]]; then
+            ./gradlew :packager:test :packager:validatePlugins :packages:jvmTest --no-configuration-cache
+          else
+            ./gradlew :test --no-configuration-cache
+          fi
+
+      - name: Publish to Maven Central
+        run: |
+          if [[ "$PUBLISH_TARGET" == "packager-snapshot" ]]; then
+            ./gradlew :packager:publishToMavenCentral \
+              :packages:publishKotlinMultiplatformPublicationToMavenCentralRepository \
+              :packages:publishJvmPublicationToMavenCentralRepository \
+              --no-configuration-cache
+          else
+            ./gradlew publishToMavenCentral --no-configuration-cache
+          fi
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENT }}

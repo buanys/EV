@@ -1,0 +1,23 @@
+.gradle/
+.kotlin/
+.idea/
+**/build/
+kotlin-js-store/
+out/
+*.iml
+
+# Local publishing credentials and signing keys must never be committed.
+local.properties
+private-key.asc
+secret-key.asc
+secring.gpg
+
+# 发布签名材料，绝不入库
+keystore.properties
+*.jks
+*.keystore
+
+# 工具运行时状态与本地构建/验收输出，不入库
+.agent-teams/
+.graphflow/
+graphflow-out/

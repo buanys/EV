@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <meta-data
+            android:name="cordis.entry"
+            android:value="ev.buan.plugins.agent.model.AgentModelPlugin" />
+        <meta-data
+            android:name="cordis.api"
+            android:value="1" />
+        <!-- NETWORK: outbound chat-completions calls. PLUGIN_STORAGE: the provider config file. -->
+        <meta-data
+            android:name="cordis.permissions"
+            android:value="NETWORK,PLUGIN_STORAGE" />
+        <meta-data
+            android:name="cordis.dependencies"
+            android:value="[&quot;ev.buan.plugins.agent.api&quot;]" />
+    </application>
+</manifest>

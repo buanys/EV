@@ -1,0 +1,82 @@
+name: Android
+
+# Main-line Android build: debug APKs, JVM + unit tests, the release gates and the kernel freeze
+# gate. `demo/` is deliberately not part of this workflow - it is a separate Gradle build pinned to
+# Kotlin 2.1.21 / AGP 8.7.2 (see demo/README.md) and is frozen for this cycle.
+
+on:
+  push:
+    branches: [main, build/gradle9-agp9]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, test and gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # fetch-depth: 0 is mandatory, not a preference. scripts/kernel-freeze.sh diffs the kernel
+      # directories (loader, core, hmr, include, packages) against baseline 7b13e6b and fails hard
+      # when that commit is not in the local object store - a shallow clone would fail the gate by
+      # design instead of silently passing it.
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Runs before the toolchain setup: it only needs git and bash. The kernel directories are
+      # consumed as dependencies and must not be edited, so this is the cheapest failure to surface.
+      - name: Kernel freeze gate
+        run: bash scripts/kernel-freeze.sh
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # compileSdk is 37, which no hosted runner image ships preinstalled; AGP downloads the missing
+      # platform and build-tools itself, but only once the licenses are accepted.
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses > /dev/null
+
+      # Committed as 100644, so the wrapper needs the executable bit before `./gradlew` works.
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Assemble debug APKs
+        run: ./gradlew assembleDebug --console=plain
+
+      # Root `test` aggregates the kernel JVM tests, the packager plugin tests, :host-core:test and
+      # every Android module's debug unit tests.
+      - name: Run JVM and unit tests
+        run: ./gradlew test --console=plain
+
+      - name: Run SDK unit tests
+        run: ./gradlew :plugin-api:testDebugUnitTest :ui-kit:testDebugUnitTest --console=plain
+
+      # The SDK modules are published artifacts: a public API change must update the committed
+      # snapshot in api/*.txt in the same change. binary-compatibility-validator is not available
+      # offline, so the fallback renders javap output; see gradle/api-snapshot.gradle.kts.
+      # `apiSnapshot` refreshes the baseline (run locally), this step only verifies it.
+      - name: Check SDK API snapshots
+        run: ./gradlew :plugin-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
+
+      # R8 release build plus the release-key / shared-package / forbidden-package gates. CI has no
+      # release keystore and must never hold one, so it passes the gate's single explicit opt-out:
+      # the resulting artifact is debug-signed and only good for side-loading smoke tests, never for
+      # distribution (see docs/release-signing.md). Without the flag this step fails by design.
+      - name: Release gate
+        run: ./gradlew :host:releaseGate -PallowDebugSigning=true --console=plain

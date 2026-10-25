@@ -1,0 +1,123 @@
+package org.cordis.loader
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import org.cordis.Context
+import org.cordis.FiberState
+
+open class EntryGroup(val ctx: Context, val tree: EntryTree) {
+    var data: MutableList<EntryOptions> = mutableListOf()
+
+    init { ctx.attributes[Entry.ATTRIBUTE]?.subgroup = this }
+    val context get() = ctx
+
+    suspend fun create(options: EntryOptions): String {
+        val id = tree.ensureId(options)
+        val entry = tree.store.getOrPut(id) { Entry(loader()) }
+        entry.parent = this
+        entry.rebase(ctx)
+        if (!entry.hasOptions) entry.update(options, create = true, force = true) else {
+            entry.update(EntryPatch(
+                name = changeTo(options.name),
+                config = changeTo(options.config),
+                group = changeTo(options.group),
+                disabled = changeTo(options.disabled),
+                inject = changeTo(options.inject),
+                intercept = changeTo(options.intercept),
+                isolate = changeTo(options.isolate),
+            ), force = true)
+            entry.options.extra = options.extra
+        }
+        return entry.id
+    }
+
+    fun unlink(options: EntryOptions) { data.remove(options) }
+
+    suspend fun remove(id: String, isDispose: Boolean = false) {
+        val entry = tree.store[id] ?: return
+        entry.fiber?.dispose()
+        entry.fiber = null
+        if (!isDispose) unlink(entry.options)
+        tree.store.remove(id)
+        entry.loader.releaseIsolation(entry.options.isolate)
+        ctx.emitEvent(LoaderEvents.PartialDispose, PartialDispose(entry, entry.options, false))
+    }
+
+    suspend fun update(config: List<EntryOptions>) {
+        val oldIds = data.map { it.id }.toSet()
+        data = config.toMutableList()
+        if (loader().transactionActive) {
+            (oldIds - config.map { it.id }.toSet()).forEach { remove(it) }
+            config.forEach { create(it) }
+            return
+        }
+        config.forEach { options ->
+            try {
+                create(options)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                ctx.logger().error(error)
+            }
+        }
+        (oldIds - config.map { it.id }.toSet()).forEach { remove(it) }
+    }
+
+    suspend fun stop(): Unit = withContext(NonCancellable) {
+        var failure: Throwable? = null
+        suspend fun release(action: suspend () -> Unit) {
+            try { action() }
+            catch (error: Throwable) {
+                if (failure == null) failure = error else if (failure !== error) failure!!.addSuppressed(error)
+            }
+        }
+        suspend fun abortAllocations(group: EntryGroup) {
+            group.data.toList().forEach { options ->
+                val entry = group.tree.store[options.id] ?: return@forEach
+                entry.subgroup?.let { abortAllocations(it) }
+                entry.subtree?.root?.let { abortAllocations(it) }
+                val fiber = entry.fiber
+                if (fiber?.state == FiberState.LOADING) release { fiber.dispose() }
+            }
+        }
+        // Provider withdrawal waits for dependent allocations. Abort every owned allocation
+        // before releasing any provider, otherwise a paused child can block the whole group.
+        abortAllocations(this@EntryGroup)
+        data.toList().forEach { options -> release { remove(options.id, true) } }
+        failure?.let { throw it }
+    }
+
+    private fun loader(): Loader = ctx[Loader.Key] ?: tree as Loader
+}
+
+class Group(ctx: Context, config: List<EntryOptions>) : EntryGroup(
+    ctx,
+    checkNotNull(ctx.attributes[Entry.ATTRIBUTE]).parent.tree,
+) {
+    init { data = config.toMutableList() }
+}
+
+object GroupPlugin : org.cordis.Plugin<List<EntryOptions>> {
+    override val name = "group"
+    override suspend fun apply(ctx: Context, config: List<EntryOptions>, effect: org.cordis.EffectScope) {
+        val entry = checkNotNull(ctx.attributes[Entry.ATTRIBUTE])
+        val group = EntryGroup(ctx, entry.parent.tree)
+        effect.collect { group.stop() }
+        group.update(config)
+        // JavaScript arrays are shared by identity between plugin config and
+        // EntryGroup.data. Rebind immutable Kotlin Lists to the mutable runtime
+        // list so later loader.create(..., parent) persists across reloads.
+        entry.options.config = group.data
+        ctx.interceptEventAsync(org.cordis.CoreEvents.Update) { event, _ ->
+            val items = event.payload.config as? List<*>
+                ?: error("group update config must be a list")
+            group.update(items.mapIndexed { index, item ->
+                item as? EntryOptions ?: error("group update item $index must be EntryOptions")
+            })
+            // Do not call the appended next callback: Group coordinates children
+            // in place instead of restarting its own Fiber.
+            null
+        }
+    }
+}

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!-- 后台运行：Android 13+ 通知需要运行时授权；Android 14+ 前台服务必须声明类型与类型权限。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <application
+        android:name=".EvApplication"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="EV"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <!-- 插件后台任务的宿主前台服务。specialUse 是 Android 14+ 对「用途由应用自定」的
+             类型，必须同时给出 PROPERTY_SPECIAL_USE_FGS_SUBTYPE。 -->
+        <service
+            android:name=".EvBackgroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="plugin-background-work" />
+        </service>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="EV">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="EV" />
+        <activity
+            android:name=".PluginsActivity"
+            android:exported="false"
+            android:label="EV" />
+        <activity
+            android:name=".PluginPageActivity"
+            android:exported="false"
+            android:label="EV" />
+    </application>
+
+</manifest>

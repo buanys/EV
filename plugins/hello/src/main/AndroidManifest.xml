@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Tells the host which class to instantiate. The host reads this without installing. -->
+        <meta-data
+            android:name="cordis.entry"
+            android:value="dev.cordis.plugins.hello.HelloPlugin" />
+        <!-- Contract revision this plugin was compiled against. -->
+        <meta-data
+            android:name="cordis.api"
+            android:value="1" />
+    </application>
+
+</manifest>
