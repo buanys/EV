@@ -339,3 +339,11 @@ jar/json；真机问答需要一个可用的 OpenAI 兼容服务。本仓库的 
   记录与截图见 [DEVICE-VERIFICATION.md](docs/archive/2026-10-24-arch-hardening/DEVICE-VERIFICATION.md)；
   BACKGROUND 前台服务与真实崩溃 handler 仍无活体验证。
 - 第三方插件分发**尚不可用**：API 未稳定、信任模型只覆盖自侧载场景。
+
+## 来源与许可
+
+内核部分派生自 [meteor149/cordis-kotlin](https://github.com/meteor149/cordis-kotlin)（MIT，
+版权 Shigma）；上游的版权声明与许可条款原样保留在 [LICENSE](LICENSE) 中，派生范围、新增部分
+和第三方依赖说明见 [NOTICE.md](NOTICE.md)。
+
+本项目以 MIT 许可证发布，详见 [LICENSE](LICENSE)。
