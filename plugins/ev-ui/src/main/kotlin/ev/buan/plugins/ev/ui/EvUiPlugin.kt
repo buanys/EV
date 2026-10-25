@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -196,6 +197,18 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
 
     /** True during the wrap-up summary call, so the dots can say what they are waiting for. */
     private var finalizing by mutableStateOf(false)
+
+    /**
+     * Full traces of replies produced in this session, keyed by message id.
+     *
+     * The transcript stores counts only (a session file must stay small), so this map is what makes
+     * "expand" work right after a turn. After a reload it is empty and the same line renders as
+     * plain text - which is the honest state: the details were never persisted.
+     */
+    private val sessionDetails = mutableStateMapOf<String, List<RoundTrace>>()
+
+    /** Which stored round summaries the user opened, keyed by "messageId:round". */
+    private val summaryExpansion = mutableStateMapOf<String, Boolean>()
 
     /** The job behind each in-flight turn, so the composer's stop button can cancel exactly one. */
     private val replyJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
@@ -469,18 +482,20 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         val reply = finished ?: error("智能体没有返回最终结果")
                         val answer = reply.message.content.ifBlank { "（模型没有返回文本）" }
                         lastTurnTokens = reply.usage?.totalTokens
-                        append(
-                            sessionId,
-                            assistantMessage(
-                                answer,
-                                // New messages are summarised by `traces`; carrying the flat
-                                // event list as well would render the same work twice after a
-                                // reload. Old messages keep their events and render as before.
-                                events = emptyList(),
-                                stopNote = stopNoteOf(reply.stop),
-                                traces = rounds.map { it.toSummary() },
-                            ),
+                        val message = assistantMessage(
+                            answer,
+                            // New messages are summarised by `traces`; carrying the flat
+                            // event list as well would render the same work twice after a
+                            // reload. Old messages keep their events and render as before.
+                            events = emptyList(),
+                            stopNote = stopNoteOf(reply.stop),
+                            traces = rounds.map { it.toSummary() },
                         )
+                        sessionDetails[message.id] = rounds
+                        append(sessionId, message)
+                        // Hand over from the live blocks to the stored summary immediately, so
+                        // the same round is never rendered twice.
+                        liveRounds = emptyList()
                     }
                 } catch (cancel: CancellationException) {
                     // The stop button lands here: close the spinners first, otherwise they would
@@ -884,7 +899,23 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                     modifier = Modifier.padding(top = gap),
                                 ) {
                                   Column {
-                                    message.traces.forEach { trace -> EvTraceSummaryBlock(trace) }
+                                    message.traces.forEach { trace ->
+                                        val detail = sessionDetails[message.id]
+                                        val key = "${'$'}{message.id}:${'$'}{trace.round}"
+                                        val open = summaryExpansion[key] == true
+                                        EvTraceSummaryBlock(
+                                            summary = trace,
+                                            detail = detail,
+                                            expanded = open,
+                                            onToggle = if (detail == null) {
+                                                null
+                                            } else {
+                                                {
+                                                    summaryExpansion[key] = !open
+                                                }
+                                            },
+                                        )
+                                    }
                                     EvChatBubble(
                                         text = message.text,
                                         fromUser = message.fromUser,

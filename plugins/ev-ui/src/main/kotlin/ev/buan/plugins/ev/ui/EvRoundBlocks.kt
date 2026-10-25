@@ -66,29 +66,64 @@ internal fun EvRoundBlock(
     }
 }
 
-/** Stored summary of a finished round, rendered with the same line the live block used. */
+/**
+ * Summary of one finished round.
+ *
+ * [detail] is the full trace, available only while the turn is still in this session's memory:
+ * the transcript stores counts so a session file stays small, which means a reply reloaded from
+ * disk can show what happened but not expand it. Passing null renders the line as plain text, so
+ * the arrow only appears when there is something behind it.
+ */
 @Composable
-internal fun EvTraceSummaryBlock(summary: TraceSummary, modifier: Modifier = Modifier) {
+internal fun EvTraceSummaryBlock(
+    summary: TraceSummary,
+    modifier: Modifier = Modifier,
+    detail: List<RoundTrace>? = null,
+    expanded: Boolean = false,
+    onToggle: (() -> Unit)? = null,
+) {
     val tokens = EvThemeTokens.colors
     val caption = EvThemeTokens.type.caption.style(tokens.textTertiary)
-    Column(modifier.fillMaxWidth()) {
-        Text(
-            text = "思考 1 次 · 调用 ${summary.toolCalls} 个工具" +
-                if (summary.failed > 0) " · ${summary.failed} 个失败" else "",
-            style = caption,
-            color = if (summary.failed > 0) tokens.textSecondary else tokens.textTertiary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        summary.firstError?.takeIf { it.isNotBlank() }?.let { error ->
+    val reduced = EvThemeTokens.reducedMotion
+    Column(modifier.fillMaxWidth().animateContentSize(
+        EvMotionTokens.reducedAware(reduced) { EvMotionTokens.gentle() },
+    )) {
+        Row(
+            Modifier.fillMaxWidth()
+                .then(if (onToggle != null) Modifier.clickable(onClick = onToggle) else Modifier)
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                text = error,
+                text = "思考 1 次 · 调用 ${summary.toolCalls} 个工具" +
+                    if (summary.failed > 0) " · ${summary.failed} 个失败" else "",
                 style = caption,
-                color = tokens.textTertiary,
+                color = if (summary.failed > 0) tokens.textSecondary else tokens.textTertiary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 10.dp),
+                modifier = Modifier.weight(1f),
             )
+            if (onToggle != null) {
+                Text(
+                    text = if (expanded) "▾" else "▸",
+                    style = caption,
+                    color = tokens.textTertiary,
+                )
+            }
+        }
+        if (expanded && detail != null) {
+            detail.forEach { round -> round.steps.forEach { step -> StepRow(step) } }
+        } else {
+            summary.firstError?.takeIf { it.isNotBlank() }?.let { error ->
+                Text(
+                    text = error,
+                    style = caption,
+                    color = tokens.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 10.dp),
+                )
+            }
         }
     }
 }
