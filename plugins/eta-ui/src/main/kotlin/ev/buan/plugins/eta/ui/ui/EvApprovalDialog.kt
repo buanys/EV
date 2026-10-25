@@ -41,7 +41,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * the gate's unit tests - it is here so the first dangerous tool needs no UI work.
  */
 @Composable
-fun EvApprovalDialog(
+internal fun EvApprovalDialog(
     prompt: ApprovalPrompt,
     onDecide: (ApprovalDecision) -> Unit,
     modifier: Modifier = Modifier,
