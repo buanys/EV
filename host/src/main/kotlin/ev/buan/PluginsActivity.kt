@@ -51,6 +51,7 @@ import ev.buan.ui.EvPreferenceDivider
 import ev.buan.ui.EvPreferenceGroup
 import ev.buan.ui.EvPreferenceRow
 import ev.buan.ui.EvTheme
+import ev.buan.ui.EvThemeTokens
 import ev.buan.ui.evSystemBarsPadding
 import ev.buan.ui.StatusError
 import ev.buan.ui.StatusWarning
@@ -327,9 +328,11 @@ private fun PluginSection(
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(colors.surface)
+            // surface0 is the page background; the card needs the next layer up. Miuix surface is
+            // forced to pure black in this theme, which made every card invisible.
+            .background(EvThemeTokens.colors.surface1)
             .clickable { expanded = !expanded }
             .padding(16.dp),
     ) {
@@ -603,7 +606,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit, modifier
         modifier
             .height(40.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(colors.surface)
+            .background(EvThemeTokens.colors.surface1)
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
