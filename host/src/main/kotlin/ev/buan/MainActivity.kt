@@ -7,6 +7,7 @@ import android.os.Environment
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Without this the window keeps fitting system windows: WindowInsets.systemBars and
+        // WindowInsets.ime both read 0, so evSystemBarsPadding() and every plugin's imePadding()
+        // become no-ops - content draws under the status bar and the keyboard covers the composer.
+        enableEdgeToEdge()
         val runtime = (application as EvApplication).runtime
         setContent {
             EvTheme(appearance = runtime.appearance.value) { HomeShell(this, runtime) }

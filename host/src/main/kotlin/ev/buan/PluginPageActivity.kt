@@ -1,5 +1,7 @@
 package ev.buan
 
+import androidx.activity.enableEdgeToEdge
+
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -26,6 +28,7 @@ class PluginPageActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         val pluginId = intent.getStringExtra(EXTRA_PLUGIN_ID).orEmpty()
         // Recovery path: the system may restore this Activity in a fresh process, where no plugin
         // has been loaded - and a safe-mode launch loads none by design. Rather than showing an

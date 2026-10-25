@@ -1,5 +1,7 @@
 package ev.buan
 
+import androidx.activity.enableEdgeToEdge
+
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -42,6 +44,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         val runtime = (application as EvApplication).runtime
         setContent {
             EvTheme(appearance = runtime.appearance.value) {
