@@ -689,10 +689,13 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 )
             },
         ) {
+            // The keyboard inset is claimed by the composer, not by this Column. Padding the root
+            // shrinks the whole page, so the top bar and the conversation were carried along with
+            // the keyboard; letting only the composer claim the inset keeps everything above it
+            // anchored where it was.
             Column(
                 modifier.fillMaxSize()
-                    .background(MiuixTheme.colorScheme.background)
-                    .imePadding(),
+                    .background(MiuixTheme.colorScheme.background),
             ) {
                 if (isRoot) HomeTopBar(onHost, onMenu = {
                     keyboard?.hide()
@@ -749,6 +752,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     onSend = { send(draft) },
                     busy = replying,
                     onStop = { stopReply() },
+                    modifier = Modifier.imePadding(),
                 )
             }
         }
