@@ -217,7 +217,7 @@ class HostRuntime(private val context: AndroidContext) {
         // so nothing in this process can repair that: this launch runs without loading any plugin,
         // and the management page offers the explicit way out. Read on every start because the
         // marker is the single source of truth for "the last process crashed".
-        safeMode = crash.pending()?.let { SafeModeNotice(it.suspectedPluginId, it.recordedAt) }
+        safeMode = crash.pending()?.let { SafeModeNotice(it.suspectedPluginId, it.recordedAt, it.report) }
         // The appearance service must exist before any plugin can inject it.
         if (appearanceHandle == null) {
             appearanceHandle = cordis.provide(
@@ -385,7 +385,7 @@ class HostRuntime(private val context: AndroidContext) {
     /**
      * The plugin page used as the app root.
      *
-     * An explicit choice wins; otherwise the Eta UI plugin, otherwise the first page plugin in load
+     * An explicit choice wins; otherwise the EV UI plugin, otherwise the first page plugin in load
      * order. Keeping this in the host means a broken home plugin degrades to the fallback screen
      * instead of leaving the user with no way into management.
      */
@@ -545,6 +545,16 @@ class HostRuntime(private val context: AndroidContext) {
      * errors: an error may mean the scan missed a plugin, and its data must survive that.
      */
     private fun pruneStorageOfUninstalled() {
+        // Renames ride first: without this a renamed plugin id reads as an uninstall, and the
+        // prune below would delete the user's history instead of carrying it across.
+        PluginStorageLayout.migrateRenames(
+            File(context.filesDir, PluginStorageLayout.ROOT_DIRECTORY),
+            RENAMED_PLUGIN_IDS,
+        )
+        PluginStorageLayout.migrateRenames(
+            File(context.cacheDir, PluginStorageLayout.ROOT_DIRECTORY),
+            RENAMED_PLUGIN_IDS,
+        )
         val installedIds = installed.keys
         PluginStorageLayout.pruneUnknown(
             File(context.filesDir, PluginStorageLayout.ROOT_DIRECTORY),
@@ -601,6 +611,13 @@ class HostRuntime(private val context: AndroidContext) {
         /** Card text while safe mode keeps an enabled plugin unloaded; not an activation failure. */
         const val SAFE_MODE_BLOCKED = "安全模式：上次运行崩溃，本次启动未加载（退出安全模式后重试）"
         const val KEY_HOME = "home.page"
-        const val DEFAULT_HOME_PLUGIN = "ev.buan.plugins.eta.ui"
+        const val DEFAULT_HOME_PLUGIN = "ev.buan.plugins.ev.ui"
+
+        /**
+         * Plugin id renames whose storage areas survive the rename: on the first sync after the
+         * renamed jar lands, the old id's directory becomes the new id's (see
+         * [PluginStorageLayout.migrateRenames]). eta-ui became ev-ui with the EV-UI refactor.
+         */
+        val RENAMED_PLUGIN_IDS = mapOf("ev.buan.plugins.eta.ui" to "ev.buan.plugins.ev.ui")
     }
 }

@@ -1,6 +1,22 @@
 package ev.buan
 
 import android.content.Intent
+import android.content.Context
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
+import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.launch
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -89,14 +105,146 @@ private fun HomeShell(activity: ComponentActivity, runtime: HostRuntime) {
         state == null -> FallbackPage("正在加载…", "", openHost)
         // Safe mode loads no plugin by decision, so "没有主页插件" would send the user looking for a
         // missing file. Say what actually happened and where the way out is.
-        state?.safeMode != null -> FallbackPage(
-            "安全模式",
-            "上次运行异常退出，本次启动没有加载任何插件。在插件管理页退出安全模式后，主页插件会直接出现。",
-            openHost,
+        state?.safeMode != null -> SafeModePage(
+            notice = state!!.safeMode!!,
+            activity = activity,
+            onExit = runtime::exitSafeMode,
+            onOpenHost = openHost,
         )
-        else -> FallbackPage("没有主页插件", "把 eta-ui.jar 放进 EV/mods，或在管理页启用一个界面插件。", openHost)
+        else -> FallbackPage("没有主页插件", "把 ev-ui.jar 放进 EV/mods，或在管理页启用一个界面插件。", openHost)
     }
 }
+
+/**
+ * Safe mode with the crash on screen.
+ *
+ * Safe mode already had the report on disk (`files/crash/last.txt`) but never showed it, so a crash
+ * was invisible to both the user and whoever has to fix it. This page closes that loop: the stack
+ * trace is rendered read-only for on-device reading, and one tap writes a copy into
+ * `Download/EV/` so it can be shared without root or adb.
+ */
+@Composable
+private fun SafeModePage(
+    notice: SafeModeNotice,
+    activity: ComponentActivity,
+    onExit: suspend () -> ev.buan.HostState,
+    onOpenHost: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var exported by remember { mutableStateOf<String?>(null) }
+    val stamp = notice.recordedAt?.toString()?.replace('T', ' ')?.take(19) ?: "时间未知"
+    val mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .evSystemBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 28.dp),
+    ) {
+        Text(
+            text = "安全模式",
+            style = MiuixTheme.textStyles.title1,
+            color = MiuixTheme.colorScheme.onBackground,
+        )
+        Text(
+            text = "上次运行在 $stamp 异常退出，本次启动没有加载任何插件。\n" +
+                "疑似插件：${notice.suspectedPluginId ?: "无法判定（崩溃发生在宿主或非插件代码）"}",
+            style = MiuixTheme.textStyles.body1,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+        )
+
+        Text(
+            text = "崩溃报告",
+            style = MiuixTheme.textStyles.subtitle,
+            color = MiuixTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(top = 16.dp, bottom = 6.dp),
+        )
+        SelectionContainer {
+            Text(
+                text = notice.report.ifBlank {
+                    "（报告缺失：files/crash/last.txt 没有写成，或被系统清理）"
+                },
+                style = mono,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MiuixTheme.colorScheme.surface)
+                    .padding(12.dp),
+            )
+        }
+
+        Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+            ActionChip(
+                label = "导出日志",
+                onClick = {
+                    exported = exportCrashReport(activity, notice.report)
+                },
+                modifier = Modifier.weight(1f),
+            )
+            ActionChip(
+                label = "退出安全模式",
+                onClick = { scope.launch { runCatching { onExit() } } },
+                modifier = Modifier.weight(1f).padding(start = 12.dp),
+            )
+        }
+
+        exported?.let { path ->
+            Text(
+                text = if (path == null) "导出失败：没有写入权限（需要「所有文件访问」）" else "已导出到 $path",
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+
+        Text(
+            text = "报告同时保留在应用私有目录 files/crash/last.txt，可用 adb pull 取走；" +
+                "再次崩溃时会被新报告覆盖。",
+            style = MiuixTheme.textStyles.footnote1,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.padding(top = 14.dp, bottom = 24.dp),
+        )
+        Text(
+            text = "打开插件管理",
+            style = MiuixTheme.textStyles.body1,
+            color = MiuixTheme.colorScheme.primary,
+            modifier = Modifier.clickable { onOpenHost() },
+        )
+    }
+}
+
+@Composable
+private fun ActionChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .height(44.dp)
+            .background(MiuixTheme.colorScheme.surface)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MiuixTheme.textStyles.body1,
+            color = MiuixTheme.colorScheme.onBackground,
+        )
+    }
+}
+
+/** Writes the report next to the user's downloads so it can be shared from any file manager. */
+private fun exportCrashReport(context: Context, report: String): String? = runCatching {
+    if (report.isBlank()) return@runCatching null
+    val dir = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        "EV",
+    )
+    if (!dir.isDirectory && !dir.mkdirs()) return@runCatching null
+    val stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now())
+    val file = File(dir, "crash-$stamp.txt")
+    file.writeText(report)
+    file.absolutePath
+}.getOrNull()
 
 /** Shown while loading or when no plugin can be the home page. */
 @Composable
