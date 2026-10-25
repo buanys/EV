@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,7 +16,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +54,7 @@ import ev.buan.plugins.eta.ui.ui.EtaToolsScreen
 import ev.buan.plugins.eta.ui.ui.EvApprovalDialog
 import ev.buan.plugins.eta.ui.ui.EvChatBubble
 import ev.buan.plugins.eta.ui.ui.EvChatDefaults
+import ev.buan.plugins.eta.ui.ui.EvMessageEntry
 import ev.buan.plugins.eta.ui.ui.EvComposer
 import ev.buan.plugins.eta.ui.ui.EvHomeHero
 import ev.buan.plugins.eta.ui.ui.EvSuggestion
@@ -721,6 +721,11 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                             modifier = Modifier.align(Alignment.Center),
                         )
                     } else {
+                        // Messages present when the session opened render still; only arrivals
+                        // after this snapshot play the entrance spring (spec §6.3).
+                        val seenIds = remember(activeSession.id) {
+                            activeSession.messages.mapTo(hashSetOf()) { it.id }
+                        }
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
@@ -733,23 +738,40 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                 // only breathing room - no reserved composer height.
                                 bottom = 16.dp,
                             ),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
-                            items(activeSession.messages.asReversed(), key = { it.id }) { message ->
-                                EvChatBubble(
-                                    text = message.text,
-                                    fromUser = message.fromUser,
-                                    events = message.events,
-                                    onRegenerate = if (message.fromUser) null else {
-                                        { regenerate(message.id) }
-                                    },
-                                    onDelete = if (message.fromUser) null else {
-                                        { delete(message.id) }
-                                    },
-                                )
-                            }
+                            // Declared first so reverseLayout pins it to the bottom: the typing
+                            // indicator sits under the newest message, where the reply will land.
                             if (replying) {
                                 item { EvTypingIndicator() }
+                            }
+                            val reversed = activeSession.messages.asReversed()
+                            itemsIndexed(reversed, key = { _, it -> it.id }) { index, message ->
+                                // Variable rhythm instead of a uniform gap (spec §3.1): same-side
+                                // neighbours sit 4dp apart, a side switch opens 12dp.
+                                val newer = reversed.getOrNull(index - 1)
+                                val gap = when {
+                                    index == 0 -> 0.dp
+                                    newer?.fromUser == message.fromUser -> EvChatDefaults.SameSideGap
+                                    else -> EvChatDefaults.SwitchSideGap
+                                }
+                                EvMessageEntry(
+                                    animate = message.id !in seenIds,
+                                    modifier = Modifier.padding(top = gap),
+                                ) {
+                                    EvChatBubble(
+                                        text = message.text,
+                                        fromUser = message.fromUser,
+                                        events = message.events,
+                                        lastInCluster = message.fromUser && newer?.fromUser != true,
+                                        streaming = replying && index == 0 && !message.fromUser,
+                                        onRegenerate = if (message.fromUser) null else {
+                                            { regenerate(message.id) }
+                                        },
+                                        onDelete = if (message.fromUser) null else {
+                                            { delete(message.id) }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }

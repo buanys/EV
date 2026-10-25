@@ -1,5 +1,6 @@
 package ev.buan.plugins.eta.ui.ui
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -19,9 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,43 +29,44 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import ev.buan.plugins.agent.api.AgentEvent
 import ev.buan.plugins.eta.ui.ToolSteps
 import ev.buan.plugins.eta.ui.toolStepsOf
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
+import ev.buan.ui.EvMotionTokens
+import ev.buan.ui.EvThemeTokens
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Chat pieces, following Eta's visual rules rather than its implementation.
+ * Message stream, restyled against docs/design/EV-UI设计规范.md (§7.1 聊天气泡, §7.2 折叠卡,
+ * §6.3 动效清单). All values come from EvThemeTokens; nothing here invents a colour or a spring.
  *
- * Taken from Eta: assistant replies carry no bubble (text sits on the page, wide and quiet), user
- * messages get a 20dp rounded block with a 6dp tail, max 320dp, and the composer is a 22dp pill
- * with a circular send affordance that only lights up when there is something to send.
- *
- * Deliberately not taken: streaming markdown, liquid-glass surfaces, tooltips and attachment
- * strips. Those need a renderer and a message model this host does not have yet.
+ * The rules that matter: assistant output carries no bubble (it reads as a document, flush with
+ * the page), user messages are surface3 blocks with an asymmetric tail corner, consecutive
+ * same-side messages form a cluster (4dp gap, only the last keeps its tail), and every entrance
+ * is a spring that honors the reduced-motion preference.
  */
 object EvChatDefaults {
-    val BubbleMaxWidth = 320.dp
-    val BubbleRadius = 20.dp
-    val BubbleTailRadius = 6.dp
-    val PagePadding = 20.dp
-    val ComposerRadius = 22.dp
+    /** Page margin of the message stream (spec §3.1). */
+    val PagePadding = 16.dp
 
-    /** Diameter of one icon button under an assistant reply, and of the glyph drawn inside it. */
-    val ActionSize = 28.dp
-    val ActionGlyph = 15.dp
+    /** User bubbles cap at 78% of the screen width (spec §7.1). */
+    const val BubbleMaxWidthFraction = 0.78f
+
+    /** Gap between two bubbles from the same side, and across a side switch (spec §3.1). */
+    val SameSideGap = 4.dp
+    val SwitchSideGap = 12.dp
+
+    /** Touch target under a reply (spec §9, >= 44dp), and the glyph drawn inside it. */
+    val ActionSize = 44.dp
+    val ActionGlyph = 16.dp
 }
 
 /**
@@ -74,9 +75,12 @@ object EvChatDefaults {
  * User messages are inert: the actions below (copy / regenerate / delete) belong to the assistant
  * turn, because only it can be produced again or thrown away without losing what the user typed.
  *
- * [events] is the agent turn behind an assistant reply. When it contains tool work the bubble shows
- * a one-line caption ("思考 N 次 · 调用 N 个工具") that expands into the calls and their results;
- * a turn with no tool events shows no caption at all.
+ * [events] is the agent turn behind an assistant reply. When it contains tool work the message
+ * shows a one-line caption ("思考 N 次 · 调用 N 个工具") that expands into the calls and their
+ * results; a turn with no tool events shows no caption at all.
+ *
+ * [lastInCluster] keeps the user bubble's tail corner only on the final message of a run.
+ * [streaming] appends the breathing accent cursor to an in-flight assistant reply (spec §7.1).
  */
 @Composable
 fun EvChatBubble(
@@ -84,47 +88,37 @@ fun EvChatBubble(
     fromUser: Boolean,
     modifier: Modifier = Modifier,
     events: List<AgentEvent> = emptyList(),
-    maxWidth: androidx.compose.ui.unit.Dp = EvChatDefaults.BubbleMaxWidth,
+    lastInCluster: Boolean = true,
+    streaming: Boolean = false,
     onRegenerate: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
 ) {
+    val tokens = EvThemeTokens.colors
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = if (fromUser) Arrangement.End else Arrangement.Start,
     ) {
         if (fromUser) {
+            val screenWidth = LocalConfiguration.current.screenWidthDp.dp
             Box(
                 Modifier
-                    .widthIn(max = maxWidth)
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = EvChatDefaults.BubbleRadius,
-                            topEnd = EvChatDefaults.BubbleRadius,
-                            bottomEnd = EvChatDefaults.BubbleTailRadius,
-                            bottomStart = EvChatDefaults.BubbleRadius,
-                        ),
-                    )
-                    // Eta's own messages are a quiet grey block, not the accent colour: the accent
-                    // belongs to the composer and model controls.
-                    .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.10f))
+                    .widthIn(max = screenWidth * EvChatDefaults.BubbleMaxWidthFraction)
+                    .clip(EvThemeTokens.radii.userBubbleShape(lastInCluster))
+                    .background(tokens.surface3)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                Text(
-                    text = text,
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onBackground,
-                )
+                Text(text = text, style = EvThemeTokens.type.body.style(tokens.textPrimary))
             }
         } else {
-            // No bubble: Eta keeps assistant output flush with the page so long answers read like
+            // No bubble: assistant output stays flush with the page so long answers read like
             // text, not like cards stacked on cards.
             val steps = remember(events) { toolStepsOf(events) }
             var expanded by remember(steps) { mutableStateOf(false) }
             Column(Modifier.fillMaxWidth()) {
-                EvMarkdown(
-                    text = text,
-                    modifier = Modifier.padding(horizontal = 2.dp),
-                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    EvMarkdown(text = text, modifier = Modifier.weight(1f, fill = false))
+                    if (streaming) EvStreamingCursor()
+                }
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val clipboard = LocalClipboardManager.current
@@ -154,7 +148,66 @@ fun EvChatBubble(
     }
 }
 
-/** One quiet icon under a reply; [label] is the accessibility text, there is no tooltip in Eta. */
+/**
+ * One-shot entrance for a message that arrived while the list was on screen: a snappy spring
+ * from 24dp below, 0.9 scale and transparent, per spec §6.3. History that was already there
+ * when the session opened passes [animate] = false and renders still. Reduced motion (spec §6.4)
+ * degrades the whole thing to an instant appearance.
+ */
+@Composable
+fun EvMessageEntry(
+    animate: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val reduced = EvThemeTokens.reducedMotion
+    val progress = remember { Animatable(if (animate && !reduced) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (progress.value < 1f) progress.animateTo(1f, EvMotionTokens.snappy())
+    }
+    val p = progress.value
+    Box(
+        modifier.graphicsLayer {
+            alpha = p.coerceIn(0f, 1f)
+            translationY = (1f - p) * 24.dp.toPx()
+            val scale = 0.9f + 0.1f * p
+            scaleX = scale
+            scaleY = scale
+        },
+    ) {
+        content()
+    }
+}
+
+/** The 2dp accent bar breathing at 500ms while a reply streams in (spec §7.1). */
+@Composable
+private fun EvStreamingCursor() {
+    val reduced = EvThemeTokens.reducedMotion
+    val alpha = if (reduced) {
+        0.85f
+    } else {
+        val transition = rememberInfiniteTransition(label = "streamCursor")
+        val a by transition.animateFloat(
+            initialValue = 0.2f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 500),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "alpha",
+        )
+        a
+    }
+    Box(
+        Modifier
+            .padding(start = 3.dp, bottom = 3.dp)
+            .width(2.dp)
+            .height(18.dp)
+            .background(EvThemeTokens.colors.accent.copy(alpha = alpha)),
+    )
+}
+
+/** One quiet icon under a reply; [label] is the accessibility text. Touch target is 44dp (§9). */
 @Composable
 private fun BubbleAction(kind: EvGlyphKind, label: String, onClick: () -> Unit) {
     Box(
@@ -166,40 +219,41 @@ private fun BubbleAction(kind: EvGlyphKind, label: String, onClick: () -> Unit) 
     ) {
         EvGlyph(
             kind,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            color = EvThemeTokens.colors.textTertiary,
             modifier = Modifier.size(EvChatDefaults.ActionGlyph),
         )
     }
 }
 
-/** The caption that opens the step list; the whole chip is the tap target, not a tiny caret. */
+/**
+ * The collapsed tool-work caption (spec §7.2): one quiet row - micro glyph, caption text,
+ * trailing caret - all tertiary. The expanded card below it carries the detail.
+ */
 @Composable
 private fun ToolStepToggle(label: String, expanded: Boolean, onToggle: () -> Unit) {
+    val tokens = EvThemeTokens.colors
     Row(
         Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.05f))
+            .clip(EvThemeTokens.radii.smallShape)
             .clickable(onClickLabel = if (expanded) "收起工具步骤" else "展开工具步骤", onClick = onToggle)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         EvGlyph(
             EvGlyphKind.Sparkle,
-            color = MiuixTheme.colorScheme.primary,
+            color = tokens.textTertiary,
             modifier = Modifier.size(12.dp),
         )
         Spacer(Modifier.width(4.dp))
         Text(
             text = label,
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = EvThemeTokens.type.caption.style(tokens.textTertiary),
             maxLines = 1,
         )
         Spacer(Modifier.width(4.dp))
         Text(
             text = if (expanded) "▴" else "▾",
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = EvThemeTokens.type.caption.style(tokens.textTertiary),
         )
     }
 }
@@ -213,11 +267,12 @@ private fun ToolStepToggle(label: String, expanded: Boolean, onToggle: () -> Uni
  */
 @Composable
 private fun ToolStepPanel(steps: ToolSteps, modifier: Modifier = Modifier) {
+    val tokens = EvThemeTokens.colors
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.05f))
+            .clip(EvThemeTokens.radii.mediumShape)
+            .background(tokens.surface1)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         steps.steps.forEachIndexed { index, step ->
@@ -225,7 +280,7 @@ private fun ToolStepPanel(steps: ToolSteps, modifier: Modifier = Modifier) {
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 10.dp),
                     thickness = 0.33.dp,
-                    color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.10f),
+                    color = tokens.dividerGhost,
                 )
             }
             ToolStepCard(index + 1, step)
@@ -235,19 +290,19 @@ private fun ToolStepPanel(steps: ToolSteps, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ToolStepCard(number: Int, step: ev.buan.plugins.eta.ui.ToolStep) {
+    val tokens = EvThemeTokens.colors
     val answered = step.result != null
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "$number. ${step.toolName ?: "未知工具"}",
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onBackground,
+            style = EvThemeTokens.type.caption.style(tokens.textPrimary),
             modifier = Modifier.weight(1f),
         )
         Text(
             text = if (answered) "完成" else "未返回",
-            style = MiuixTheme.textStyles.footnote1,
-            color = if (answered) MiuixTheme.colorScheme.primary
-            else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = EvThemeTokens.type.caption.style(
+                if (answered) tokens.success else tokens.textTertiary,
+            ),
         )
     }
     if (step.arguments.isNotBlank()) {
@@ -263,31 +318,25 @@ private fun ToolStepCard(number: Int, step: ev.buan.plugins.eta.ui.ToolStep) {
 /** One labelled mono block; long text starts collapsed behind [preview] and expands in place. */
 @Composable
 private fun StepBlock(label: String, text: String, expandable: Boolean = true) {
+    val tokens = EvThemeTokens.colors
     val full = text.length > ev.buan.plugins.eta.ui.TOOL_TEXT_LIMIT
     var expanded by remember(text) { mutableStateOf(false) }
-    val mono = MiuixTheme.textStyles.footnote1.copy(
-        fontFamily = FontFamily.Monospace,
-        fontSize = 11.sp,
+    val mono = EvThemeTokens.type.caption.style(tokens.textSecondary).copy(
+        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
     )
     Spacer(Modifier.height(4.dp))
-    Text(
-        text = label,
-        style = MiuixTheme.textStyles.footnote1,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-    )
+    Text(text = label, style = EvThemeTokens.type.micro.style(tokens.textTertiary))
     Spacer(Modifier.height(2.dp))
     Text(
         text = if (expanded || !full || !expandable) text else ev.buan.plugins.eta.ui.preview(text),
         style = mono,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
     )
     if (full && expandable) {
         Text(
             text = if (expanded) "收起" else "展开全文（${text.length} 字）",
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.primary,
+            style = EvThemeTokens.type.caption.style(tokens.accent),
             modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(EvThemeTokens.radii.smallShape)
                 .clickable(onClickLabel = if (expanded) "收起$label" else "展开完整$label") { expanded = !expanded }
                 .padding(vertical = 4.dp),
         )
@@ -300,96 +349,30 @@ private fun StepBlock(label: String, text: String, expandable: Boolean = true) {
  */
 @Composable
 fun EvTypingIndicator(modifier: Modifier = Modifier) {
+    val reduced = EvThemeTokens.reducedMotion
     val transition = rememberInfiniteTransition(label = "typing")
     Row(modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         repeat(3) { index ->
-            val alpha by transition.animateFloat(
-                initialValue = 0.25f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(durationMillis = 600, delayMillis = index * 200),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-                label = "dot$index",
-            )
+            val alpha by if (reduced) {
+                remember { mutableStateOf(0.6f) }
+            } else {
+                transition.animateFloat(
+                    initialValue = 0.25f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 600, delayMillis = index * 200),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "dot$index",
+                )
+            }
             Box(
                 Modifier
                     .padding(end = 5.dp)
                     .size(6.dp)
                     .clip(CircleShape)
-                    .background(MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = alpha)),
+                    .background(EvThemeTokens.colors.textTertiary.copy(alpha = alpha)),
             )
-        }
-    }
-}
-
-@Composable
-fun EvChatInputBar(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSend: () -> Unit,
-    modifier: Modifier = Modifier,
-    placeholder: String = "说点什么…",
-) {
-    val canSend = value.isNotBlank()
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MiuixTheme.colorScheme.background),
-    ) {
-        HorizontalDivider(
-            thickness = 0.33.dp,
-            color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.08f),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-        Box(
-            Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(EvChatDefaults.ComposerRadius))
-                .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f))
-                .padding(horizontal = 16.dp, vertical = 13.dp),
-        ) {
-            if (value.isEmpty()) {
-                Text(
-                    text = placeholder,
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            }
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                textStyle = TextStyle(
-                    color = MiuixTheme.colorScheme.onBackground,
-                    fontSize = 15.sp,
-                ),
-                cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Box(
-            Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(
-                    if (canSend) MiuixTheme.colorScheme.primary
-                    else MiuixTheme.colorScheme.onBackground.copy(alpha = 0.08f),
-                )
-                .clickable(enabled = canSend, onClick = onSend),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "↑",
-                style = MiuixTheme.textStyles.subtitle,
-                    color = if (canSend) MiuixTheme.colorScheme.onPrimary
-                    else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    textAlign = TextAlign.Center,
-                )
-            }
         }
     }
 }

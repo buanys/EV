@@ -1,6 +1,7 @@
 package ev.buan.plugins.eta.ui.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,13 +9,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -22,9 +26,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import ev.buan.ui.EvGlyph
+import ev.buan.ui.EvGlyphKind
+import ev.buan.ui.EvThemeTokens
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * One block of prose. Fenced code is not a block here: it becomes its own slab, because a code
@@ -83,50 +88,63 @@ fun EvMarkdown(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun CodeSlab(text: String) {
+    // Spec §7.1: surface2 slab, small radius, monospace, copy affordance in the top corner.
+    val tokens = EvThemeTokens.colors
+    val clipboard = LocalClipboardManager.current
     Box(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.08f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .clip(EvThemeTokens.radii.smallShape)
+            .background(tokens.surface2),
     ) {
         Text(
             text = text,
-            style = MiuixTheme.textStyles.body2.copy(
+            style = EvThemeTokens.type.caption.style(tokens.textPrimary).copy(
                 fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
             ),
-            color = MiuixTheme.colorScheme.onBackground,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 44.dp),
         )
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(36.dp)
+                .clip(CircleShape)
+                .clickable(onClickLabel = "复制代码") { clipboard.setText(AnnotatedString(text)) },
+            contentAlignment = Alignment.Center,
+        ) {
+            EvGlyph(
+                EvGlyphKind.Doc,
+                color = tokens.textTertiary,
+                modifier = Modifier.size(14.dp),
+            )
+        }
     }
 }
 
 @Composable
 private fun MarkdownBlockView(block: MarkdownBlock) {
+    val tokens = EvThemeTokens.colors
     when (block) {
         is MarkdownBlock.Paragraph -> Text(
-            text = inlineMarkdown(block.text, MiuixTheme.colorScheme.primary),
-            style = MiuixTheme.textStyles.body1,
-            color = MiuixTheme.colorScheme.onBackground,
+            text = inlineMarkdown(block.text, tokens.accent),
+            style = EvThemeTokens.type.body.style(tokens.textPrimary),
             modifier = Modifier.padding(horizontal = 2.dp),
         )
 
         is MarkdownBlock.Heading -> {
-            // The markers are gone, so size and weight carry the level instead.
-            val size = when (block.level) {
-                1 -> 20.sp
-                2 -> 18.sp
-                3 -> 16.sp
-                else -> 15.sp
+            // The markers are gone, so weight carries the level; size never exceeds the title
+            // step of the type scale (spec §7.1).
+            val style = when (block.level) {
+                1 -> EvThemeTokens.type.title.style(tokens.textPrimary).copy(fontWeight = FontWeight.Bold)
+                2 -> EvThemeTokens.type.body.style(tokens.textPrimary).copy(fontWeight = FontWeight.SemiBold)
+                else -> EvThemeTokens.type.body.style(tokens.textPrimary).copy(fontWeight = FontWeight.Medium)
             }
             Text(
-                text = inlineMarkdown(block.text, MiuixTheme.colorScheme.primary),
-                style = MiuixTheme.textStyles.body1.copy(
-                    fontSize = size,
-                    lineHeight = (size.value * 1.35f).sp,
-                    fontWeight = if (block.level <= 2) FontWeight.Bold else FontWeight.SemiBold,
-                ),
-                color = MiuixTheme.colorScheme.onBackground,
+                text = inlineMarkdown(block.text, tokens.accent),
+                style = style,
                 modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
             )
         }
@@ -140,14 +158,12 @@ private fun MarkdownBlockView(block: MarkdownBlock) {
                 ) {
                     Text(
                         text = item.marker,
-                        style = MiuixTheme.textStyles.body1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        style = EvThemeTokens.type.body.style(tokens.textTertiary),
                         modifier = Modifier.widthIn(min = 20.dp),
                     )
                     Text(
-                        text = inlineMarkdown(item.text, MiuixTheme.colorScheme.primary),
-                        style = MiuixTheme.textStyles.body1,
-                        color = MiuixTheme.colorScheme.onBackground,
+                        text = inlineMarkdown(item.text, tokens.accent),
+                        style = EvThemeTokens.type.body.style(tokens.textPrimary),
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -165,20 +181,22 @@ private fun MarkdownBlockView(block: MarkdownBlock) {
  */
 @Composable
 private fun MarkdownTable(table: MarkdownBlock.Table) {
+    val tokens = EvThemeTokens.colors
     val columns = table.header.size
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.03f)),
+            .clip(EvThemeTokens.radii.smallShape)
+            .background(tokens.surface1),
     ) {
         MarkdownTableRow(table.header, columns, header = true)
         table.rows.forEach { row ->
             Box(
                 Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .height(1.dp)
-                    .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f)),
+                    .background(tokens.dividerGhost),
             )
             MarkdownTableRow(row, columns, header = false)
         }
@@ -187,22 +205,19 @@ private fun MarkdownTable(table: MarkdownBlock.Table) {
 
 @Composable
 private fun MarkdownTableRow(cells: List<String>, columns: Int, header: Boolean) {
+    val tokens = EvThemeTokens.colors
     Row(
         Modifier
             .fillMaxWidth()
-            .background(
-                if (header) MiuixTheme.colorScheme.onBackground.copy(alpha = 0.08f)
-                else Color.Transparent,
-            )
+            .background(if (header) tokens.surface2 else Color.Transparent)
             .padding(horizontal = 10.dp, vertical = 7.dp),
     ) {
         for (index in 0 until columns) {
             Text(
-                text = inlineMarkdown(cells.getOrElse(index) { "" }, MiuixTheme.colorScheme.primary),
-                style = MiuixTheme.textStyles.body2.copy(
+                text = inlineMarkdown(cells.getOrElse(index) { "" }, tokens.accent),
+                style = EvThemeTokens.type.caption.style(tokens.textPrimary).copy(
                     fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
                 ),
-                color = MiuixTheme.colorScheme.onBackground,
                 // The divider gutter sits between columns, never after the last one.
                 modifier = Modifier.weight(1f).padding(end = if (index == columns - 1) 0.dp else 8.dp),
             )
