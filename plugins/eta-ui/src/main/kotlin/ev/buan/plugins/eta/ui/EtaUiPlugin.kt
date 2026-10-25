@@ -1,6 +1,10 @@
 package ev.buan.plugins.eta.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -15,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,8 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ev.buan.plugins.agent.api.AgentService
 import ev.buan.plugins.agent.api.ApprovalService
@@ -56,12 +62,18 @@ import ev.buan.plugins.eta.ui.ui.EvChatBubble
 import ev.buan.plugins.eta.ui.ui.EvChatDefaults
 import ev.buan.plugins.eta.ui.ui.EvMessageEntry
 import ev.buan.plugins.eta.ui.ui.EvComposer
+import ev.buan.plugins.eta.ui.ui.EvComposerAction
+import ev.buan.plugins.eta.ui.ui.EvComposerPanel
 import ev.buan.plugins.eta.ui.ui.EvHomeHero
 import ev.buan.plugins.eta.ui.ui.EvSuggestion
 import ev.buan.plugins.eta.ui.ui.EvTypingIndicator
 import ev.buan.ui.EvDrawerScaffold
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
+import ev.buan.ui.EvIcons
+import ev.buan.ui.EvMotionTokens
+import ev.buan.ui.EvThemeTokens
+import top.yukonga.miuix.kmp.basic.Icon
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -179,8 +191,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
      */
     private val approvalGate = ApprovalGate()
 
-    /** Last completed turn's model and token spend, shown in the home top bar. */
-    private var lastTurnModel by mutableStateOf<String?>(null)
+    /** Last completed turn's token spend, shown in the model capsule's detail card. */
     private var lastTurnTokens by mutableStateOf<Int?>(null)
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
@@ -263,6 +274,10 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         var showSkills by remember { mutableStateOf(false) }
         var searching by remember { mutableStateOf(false) }
         var searchQuery by remember { mutableStateOf("") }
+        // The composer's `+` panel and the top bar's model detail card: both are L1 surfaces that
+        // spring out of the control that summoned them and close on any outside tap.
+        var plusPanelOpen by remember { mutableStateOf(false) }
+        var modelCardOpen by remember { mutableStateOf(false) }
         val listState = rememberLazyListState()
         val scope = rememberCoroutineScope()
         val keyboard = LocalSoftwareKeyboardController.current
@@ -396,7 +411,6 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                             ),
                         )
                         val answer = reply.message.content.ifBlank { "（模型没有返回文本）" }
-                        lastTurnModel = reply.model?.model
                         lastTurnTokens = reply.usage?.totalTokens
                         append(sessionId, assistantMessage(answer, events = reply.events))
                     }
@@ -422,6 +436,18 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         fun stopReply() {
             val target = sessions.firstOrNull { it.id == activeSessionId } ?: return
             replyJobs[target.id]?.cancel()
+        }
+
+        /** One fresh conversation, selected immediately - shared by the drawer and the top bar. */
+        fun newChat() {
+            val fresh = newSession()
+            sessions += fresh
+            persist()
+            activeSessionId = fresh.id
+            keyboard?.hide()
+            drawerOpen = false
+            searching = false
+            searchQuery = ""
         }
 
         fun send(text: String) {
@@ -632,16 +658,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         keyboard?.hide()
                         drawerOpen = false
                     },
-                    onNewChat = {
-                        val fresh = newSession()
-                        sessions += fresh
-                        persist()
-                        activeSessionId = fresh.id
-                        keyboard?.hide()
-                        drawerOpen = false
-                        searching = false
-                        searchQuery = ""
-                    },
+                    onNewChat = { newChat() },
                     onPlugins = {
                         navigation?.openPluginManager()
                         drawerOpen = false
@@ -709,14 +726,39 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 modifier.fillMaxSize()
                     .background(MiuixTheme.colorScheme.background),
             ) {
-                if (isRoot) HomeTopBar(onHost, onMenu = {
-                    keyboard?.hide()
-                    drawerOpen = true
-                }) else PageTopBar(onHost)
+                if (isRoot) {
+                    // Live lookup per composition (same cheap map read the drawer's status line
+                    // uses): the capsule mirrors whatever provider the contract resolves as current.
+                    val currentModel = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model
+                    HomeTopBar(
+                        modelName = currentModel,
+                        approvalPending = approvalGate.pending.isNotEmpty(),
+                        onMenu = {
+                            keyboard?.hide()
+                            modelCardOpen = false
+                            drawerOpen = true
+                        },
+                        onCapsule = {
+                            keyboard?.hide()
+                            modelCardOpen = !modelCardOpen
+                        },
+                        onNewChat = { newChat() },
+                        onMore = {
+                            keyboard?.hide()
+                            settingsChild = null
+                            showSettings = true
+                        },
+                    )
+                } else {
+                    PageTopBar(onHost)
+                }
 
                 Box(
                     Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
-                        detectTapGestures(onTap = { keyboard?.hide() })
+                        detectTapGestures(onTap = {
+                            keyboard?.hide()
+                            modelCardOpen = false
+                        })
                     },
                 ) {
                     if (activeSession.messages.isEmpty()) {
@@ -784,113 +826,255 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                             }
                         }
                     }
+
+                    // The capsule's detail card (spec §5.2): overlays the conversation instead of
+                    // pushing it, springs down from the top bar, and any outside tap dismisses it.
+                    // Token spend lives here now - no longer a permanent top-bar resident.
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = modelCardOpen,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        enter = expandVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
+                            fadeIn(EvMotionTokens.fadeFast()),
+                        exit = shrinkVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
+                            fadeOut(EvMotionTokens.fadeFast()),
+                    ) {
+                        ModelDetailCard(
+                            modelName = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model,
+                            lastTokens = lastTurnTokens,
+                            onSwitchModel = {
+                                modelCardOpen = false
+                                settingsChild = SettingsChild.Models
+                                showSettings = true
+                            },
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+
+                // The `+` panel grows upward out of the composer's own slot, so panel and composer
+                // share one vertical boundary while it springs open (spec §7.3).
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = plusPanelOpen,
+                    enter = expandVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
+                        fadeIn(EvMotionTokens.fadeFast()),
+                    exit = shrinkVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
+                        fadeOut(EvMotionTokens.fadeFast()),
+                ) {
+                    EvComposerPanel(
+                        actions = listOf(
+                            EvComposerAction(EvGlyphKind.Globe, "浏览器") {
+                                plusPanelOpen = false
+                                showBrowser = true
+                            },
+                            EvComposerAction(EvGlyphKind.Tool, "工具") {
+                                plusPanelOpen = false
+                                showTools = true
+                            },
+                            EvComposerAction(EvGlyphKind.Person, "角色") {
+                                plusPanelOpen = false
+                                showCharacters = true
+                            },
+                            EvComposerAction(EvGlyphKind.Sparkle, "Skills") {
+                                plusPanelOpen = false
+                                showSkills = true
+                            },
+                        ),
+                    )
                 }
 
                 EvComposer(
                     value = draft,
                     onValueChange = { draft = it },
                     onSend = { send(draft) },
+                    // Placeholder rotates per conversation, not per recomposition (spec §7.3).
+                    placeholder = ComposerPlaceholders[
+                        Math.floorMod(activeSession.id.hashCode(), ComposerPlaceholders.size)
+                    ],
                     busy = replying,
                     onStop = { stopReply() },
+                    plusActive = plusPanelOpen,
+                    onPlus = {
+                        // Opening the panel trades the keyboard for it - they never share the screen.
+                        if (!plusPanelOpen) keyboard?.hide()
+                        plusPanelOpen = !plusPanelOpen
+                    },
+                    onFocusChange = { focused -> if (focused) plusPanelOpen = false },
                     modifier = Modifier.imePadding(),
                 )
             }
         }
     }
 
-    /** Root: menu on the left, capability dots and real usage chips on the right. */
+    /**
+     * The detail card under the model capsule: what model is live, what the last turn cost, and
+     * the one-tap way into model switching. Reading the directory again here is deliberate - the
+     * card always shows the state of this very moment, not a snapshot from when it was opened.
+     */
     @Composable
-    private fun HomeTopBar(onHost: () -> Unit, onMenu: () -> Unit) {
+    private fun ModelDetailCard(
+        modelName: String?,
+        lastTokens: Int?,
+        onSwitchModel: () -> Unit,
+        modifier: Modifier = Modifier,
+    ) {
+        val tokens = EvThemeTokens.colors
+        Column(
+            modifier
+                .widthIn(min = 220.dp, max = 280.dp)
+                .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
+                .background(tokens.surface3)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = "当前模型",
+                style = EvThemeTokens.type.micro.style(tokens.textTertiary),
+            )
+            Text(
+                text = modelName ?: "未接模型",
+                style = EvThemeTokens.type.title.style(if (modelName != null) tokens.textPrimary else tokens.textTertiary),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Text(
+                text = "上轮消耗 ${lastTokens?.let { "$it tok" } ?: "—"}",
+                style = EvThemeTokens.type.caption.style(tokens.textSecondary),
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Box(
+                Modifier
+                    .padding(vertical = 10.dp)
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(tokens.dividerGhost),
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(EvThemeTokens.radii.small))
+                    .clickable(onClickLabel = "切换模型", onClick = onSwitchModel)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EvGlyph(EvGlyphKind.Atom, color = tokens.accent, modifier = Modifier.size(16.dp))
+                Text(
+                    text = "切换模型",
+                    style = EvThemeTokens.type.label.style(tokens.accent),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        }
+    }
+
+    /**
+     * The three-segment top bar (spec §5.2): drawer entry on the left, the context capsule in the
+     * middle, and one capsule of actions on the right. The capsule reads the current model live;
+     * tapping it opens the detail card, and the spend chip that used to sit here moved inside it.
+     */
+    @Composable
+    private fun HomeTopBar(
+        modelName: String?,
+        approvalPending: Boolean,
+        onMenu: () -> Unit,
+        onCapsule: () -> Unit,
+        onNewChat: () -> Unit,
+        onMore: () -> Unit,
+    ) {
+        val tokens = EvThemeTokens.colors
         Row(
             Modifier.fillMaxWidth().height(52.dp).padding(start = 20.dp, end = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).clickable { onMenu() },
-                contentAlignment = Alignment.CenterStart,
+                Modifier.size(40.dp).clip(CircleShape).clickable(onClickLabel = "菜单", onClick = onMenu),
+                contentAlignment = Alignment.Center,
             ) {
-                EvGlyph(
-                    EvGlyphKind.Menu,
-                    color = MiuixTheme.colorScheme.onBackground,
-                    modifier = Modifier.size(20.dp),
+                EvGlyph(EvGlyphKind.Menu, color = tokens.textPrimary, modifier = Modifier.size(20.dp))
+                // An approval waiting on the human is the one thing worth a badge here.
+                if (approvalPending) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 6.dp, end = 6.dp)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(tokens.accent),
+                    )
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Row(
+                Modifier
+                    .clip(CircleShape)
+                    .background(tokens.surface2)
+                    .clickable(onClickLabel = "模型状态", onClick = onCapsule)
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (modelName != null) {
+                    Box(
+                        Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(tokens.success),
+                    )
+                    Spacer(Modifier.size(6.dp))
+                }
+                Text(
+                    text = modelName ?: "未接模型",
+                    style = EvThemeTokens.type.caption.style(
+                        if (modelName != null) tokens.textPrimary else tokens.textTertiary,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 140.dp),
                 )
             }
             Spacer(Modifier.weight(1f))
-            CapabilityDots()
-            Spacer(Modifier.size(10.dp))
-            // The model and spend of the last completed turn; "未接模型" / "— tok" before the first.
-            StatChip(lastTurnModel ?: "未接模型")
-            Spacer(Modifier.size(8.dp))
-            StatChip(lastTurnTokens?.let { "$it tok" } ?: "— tok")
+            Row(
+                Modifier
+                    .clip(CircleShape)
+                    .background(tokens.surface2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).clickable(onClickLabel = "新会话", onClick = onNewChat),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EvGlyph(EvGlyphKind.Plus, color = tokens.textPrimary, modifier = Modifier.size(18.dp))
+                }
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).clickable(onClickLabel = "更多", onClick = onMore),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EvGlyph(EvGlyphKind.More, color = tokens.textSecondary, modifier = Modifier.size(18.dp))
+                }
+            }
         }
-    }
-
-    /**
-     * Three tiny LEDs: model / tools / memory, live from the service directory. The lookups are
-     * map reads - cheap enough to run in composition, refreshing whenever the page recomposes
-     * (a turn ends, the draft changes, a panel opens or closes).
-     */
-    @Composable
-    private fun CapabilityDots() {
-        val dir = directory
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CapabilityDot(on = dir?.lookup(ModelService.Key) != null)
-            CapabilityDot(on = dir?.lookup(ToolRegistry.Key) != null)
-            CapabilityDot(on = dir?.lookup(MemoryService.Key) != null)
-        }
-    }
-
-    @Composable
-    private fun CapabilityDot(on: Boolean) {
-        Box(
-            Modifier
-                .padding(horizontal = 2.5.dp)
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(
-                    if (on) MiuixTheme.colorScheme.primary
-                    else MiuixTheme.colorScheme.onBackground.copy(alpha = 0.15f),
-                ),
-        )
     }
 
     /** Opened as a normal page: the management entry becomes a back arrow. */
     @Composable
     private fun PageTopBar(onBack: () -> Unit) {
+        val tokens = EvThemeTokens.colors
         Row(
             Modifier.fillMaxWidth().height(52.dp).padding(start = 4.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(44.dp).clickable { onBack() },
+                Modifier.size(44.dp).clickable(onClickLabel = "返回") { onBack() },
                 contentAlignment = Alignment.Center,
             ) {
-                EvGlyph(
-                    EvGlyphKind.Send,
-                    color = MiuixTheme.colorScheme.onBackground,
+                Icon(
+                    imageVector = EvIcons.ArrowBack,
+                    contentDescription = "返回",
+                    tint = tokens.textPrimary,
                     modifier = Modifier.size(20.dp),
                 )
             }
             Text(
                 text = pageTitle,
-                style = MiuixTheme.textStyles.subtitle,
-                color = MiuixTheme.colorScheme.onBackground,
-            )
-        }
-    }
-
-    @Composable
-    private fun StatChip(text: String) {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.08f))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-        ) {
-            Text(
-                text = text,
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                style = EvThemeTokens.type.title.style(tokens.textPrimary),
             )
         }
     }
@@ -898,6 +1082,9 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
     private companion object {
         /** Shown only when no plugin publishes AgentService: the original placeholder behaviour. */
         const val UNCONNECTED_PREFIX = "（未接模型）我收到了："
+
+        /** Rotating composer placeholders (spec §7.3); one is picked per conversation. */
+        val ComposerPlaceholders = listOf("交给 EV 去完成", "尽管问，带图也行")
 
         /**
          * Home suggestions, kept honest: every prompt maps to a capability that exists today

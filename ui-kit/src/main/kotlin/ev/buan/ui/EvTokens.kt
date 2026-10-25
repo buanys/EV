@@ -1,6 +1,6 @@
 package ev.buan.ui
 
-import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.TweenSpec
@@ -195,8 +195,13 @@ object EvMotionTokens {
     /** Pure alpha transitions — the only place a linear tween is allowed. */
     fun fadeFast(): TweenSpec<Float> = tween(FADE_FAST_MILLIS, easing = LinearEasing)
 
-    /** Honors the reduced-motion preference: any animated spec degrades to an instant switch. */
-    fun <T> reducedAware(reduced: Boolean, spec: () -> AnimationSpec<T>): AnimationSpec<T> =
+    /**
+     * Honors the reduced-motion preference: any animated spec degrades to an instant switch.
+     *
+     * Typed as [FiniteAnimationSpec] on purpose: transitions like `expandVertically`/`scaleIn`
+     * refuse the wider [AnimationSpec], and both `spring` and `snap` are finite anyway.
+     */
+    fun <T> reducedAware(reduced: Boolean, spec: () -> FiniteAnimationSpec<T>): FiniteAnimationSpec<T> =
         if (reduced) snap() else spec()
 }
 

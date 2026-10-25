@@ -333,8 +333,8 @@ public final class ev.buan.ui.EvMotionTokens {
     descriptor: ()Landroidx/compose/animation/core/SpringSpec;
   public final androidx.compose.animation.core.TweenSpec<java.lang.Float> fadeFast();
     descriptor: ()Landroidx/compose/animation/core/TweenSpec;
-  public final <T> androidx.compose.animation.core.AnimationSpec<T> reducedAware(boolean, kotlin.jvm.functions.Function0<? extends androidx.compose.animation.core.AnimationSpec<T>>);
-    descriptor: (ZLkotlin/jvm/functions/Function0;)Landroidx/compose/animation/core/AnimationSpec;
+  public final <T> androidx.compose.animation.core.FiniteAnimationSpec<T> reducedAware(boolean, kotlin.jvm.functions.Function0<? extends androidx.compose.animation.core.FiniteAnimationSpec<T>>);
+    descriptor: (ZLkotlin/jvm/functions/Function0;)Landroidx/compose/animation/core/FiniteAnimationSpec;
 public final class ev.buan.ui.EvPageKt {
   public static final void EvPage(java.lang.String, androidx.compose.ui.Modifier, kotlin.jvm.functions.Function0<kotlin.Unit>, kotlin.jvm.functions.Function3<? super androidx.compose.foundation.layout.RowScope, ? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, androidx.compose.foundation.layout.PaddingValues, kotlin.jvm.functions.Function1<? super androidx.compose.foundation.lazy.LazyListScope, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
     descriptor: (Ljava/lang/String;Landroidx/compose/ui/Modifier;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;Landroidx/compose/foundation/layout/PaddingValues;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
