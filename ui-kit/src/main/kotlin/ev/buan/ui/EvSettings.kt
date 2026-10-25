@@ -1,5 +1,6 @@
 package ev.buan.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -12,15 +13,18 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -85,10 +89,11 @@ fun EvSettingsRow(
             }
         }
         when (trailing) {
-            EvSettingsTrailing.Chevron -> EvGlyph(
-                EvGlyphKind.Send,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.size(12.dp),
+            EvSettingsTrailing.Chevron -> Image(
+                imageVector = MiuixIcons.ChevronForward,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.onSurfaceVariantSummary),
             )
 
             EvSettingsTrailing.Switch -> EvSwitch(
@@ -112,23 +117,11 @@ fun EvSettingsDivider() {
     )
 }
 
-/** Minimal switch; Miuix's own is not part of the shared surface. */
+/**
+ * One switch for the whole product. Miuix owns the track, the thumb and the animation; the only
+ * reason this wrapper exists is to keep the ui-kit surface stable for plugins.
+ */
 @Composable
 fun EvSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Box(
-        Modifier.size(width = 44.dp, height = 26.dp)
-            .clip(CircleShape)
-            .background(
-                if (checked) MiuixTheme.colorScheme.primary
-                else MiuixTheme.colorScheme.onBackground.copy(alpha = 0.16f),
-            )
-            .clickable { onCheckedChange(!checked) }
-            .padding(3.dp),
-        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
-    ) {
-        Box(
-            Modifier.size(20.dp).clip(CircleShape)
-                .background(if (checked) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onBackground),
-        )
-    }
+    Switch(checked = checked, onCheckedChange = onCheckedChange)
 }

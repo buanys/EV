@@ -50,61 +50,17 @@ fun EtaSettingsScreen(
         modifier = modifier,
         onBack = onBack,
     ) {
+        // Appearance belongs to the host: the theme is applied above every plugin, so the host owns
+        // the store and the only editor. This is a pointer, not a second set of controls - having
+        // both surfaces write the same state is what made the two pages look duplicated.
         item { EvSettingsSection("外观") }
         item {
             EvSettingsGroup {
                 EvSettingsRow(
-                    title = "主题模式",
+                    title = "主题与显示",
                     glyph = EvGlyphKind.Sparkle,
-                    summary = current.themeMode.label(),
-                    onClick = { appearance.update { state -> state.copy(themeMode = state.themeMode.next()) } },
-                )
-                EvSettingsDivider()
-                EvSettingsRow(
-                    title = "Monet 取色",
-                    glyph = EvGlyphKind.Screen,
-                    summary = "按壁纸生成主题色",
-                    trailing = EvSettingsTrailing.Switch,
-                    checked = current.monetEnabled,
-                    onCheckedChange = { value ->
-                        appearance.update { state -> state.copy(monetEnabled = value) }
-                    },
-                )
-                EvSettingsDivider()
-                EvSettingsRow(
-                    title = "调色板",
-                    glyph = EvGlyphKind.Grid,
-                    summary = current.paletteStyle.label(),
-                    onClick = { appearance.update { state -> state.copy(paletteStyle = state.paletteStyle.next()) } },
-                )
-                EvSettingsDivider()
-                EvSettingsRow(
-                    title = "强调色",
-                    glyph = EvGlyphKind.Bell,
-                    summary = current.accentColor.label(),
-                    onClick = { appearance.update { state -> state.copy(accentColor = state.accentColor.next()) } },
-                )
-                EvSettingsDivider()
-                EvSettingsRow(
-                    title = "纯黑背景",
-                    glyph = EvGlyphKind.Lock,
-                    summary = "深色模式下背景与卡片全黑",
-                    trailing = EvSettingsTrailing.Switch,
-                    checked = current.pureBlackEnabled,
-                    onCheckedChange = { value ->
-                        appearance.update { state -> state.copy(pureBlackEnabled = value) }
-                    },
-                )
-                EvSettingsDivider()
-                EvSettingsRow(
-                    title = "界面缩放",
-                    glyph = EvGlyphKind.Doc,
-                    summary = "${(current.interfaceScale * 100).roundToInt()}%",
-                    onClick = {
-                        appearance.update { state ->
-                            state.copy(interfaceScale = state.interfaceScale.nextInterfaceScale())
-                        }
-                    },
+                    summary = "${current.themeMode.label()} · ${(current.interfaceScale * 100).roundToInt()}%",
+                    onClick = onOpenHostSettings,
                 )
             }
         }
