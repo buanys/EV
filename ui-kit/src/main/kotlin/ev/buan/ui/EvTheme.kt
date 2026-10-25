@@ -59,6 +59,18 @@ fun EvTheme(
         }
     }
 
+    // EV token layer (docs/design/EV-UI设计规范.md): the Miuix scheme drives material widgets,
+    // while chat bubbles, status capsules and motion read these tokens. Monet supplies the accent;
+    // without it the brand accent from the spec applies.
+    val accent = if (appearance.monetEnabled) themed.primary else EvAccentDefault
+    val colorTokens = remember(isDark, appearance.pureBlackEnabled, accent) {
+        if (isDark) {
+            evDarkColorTokens(accent = accent, pureBlack = appearance.pureBlackEnabled)
+        } else {
+            evLightColorTokens(accent = accent)
+        }
+    }
+
     MiuixTheme(colors = themed) {
         val platformDensity: Density = LocalDensity.current
         val scaledDensity = remember(platformDensity, appearance.interfaceScale) {
@@ -76,6 +88,10 @@ fun EvTheme(
             LocalBlurEnabled provides appearance.blurEnabled,
             LocalPlatformDensity provides platformDensity,
             LocalDensity provides scaledDensity,
+            LocalEvColorTokens provides colorTokens,
+            LocalEvTypeTokens provides DefaultEvTypeTokens,
+            LocalEvSpacingTokens provides DefaultEvSpacingTokens,
+            LocalEvRadiusTokens provides DefaultEvRadiusTokens,
         ) {
             content()
         }

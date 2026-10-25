@@ -40,6 +40,7 @@ class AppearanceStore(private val context: Context) {
                 pureBlackEnabled = json.optBoolean("pureBlackEnabled", false),
                 blurEnabled = json.optBoolean("blurEnabled", true),
                 interfaceScale = json.optDouble("interfaceScale", DEFAULT_INTERFACE_SCALE.toDouble()).toFloat(),
+                reducedMotionEnabled = json.optBoolean("reducedMotionEnabled", false),
             )
         }.getOrDefault(EvAppearance())
     }
@@ -53,6 +54,7 @@ class AppearanceStore(private val context: Context) {
             .put("pureBlackEnabled", appearance.pureBlackEnabled)
             .put("blurEnabled", appearance.blurEnabled)
             .put("interfaceScale", appearance.interfaceScale.toDouble())
+            .put("reducedMotionEnabled", appearance.reducedMotionEnabled)
         preferences.edit().putString(KEY, json.toString()).apply()
     }
 

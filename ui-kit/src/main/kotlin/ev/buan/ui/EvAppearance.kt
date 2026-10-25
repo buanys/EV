@@ -22,6 +22,11 @@ data class EvAppearance(
     val pureBlackEnabled: Boolean = false,
     val blurEnabled: Boolean = true,
     val interfaceScale: Float = DEFAULT_INTERFACE_SCALE,
+    /**
+     * Reduce all motion to instant switches (spec §6.4). The host should default this to the
+     * system "remove animations" accessibility setting; the user toggle overrides it.
+     */
+    val reducedMotionEnabled: Boolean = false,
 ) {
     fun normalized(): EvAppearance = copy(interfaceScale = normalizeInterfaceScale(interfaceScale))
 }
