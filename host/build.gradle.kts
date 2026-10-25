@@ -142,7 +142,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.20")
 }
 
-// 内置 seed 插件已移除（hello 是实验插件，2026-10-25 摘除构建）。
+// 内置 seed 插件已移除（实验插件 hello 于 2026-10-25 连同其他实验插件一并删除）。
 // 宿主运行时的 assets/plugins/android 扫描机制（PluginInstaller.collectBundled）保留：
 // 以后需要内置插件时，往该 assets 目录放 APK 即可，无需改运行时代码。
 

@@ -48,6 +48,6 @@ include(":plugins:agent-brain")
 include(":plugins:agent-web")
 include(":plugins:agent-shell")
 
-// 已摘除的实验插件（代码保留在 plugins/ 下，不参与构建；需要验证机制时再临时挂回）：
-//   hello, probe, coldapi, ping-api, ping-impl, ping-ui
-// frontend（旧聊天兜底）已于 2026-10-25 删除，eta-ui 是唯一界面插件。
+// 实验插件（hello, probe, coldapi, ping-api, ping-impl, ping-ui）已于 2026-10-25 删除：
+// 它们不参与构建，唯一的作用是每次 ui-kit 契约变更后还要跟着重编一遍。
+// frontend（旧聊天兜底）同期删除，eta-ui 是唯一界面插件。
