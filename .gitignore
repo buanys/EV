@@ -21,3 +21,6 @@ keystore.properties
 .agent-teams/
 .graphflow/
 graphflow-out/
+
+# 本地参考的姊妹项目（自带 .git，含 62MB rootfs 资产），不进本仓库
+kcode/
