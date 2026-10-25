@@ -516,7 +516,13 @@ class HostRuntime(private val context: AndroidContext) {
             failures[plugin.id] = "启动超时（${START_TIMEOUT_MS / 1000} 秒）"
             runCatching { scopeFiber?.dispose() }
         } catch (error: Throwable) {
-            failures[plugin.id] = error.toString()
+            // The card must show *why*, not just the wrapper type: a reflective loader failure
+            // surfaces as InvocationTargetException whose cause names the missing class or method,
+            // and that cause is the only actionable part of the report.
+            android.util.Log.e("EV", "plugin ${plugin.id} activation failed", error)
+            failures[plugin.id] = generateSequence(error) { it.cause }
+                .map { "${it.javaClass.name}: ${it.message.orEmpty()}" }
+                .joinToString("  ←  ")
             runCatching { scopeFiber?.dispose() }
         }
     }
