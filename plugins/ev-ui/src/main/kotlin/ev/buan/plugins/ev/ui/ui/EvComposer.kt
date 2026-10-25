@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -129,33 +130,44 @@ fun EvComposer(
         label = "composerField",
     )
 
-    Column(
+    // Two-state continuous morph (spec §7.3): the card is one layout at all times. Resting, the two
+    // actions sit in the same row as the field; active, the field grows upward and the same two
+    // instances slide down onto their own row. Nothing is created or destroyed on the way, which is
+    // what made the previous version read as a hard cut.
+    val actionSize = EvComposerDefaults.ActionSize
+    val actionDrop by animateDpAsState(
+        targetValue = if (active) EvComposerDefaults.FieldMinActive + 10.dp else 0.dp,
+        animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.snappy() },
+        label = "composerActionDrop",
+    )
+    val sideInset by animateDpAsState(
+        targetValue = if (active) 2.dp else actionSize + 4.dp,
+        animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.snappy() },
+        label = "composerSideInset",
+    )
+    val toolbarReserve by animateDpAsState(
+        targetValue = if (active) actionSize + 4.dp else 0.dp,
+        animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.snappy() },
+        label = "composerToolbarReserve",
+    )
+
+    Box(
         modifier.fillMaxWidth()
             .padding(horizontal = EvComposerDefaults.SidePadding, vertical = 10.dp)
-            // The card owns the whole shape: resting it is a one-row capsule, active it becomes two
-            // rows - input area on top, a dedicated toolbar row underneath (spec §7.3). Keeping the
-            // toolbar in the same row as the text is what forced the field to look like a tall box
-            // with a gap in it.
             .clip(RoundedCornerShape(radius))
-            .background(containerColor)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .background(containerColor),
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = if (active) Alignment.Top else Alignment.CenterVertically,
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .padding(bottom = toolbarReserve),
         ) {
-            if (!active) {
-                PlusButton(active = plusActive, onClick = onPlus)
-            }
             Box(
                 Modifier
-                    .weight(1f)
-                    .padding(horizontal = 4.dp, vertical = 4.dp)
-                    // The minimum height belongs to the container, not to the field: with it on the
-                    // field a one-line message is pinned to the top of a tall box, leaving a gap
-                    // underneath. Centred here, one line sits in the middle and multi-line input
-                    // still grows the container because the field is taller than the minimum.
-                    .heightIn(min = fieldMinHeight, max = EvComposerDefaults.FieldMaxActive),
+                    .fillMaxWidth()
+                    .heightIn(min = fieldMinHeight, max = EvComposerDefaults.FieldMaxActive)
+                    .padding(start = sideInset, end = sideInset),
                 contentAlignment = if (active) Alignment.TopStart else Alignment.CenterStart,
             ) {
                 if (value.isEmpty()) {
@@ -179,27 +191,26 @@ fun EvComposer(
                         },
                 )
             }
-            if (!active) {
-                SendKey(value = value, busy = busy, onMic = onMic, onSend = onSend, onStop = onStop)
-            }
         }
-        if (active) {
-            // Dedicated toolbar row: `+` on the left, mic/send on the right, hugging both edges.
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PlusButton(active = plusActive, onClick = onPlus)
-                Spacer(Modifier.weight(1f))
-                SendKey(value = value, busy = busy, onMic = onMic, onSend = onSend, onStop = onStop)
-            }
-        }
+        PlusButton(
+            active = plusActive,
+            onClick = onPlus,
+            modifier = Modifier.align(Alignment.TopStart).offset(x = 2.dp, y = actionDrop),
+        )
+        SendKey(
+            value = value,
+            busy = busy,
+            onMic = onMic,
+            onSend = onSend,
+            onStop = onStop,
+            modifier = Modifier.align(Alignment.TopEnd).offset(x = (-2).dp, y = actionDrop),
+        )
     }
 }
 
 /** The `+` that opens the L1 panel; it rotates into a × while the panel is up. */
 @Composable
-private fun PlusButton(active: Boolean, onClick: () -> Unit) {
+private fun PlusButton(active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val tokens = EvThemeTokens.colors
     val reduced = EvThemeTokens.reducedMotion
     val rotation by animateFloatAsState(
@@ -213,7 +224,7 @@ private fun PlusButton(active: Boolean, onClick: () -> Unit) {
         label = "plusTint",
     )
     Box(
-        Modifier
+        modifier
             .size(EvComposerDefaults.ActionSize)
             .clip(CircleShape)
             .clickable(onClickLabel = "更多功能", onClick = onClick),
@@ -238,6 +249,7 @@ private fun SendKey(
     onMic: (() -> Unit)?,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val tokens = EvThemeTokens.colors
     val reduced = EvThemeTokens.reducedMotion
@@ -255,7 +267,7 @@ private fun SendKey(
         label = "sendDisc",
     )
     Box(
-        Modifier
+        modifier
             .size(EvComposerDefaults.ActionSize)
             .clip(CircleShape)
             .background(disc)
