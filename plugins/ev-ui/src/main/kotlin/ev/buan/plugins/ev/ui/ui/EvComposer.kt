@@ -140,6 +140,9 @@ fun EvComposer(
         animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.snappy() },
         label = "composerActionDrop",
     )
+    // Springs overshoot on purpose (spec §6.2), but padding() rejects negative values, so anything
+    // that ends up as padding is clamped. Crash that proved it: "Padding must be non-negative" at
+    // this file while the inset sprang back from 40dp to 2dp and crossed zero.
     val sideInset by animateDpAsState(
         targetValue = if (active) 2.dp else actionSize + 4.dp,
         animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.snappy() },
@@ -150,6 +153,8 @@ fun EvComposer(
         animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.snappy() },
         label = "composerToolbarReserve",
     )
+    val safeSideInset = sideInset.coerceAtLeast(0.dp)
+    val safeToolbarReserve = toolbarReserve.coerceAtLeast(0.dp)
 
     Box(
         modifier.fillMaxWidth()
@@ -161,13 +166,13 @@ fun EvComposer(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 6.dp)
-                .padding(bottom = toolbarReserve),
+                .padding(bottom = safeToolbarReserve),
         ) {
             Box(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = fieldMinHeight, max = EvComposerDefaults.FieldMaxActive)
-                    .padding(start = sideInset, end = sideInset),
+                    .padding(start = safeSideInset, end = safeSideInset),
                 contentAlignment = if (active) Alignment.TopStart else Alignment.CenterStart,
             ) {
                 if (value.isEmpty()) {
