@@ -91,6 +91,43 @@ class PluginInstaller(
 
     fun hasAllFilesAccess(): Boolean = Environment.isExternalStorageManager()
 
+    /**
+     * Deletes one container from the external mods directory: the jar and its sidecar json.
+     *
+     * Plugin *storage* is deliberately untouched - "卸载" removes the code, not the user's data,
+     * and the management page offers "清理" separately for that. The private mirror is refreshed by
+     * the next [sync], which no longer finds these files and drops them.
+     *
+     * Returns the names that were actually removed, so the caller can report a partial failure
+     * instead of claiming success.
+     */
+    fun removeExternal(id: String): List<String> {
+        val targets = listOf("$id.jar", "$id.json")
+        val removed = mutableListOf<String>()
+        for (name in targets) {
+            val file = File(externalRoot, name)
+            if (file.isFile && file.delete()) removed += name
+        }
+        return removed
+    }
+
+    /**
+     * Copies a user-picked container into the external mods directory.
+     *
+     * The name is kept verbatim: sidecar lookup is by the jar's own file name, so renaming here
+     * would silently detach a jar from its metadata. An existing file is replaced only when
+     * [overwrite] is set, so importing twice is an explicit decision.
+     */
+    fun importExternal(source: File, fileName: String, overwrite: Boolean): File? {
+        if (!externalRoot.isDirectory && !externalRoot.mkdirs()) return null
+        val target = File(externalRoot, fileName)
+        if (target.exists() && !overwrite) return null
+        return runCatching {
+            source.copyTo(target, overwrite = true)
+            target
+        }.getOrNull()
+    }
+
     suspend fun sync(): SyncResult = withContext(Dispatchers.IO) {
         val errors = mutableListOf<String>()
         privateRoot.mkdirs()

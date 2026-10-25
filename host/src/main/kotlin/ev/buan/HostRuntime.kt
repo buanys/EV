@@ -348,6 +348,25 @@ class HostRuntime(private val context: AndroidContext) {
         }
 
     /**
+     * Removes one plugin: stops it, deletes its container from the mods directory, forgets its
+     * enable preference.
+     *
+     * Storage is deliberately kept - that is what "清理" is for. A bundled plugin has no external
+     * file to delete, so it simply disappears from this launch's registry and comes back on the
+     * next start; the returned [HostState] is unchanged either way, and the caller reports what
+     * actually happened. A restart is required because other plugins may hold a live reference to
+     * the removed one.
+     */
+    suspend fun uninstall(id: String): HostState = withContext(Dispatchers.IO) {
+        deactivate(id)
+        installed.remove(id)
+        failures.remove(id)
+        runCatching { installer.removeExternal(id) }
+        preferences.edit().remove(key(id)).apply()
+        snapshot()
+    }
+
+    /**
      * Deletes one plugin's stored files (management "清理") and restarts it when enabled, so the
      * plugin starts from an empty area. This and uninstall are the only deletions: disabling keeps
      * the plugin's data.

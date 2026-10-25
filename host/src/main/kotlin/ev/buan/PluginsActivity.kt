@@ -9,17 +9,25 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,9 +35,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import ev.buan.hostcore.storage.PluginStorageFiles
@@ -42,12 +55,16 @@ import ev.buan.ui.evSystemBarsPadding
 import ev.buan.ui.StatusError
 import ev.buan.ui.StatusWarning
 import java.time.Instant
+import java.io.File
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.cordis.api.AgentUi
 import org.cordis.api.HostPermission
+import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -79,6 +96,25 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostRuntime) {
     var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(activity)) }
     var state by remember { mutableStateOf<HostUiState>(HostUiState.Loading) }
     val scope = rememberCoroutineScope()
+    // These live in the composable scope, not inside `EvPage { }`: that content lambda is a
+    // LazyListScope, where remember and the activity-result launcher cannot be called.
+    var query by remember { mutableStateOf("") }
+    var pendingUninstall by remember { mutableStateOf<String?>(null) }
+    val importer = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val ok = importContainer(activity, uri)
+                state = HostUiState.Ready(runtime.start())
+                Toast.makeText(
+                    activity,
+                    if (ok) "已导入，重启 EV 后生效" else "导入失败：无法读取该文件",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         granted = hasAllFilesAccess()
@@ -145,16 +181,33 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostRuntime) {
                         }
                     }
                 }
+                item(key = "search") {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SearchField(
+                            value = query,
+                            onValueChange = { query = it },
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        CardAction(label = "导入") {
+                            importer.launch(arrayOf("*/*"))
+                        }
+                    }
+                }
                 if (ready.cards.isEmpty() && ready.errors.isEmpty()) {
                     item { EmptyHint() }
                 }
-                ready.cards.forEach { card ->
+                ready.cards.filter { it.matches(query) }.forEach { card ->
                     item(key = "header:${card.id}") {
                         Spacer(Modifier.height(8.dp))
                     }
                     item(key = card.id) {
                         PluginSection(
                             card = card,
+                            confirming = pendingUninstall == card.id,
                             onToggle = { id, enabled ->
                                 scope.launch { state = HostUiState.Ready(runtime.setEnabled(id, enabled)) }
                             },
@@ -169,6 +222,17 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostRuntime) {
                             onOpenPage = { id ->
                                 activity.startActivity(PluginPageActivity.intent(activity, id))
                             },
+                            onUninstall = { id -> pendingUninstall = id },
+                            onConfirmUninstall = {
+                                val id = pendingUninstall
+                                pendingUninstall = null
+                                if (id != null) {
+                                    scope.launch {
+                                        state = HostUiState.Ready(runtime.uninstall(id))
+                                    }
+                                }
+                            },
+                            onCancelUninstall = { pendingUninstall = null },
                         )
                     }
                 }
@@ -236,104 +300,180 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostRuntime) {
     }
 }
 
+/**
+ * One plugin as a KernelSU-style module card: name and version on top, the switch on the right,
+ * one action row underneath ("打开" / "卸载"), and the permission + storage detail folded away
+ * until the card is tapped.
+ *
+ * Uninstall is a two-step confirm rendered inside the card rather than a dialog: the card is
+ * already the thing being acted on, so asking next to it keeps the target and the question in one
+ * place and avoids pulling a dialog API into a page that has no other modal.
+ */
 @Composable
 private fun PluginSection(
     card: PluginCard,
+    confirming: Boolean,
     onToggle: (String, Boolean) -> Unit,
     onPermission: (String, HostPermission, Boolean) -> Unit,
     onClearStorage: (String) -> Unit,
     onOpenPage: (String) -> Unit,
+    onUninstall: (String) -> Unit,
+    onConfirmUninstall: () -> Unit,
+    onCancelUninstall: () -> Unit,
 ) {
-    EvPreferenceGroup {
-        EvPreferenceRow(
-            title = card.id,
-            summary = buildString {
-                append('v').append(card.version).append("  ·  api ").append(card.apiVersion)
-                if (!card.signed) append("  ·  未签名")
-            },
-            endActions = {
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onToggle(card.id, !card.enabled) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                ) {
+    var expanded by remember(card.id) { mutableStateOf(false) }
+    val colors = MiuixTheme.colorScheme
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(colors.surface)
+            .clickable { expanded = !expanded }
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = card.title.ifBlank { card.id },
+                    style = MiuixTheme.textStyles.subtitle,
+                    color = colors.onBackground,
+                )
+                Text(
+                    text = buildString {
+                        append("版本 ").append(card.version)
+                        append("  ·  api ").append(card.apiVersion)
+                        if (!card.signed) append("  ·  未签名")
+                    },
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = colors.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                if (card.body.isNotBlank()) {
                     Text(
-                        if (card.enabled) "已启用" else "已禁用",
+                        text = card.body,
                         style = MiuixTheme.textStyles.footnote1,
-                        color = if (card.enabled) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        color = colors.onSurfaceVariantSummary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
-            },
-        )
-        // Declared capabilities are always listed, even while the plugin is disabled or failed:
-        // this is the only place the user can grant them, and an ungranted declaration is exactly
-        // why a plugin may be sitting in the failure state.
-        val requested = HostPermission.entries.filter { it in card.requestedPermissions }
-        if (requested.isNotEmpty()) {
-            EvPreferenceDivider()
-            EvPreferenceRow(
-                title = "权限",
-                summary = "${requested.size} 项 · 插件声明的宿主能力",
-                enabled = false,
-            )
-            requested.forEach { permission ->
-                val granted = permission in card.grantedPermissions
-                EvPreferenceDivider()
-                EvPreferenceRow(
-                    title = permissionLabel(permission),
-                    summary = if (granted) "已授予，点击撤销" else "未授予，点击授予",
-                    onClick = { onPermission(card.id, permission, !granted) },
-                    endActions = {
-                        Text(
-                            if (granted) "已授予" else "未授予",
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = if (granted) MiuixTheme.colorScheme.primary else StatusWarning,
-                        )
-                    },
-                )
+            }
+            Box(Modifier.padding(start = 12.dp)) {
+                Switch(checked = card.enabled, onCheckedChange = { onToggle(card.id, it) })
             }
         }
-        // Storage stays visible for disabled and failed plugins too: usage is the host's accounting
-        // of this plugin's area, and clearing it is always available.
-        EvPreferenceDivider()
-        EvPreferenceRow(
-            title = "插件存储",
-            summary = "${formatBytes(card.storageBytes)} / ${formatBytes(PluginStorageFiles.DEFAULT_QUOTA_BYTES)}",
-            endActions = {
+
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // A plugin without a UI page still offers "打开" is pointless, so the action only
+            // appears when there is somewhere to go.
+            if (card.ui != null) {
+                CardAction(label = "打开") { onOpenPage(card.id) }
+                Spacer(Modifier.width(10.dp))
+            }
+            CardAction(label = "清理") { onClearStorage(card.id) }
+            Spacer(Modifier.weight(1f))
+            CardAction(label = "卸载", danger = true) { onUninstall(card.id) }
+        }
+
+        if (confirming) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "卸载只删除 EV/mods 里的容器文件，插件存储的数据会保留。重启 EV 后生效。",
+                style = MiuixTheme.textStyles.footnote1,
+                color = colors.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CardAction(label = "取消") { onCancelUninstall() }
+                Spacer(Modifier.weight(1f))
+                CardAction(label = "确认卸载", danger = true) { onConfirmUninstall() }
+            }
+        }
+
+        if (expanded) {
+            val requested = HostPermission.entries.filter { it in card.requestedPermissions }
+            if (requested.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
                 Text(
-                    "清理",
+                    text = "权限",
                     style = MiuixTheme.textStyles.footnote1,
-                    color = if (card.storageBytes > 0) {
-                        MiuixTheme.colorScheme.primary
-                    } else {
-                        MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    },
+                    color = colors.onSurfaceVariantSummary,
                 )
-            },
-            onClick = { onClearStorage(card.id) },
-        )
-        if (card.error != null || !card.enabled) {
-            EvPreferenceDivider()
-            EvPreferenceRow(
-                title = card.error ?: "已禁用，不会加载",
-                enabled = false,
-            )
-        } else if (card.ui != null) {
-            EvPreferenceDivider()
-            EvPreferenceRow(
-                title = "打开页面",
-                summary = "以独立 Activity 全屏运行",
-                onClick = { onOpenPage(card.id) },
-            )
-            EvPreferenceDivider()
-            Box(Modifier.fillMaxWidth().padding(12.dp)) {
-                card.ui.Content(Modifier.fillMaxWidth())
+                requested.forEach { permission ->
+                    val granted = permission in card.grantedPermissions
+                    Row(
+                        Modifier.fillMaxWidth().clickable {
+                            onPermission(card.id, permission, !granted)
+                        }.padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = permissionLabel(permission),
+                            style = MiuixTheme.textStyles.body1,
+                            color = colors.onBackground,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = if (granted) "已授予" else "未授予",
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = if (granted) colors.primary else StatusWarning,
+                        )
+                    }
+                }
             }
-        } else if (card.body.isNotEmpty()) {
-            EvPreferenceDivider()
-            EvPreferenceRow(title = card.title, summary = card.body)
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "存储 ${formatBytes(card.storageBytes)} / ${formatBytes(PluginStorageFiles.DEFAULT_QUOTA_BYTES)}",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = colors.onSurfaceVariantSummary,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "清理",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = colors.primary,
+                )
+            }
+            if (card.error != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = card.error,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = StatusError,
+                )
+            } else if (!card.enabled) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "已禁用，不会加载",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = colors.onSurfaceVariantSummary,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun CardAction(label: String, danger: Boolean = false, onClick: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier
+            .clip(shape)
+            .border(1.dp, colors.onSurfaceVariantSummary.copy(alpha = 0.30f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+    ) {
+        Text(
+            text = label,
+            style = MiuixTheme.textStyles.footnote1,
+            color = if (danger) StatusError else colors.primary,
+        )
     }
 }
 
@@ -447,5 +587,71 @@ private fun ComponentActivity.requestNotificationPermission() {
 
 private fun hasNotificationPermission(context: android.content.Context): Boolean =
     context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+
+/** Case-insensitive match over the two fields the card actually shows. */
+private fun PluginCard.matches(query: String): Boolean {
+    if (query.isBlank()) return true
+    val needle = query.trim()
+    return id.contains(needle, ignoreCase = true) || title.contains(needle, ignoreCase = true)
+}
+
+@Composable
+private fun SearchField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val colors = MiuixTheme.colorScheme
+    Box(
+        modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.surface)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        if (value.isEmpty()) {
+            Text(
+                text = "搜索插件",
+                style = MiuixTheme.textStyles.footnote1,
+                color = colors.onSurfaceVariantSummary,
+            )
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(fontSize = 14.sp, color = colors.onBackground),
+            cursorBrush = SolidColor(colors.primary),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * Copies a picked container into `EV/mods`.
+ *
+ * The display name is kept as-is: the sidecar json is looked up by the jar's own file name, so
+ * renaming here would detach a plugin from its metadata. A restart is required afterwards because
+ * sync runs at launch.
+ */
+private suspend fun importContainer(activity: ComponentActivity, uri: Uri): Boolean =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            val name = displayNameOf(activity, uri)
+                ?: "imported-${System.currentTimeMillis()}.jar"
+            val dir = File(Environment.getExternalStorageDirectory(), "EV/mods")
+            if (!dir.isDirectory && !dir.mkdirs()) return@runCatching false
+            val input = activity.contentResolver.openInputStream(uri) ?: return@runCatching false
+            input.use { source ->
+                File(dir, name).outputStream().use { target -> source.copyTo(target) }
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+private fun displayNameOf(context: android.content.Context, uri: Uri): String? = runCatching {
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+    }
+}.getOrNull()
 
 private fun externalModsPath(): String = "${Environment.getExternalStorageDirectory().path}/EV/mods"
