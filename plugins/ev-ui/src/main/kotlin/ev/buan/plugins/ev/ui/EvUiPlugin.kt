@@ -1,4 +1,4 @@
-package ev.buan.plugins.eta.ui
+package ev.buan.plugins.ev.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.expandVertically
@@ -47,26 +47,26 @@ import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelProviderService
 import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolRegistry
-import ev.buan.plugins.eta.ui.ui.EtaBrowserScreen
-import ev.buan.plugins.eta.ui.ui.EtaCharactersScreen
-import ev.buan.plugins.eta.ui.ui.EtaDrawerContent
-import ev.buan.plugins.eta.ui.ui.EtaHistoryGroup
-import ev.buan.plugins.eta.ui.ui.EtaMemoryScreen
-import ev.buan.plugins.eta.ui.ui.EtaModelProvidersScreen
-import ev.buan.plugins.eta.ui.ui.EtaSessionSummary
-import ev.buan.plugins.eta.ui.ui.EtaSettingsScreen
-import ev.buan.plugins.eta.ui.ui.EtaSkillsScreen
-import ev.buan.plugins.eta.ui.ui.EtaToolsScreen
-import ev.buan.plugins.eta.ui.ui.EvApprovalDialog
-import ev.buan.plugins.eta.ui.ui.EvChatBubble
-import ev.buan.plugins.eta.ui.ui.EvChatDefaults
-import ev.buan.plugins.eta.ui.ui.EvMessageEntry
-import ev.buan.plugins.eta.ui.ui.EvComposer
-import ev.buan.plugins.eta.ui.ui.EvComposerAction
-import ev.buan.plugins.eta.ui.ui.EvComposerPanel
-import ev.buan.plugins.eta.ui.ui.EvHomeHero
-import ev.buan.plugins.eta.ui.ui.EvSuggestion
-import ev.buan.plugins.eta.ui.ui.EvTypingIndicator
+import ev.buan.plugins.ev.ui.ui.EvBrowserScreen
+import ev.buan.plugins.ev.ui.ui.EvCharactersScreen
+import ev.buan.plugins.ev.ui.ui.EvDrawerContent
+import ev.buan.plugins.ev.ui.ui.EvHistoryGroup
+import ev.buan.plugins.ev.ui.ui.EvMemoryScreen
+import ev.buan.plugins.ev.ui.ui.EvModelProvidersScreen
+import ev.buan.plugins.ev.ui.ui.EvSessionSummary
+import ev.buan.plugins.ev.ui.ui.EvSettingsScreen
+import ev.buan.plugins.ev.ui.ui.EvSkillsScreen
+import ev.buan.plugins.ev.ui.ui.EvToolsScreen
+import ev.buan.plugins.ev.ui.ui.EvApprovalDialog
+import ev.buan.plugins.ev.ui.ui.EvChatBubble
+import ev.buan.plugins.ev.ui.ui.EvChatDefaults
+import ev.buan.plugins.ev.ui.ui.EvMessageEntry
+import ev.buan.plugins.ev.ui.ui.EvComposer
+import ev.buan.plugins.ev.ui.ui.EvComposerAction
+import ev.buan.plugins.ev.ui.ui.EvComposerPanel
+import ev.buan.plugins.ev.ui.ui.EvHomeHero
+import ev.buan.plugins.ev.ui.ui.EvSuggestion
+import ev.buan.plugins.ev.ui.ui.EvTypingIndicator
 import ev.buan.ui.EvDrawerScaffold
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
@@ -110,7 +110,7 @@ private enum class SettingsChild {
 }
 
 /**
- * Chat page, shipped as a jar plugin. The shell follows Eta's home and drawer; conversation state
+ * Chat page, shipped as a jar plugin. The shell follows Ev's home and drawer; conversation state
  * lives here, while the actual agent is whichever plugin publishes [AgentService].
  *
  * Implements AgentPage rather than AgentUi because draft text, the active session and the drawer
@@ -126,10 +126,10 @@ private enum class SettingsChild {
  * Capability used: `PLUGIN_STORAGE`, declared in the container metadata. The host does not lend the
  * storage service until the user grants it (ADR-0003), so an ungranted install keeps no history.
  */
-class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
-    override val name = "eta-ui"
-    override val title = "Eta UI"
-    override val body = "Eta 风格的对话界面"
+class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
+    override val name = "ev-ui"
+    override val title = "EV UI"
+    override val body = "EV 风格的对话界面"
     override val pageTitle = "聊天"
 
     override val inject: Dependencies =
@@ -167,13 +167,13 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
      * the same per-session selection, and a character saved on one surface has to be selectable on
      * the other without a restart.
      */
-    private val characters = mutableStateListOf<EtaCharacter>()
+    private val characters = mutableStateListOf<EvCharacter>()
 
     /**
      * The skills library this plugin instance owns, newest first - same scope and reasons as
      * [characters]. A skill is only text: it never runs, it is folded into the turn's system prompt.
      */
-    private val skills = mutableStateListOf<EtaSkill>()
+    private val skills = mutableStateListOf<EvSkill>()
 
     /**
      * The session a turn is running for, shared for the same reason as [sessions]: two surfaces
@@ -228,7 +228,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         }
     }
 
-    private fun newSessionId(): String = "ev.buan.plugins.eta.ui/${UUID.randomUUID()}"
+    private fun newSessionId(): String = "ev.buan.plugins.ev.ui/${UUID.randomUUID()}"
 
     private fun newSession(): ChatSession =
         ChatSession(newSessionId(), DEFAULT_SESSION_TITLE, emptyList(), System.currentTimeMillis())
@@ -324,14 +324,14 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         }
 
         /** Replaces the library contents in place, so both surfaces see the new list, then persists. */
-        fun replaceCharacters(next: List<EtaCharacter>) {
+        fun replaceCharacters(next: List<EvCharacter>) {
             characters.clear()
             characters.addAll(next)
             persistCharacters()
         }
 
         /** Replaces the skills library contents in place, then persists. */
-        fun replaceSkills(next: List<EtaSkill>) {
+        fun replaceSkills(next: List<EvSkill>) {
             skills.clear()
             skills.addAll(next)
             persistSkills()
@@ -499,7 +499,12 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         }
 
         LaunchedEffect(activeSession.id, activeSession.messages.lastOrNull()?.id, replying) {
-            if (activeSession.messages.isNotEmpty()) listState.animateScrollToItem(0)
+            // Follow the newest entry: the typing indicator when it is showing, otherwise the last
+            // message. The list is top-aligned now, so "newest" is the bottom of the content.
+            val last = activeSession.messages.lastIndex + if (replying) 1 else 0
+            if (activeSession.messages.isNotEmpty() && last >= 0) {
+                listState.animateScrollToItem(last)
+            }
         }
 
         val appearanceService = appearance
@@ -509,26 +514,26 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 // A second-level settings page: back returns to the settings root, not to the chat,
                 // and the system back button walks the same path (see the BackHandler above).
                 when (child) {
-                    SettingsChild.Models -> EtaModelProvidersScreen(
+                    SettingsChild.Models -> EvModelProvidersScreen(
                         service = { directory?.lookup(ModelProviderService.Key) },
                         onBack = { settingsChild = null },
                         modifier = modifier,
                     )
 
-                    SettingsChild.Tools -> EtaToolsScreen(
+                    SettingsChild.Tools -> EvToolsScreen(
                         registry = { directory?.lookup(ToolRegistry.Key) },
                         onBack = { settingsChild = null },
                         modifier = modifier,
                     )
 
-                    SettingsChild.Memory -> EtaMemoryScreen(
+                    SettingsChild.Memory -> EvMemoryScreen(
                         sessionId = activeSession.id,
                         memory = { directory?.lookup(MemoryService.Key) },
                         onBack = { settingsChild = null },
                         modifier = modifier,
                     )
 
-                    SettingsChild.Characters -> EtaCharactersScreen(
+                    SettingsChild.Characters -> EvCharactersScreen(
                         characters = characters,
                         selectedId = activeSession.characterId,
                         onBack = { settingsChild = null },
@@ -540,7 +545,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         modifier = modifier,
                     )
 
-                    SettingsChild.Skills -> EtaSkillsScreen(
+                    SettingsChild.Skills -> EvSkillsScreen(
                         skills = skills,
                         selectedId = activeSession.skillId,
                         onBack = { settingsChild = null },
@@ -557,7 +562,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             // Settings replaces the conversation rather than covering it: the chat keeps its state
             // (draft, scroll position, active session) because everything is remembered above this
             // branch, and the BackHandler installed above turns system back into "close".
-            EtaSettingsScreen(
+            EvSettingsScreen(
                 appearance = appearanceService,
                 onBack = { showSettings = false },
                 onOpenPlugins = { navigation?.openPluginManager() },
@@ -575,7 +580,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         if (showTools) {
             // Looked up per read, never cached: the tools plugin may be enabled or disabled while
             // this page is open, and the panel has a refresh action for exactly that.
-            EtaToolsScreen(
+            EvToolsScreen(
                 registry = { directory?.lookup(ToolRegistry.Key) },
                 onBack = { showTools = false },
                 modifier = modifier,
@@ -584,14 +589,14 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         }
 
         if (showBrowser) {
-            EtaBrowserScreen(onBack = { showBrowser = false }, modifier = modifier)
+            EvBrowserScreen(onBack = { showBrowser = false }, modifier = modifier)
             return
         }
 
         if (showMemory) {
             // The memory plugin may be enabled, disabled or reconfigured while the page is open: the
             // service is looked up on every read, and the panel has a refresh action for exactly that.
-            EtaMemoryScreen(
+            EvMemoryScreen(
                 sessionId = activeSession.id,
                 memory = { directory?.lookup(MemoryService.Key) },
                 onBack = { showMemory = false },
@@ -601,7 +606,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         }
 
         if (showCharacters) {
-            EtaCharactersScreen(
+            EvCharactersScreen(
                 characters = characters,
                 selectedId = activeSession.characterId,
                 onBack = { showCharacters = false },
@@ -618,7 +623,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         }
 
         if (showSkills) {
-            EtaSkillsScreen(
+            EvSkillsScreen(
                 skills = skills,
                 selectedId = activeSession.skillId,
                 onBack = { showSkills = false },
@@ -637,7 +642,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             open = drawerOpen,
             onClose = { drawerOpen = false },
             drawer = {
-                EtaDrawerContent(
+                EvDrawerContent(
                     groups = historyGroups(sessions, activeSession.id, searchQuery),
                     // Identity line: how many of the three agent capabilities are live right now.
                     statusLine = run {
@@ -704,7 +709,7 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         showSkills = true
                     },
                     onSettings = {
-                        // Eta's own settings page, inside this plugin: the host page stays reachable
+                        // Ev's own settings page, inside this plugin: the host page stays reachable
                         // from the drawer's "宿主设置" row on the settings screen itself.
                         keyboard?.hide()
                         drawerOpen = false
@@ -780,7 +785,6 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
-                            reverseLayout = true,
                             contentPadding = PaddingValues(
                                 start = EvChatDefaults.PagePadding,
                                 end = EvChatDefaults.PagePadding,
@@ -790,19 +794,17 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                 bottom = 16.dp,
                             ),
                         ) {
-                            // Declared first so reverseLayout pins it to the bottom: the typing
-                            // indicator sits under the newest message, where the reply will land.
-                            if (replying) {
-                                item { EvTypingIndicator() }
-                            }
-                            val reversed = activeSession.messages.asReversed()
-                            itemsIndexed(reversed, key = { _, it -> it.id }) { index, message ->
+                            // Top-aligned, oldest first: a short conversation grows down from under
+                            // the top bar instead of floating above the composer (spec §3.4).
+                            val ordered = activeSession.messages
+                            itemsIndexed(ordered, key = { _, it -> it.id }) { index, message ->
                                 // Variable rhythm instead of a uniform gap (spec §3.1): same-side
                                 // neighbours sit 4dp apart, a side switch opens 12dp.
-                                val newer = reversed.getOrNull(index - 1)
+                                val previous = ordered.getOrNull(index - 1)
+                                val next = ordered.getOrNull(index + 1)
                                 val gap = when {
                                     index == 0 -> 0.dp
-                                    newer?.fromUser == message.fromUser -> EvChatDefaults.SameSideGap
+                                    previous?.fromUser == message.fromUser -> EvChatDefaults.SameSideGap
                                     else -> EvChatDefaults.SwitchSideGap
                                 }
                                 EvMessageEntry(
@@ -813,8 +815,8 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                         text = message.text,
                                         fromUser = message.fromUser,
                                         events = message.events,
-                                        lastInCluster = message.fromUser && newer?.fromUser != true,
-                                        streaming = replying && index == 0 && !message.fromUser,
+                                        lastInCluster = message.fromUser && next?.fromUser != true,
+                                        streaming = replying && index == ordered.lastIndex && !message.fromUser,
                                         onRegenerate = if (message.fromUser) null else {
                                             { regenerate(message.id) }
                                         },
@@ -823,6 +825,11 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                         },
                                     )
                                 }
+                            }
+                            // Declared last so it sits under the newest message, where the reply
+                            // will land once it arrives.
+                            if (replying) {
+                                item { EvTypingIndicator() }
                             }
                         }
                     }
@@ -1104,7 +1111,7 @@ private fun historyGroups(
     sessions: List<ChatSession>,
     selectedId: String,
     query: String,
-): List<EtaHistoryGroup> {
+): List<EvHistoryGroup> {
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
     val visible = if (query.isBlank()) {
@@ -1123,9 +1130,9 @@ private fun historyGroups(
             }
         }
         .map { (label, list) ->
-            EtaHistoryGroup(
+            EvHistoryGroup(
                 label = label,
-                sessions = list.map { EtaSessionSummary(it.id, it.title, it.id == selectedId) },
+                sessions = list.map { EvSessionSummary(it.id, it.title, it.id == selectedId) },
             )
         }
 }

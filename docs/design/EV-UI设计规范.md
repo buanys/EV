@@ -183,6 +183,14 @@ Monet 开启时，`accent` 由壁纸取色派生（tonal palette 的 primary 70�
 
 空页面不是空白页。每个空态三件套：`display` 标题一句人话 + `caption` 一行引导 + 一个主按钮。例：无会话时——"从一句话开始" / "问问任何事，或让 EV 帮你整理文件" / [开始对话]。
 
+### 5.6 消息流排列
+
+列表**顶部对齐、旧消息在上**：消息按时间正序排列，不满一屏时从顶栏下方开始往下长，不贴着输入栏。
+
+- 反序方案（`reverseLayout = true` + 倒序数据）能让新消息天然贴底，但内容少时会把整段对话压在输入栏上方、顶部空一大片，也与「从上往下读」的直觉相反，不采用；
+- 新消息与「正在输入」占位出现时，列表跟随滚到最新一条，不跳转；
+- 输入栏与列表是同一列里的兄弟节点：键盘弹起时列表让出高度、内容随之上移。**注意**：若整页被整体顶上去，那是窗口 `adjustPan` 的表现，不是列表排列问题——根因与修复见 `AndroidManifest.xml` 的 `android:windowSoftInputMode="adjustResize"`。
+
 ---
 
 ## 6. 运动语言（液态系统）
@@ -381,9 +389,9 @@ Monet 开启时，`accent` 由壁纸取色派生（tonal palette 的 primary 70�
 **阶段 4｜改名迁移（eta-ui → ev-ui）**
 - 插件 id：`ev.buan.plugins.eta.ui` → `ev.buan.plugins.ev.ui`；
 - 包名 `ev.buan.plugins.eta.ui.*` → `ev.buan.plugins.ev.ui.*`；
-- 数据迁移：首启检测 `files/plugins/ev.buan.plugins.eta.ui/`，存在则搬迁 `sessions.json` / `characters.json` / `skills.json` 至新目录并留迁移标记；
+- 数据迁移：宿主侧在存储清理（prune）前先执行 id 改名表——旧目录 `files/plugins/ev.buan.plugins.eta.ui/` 整体更名为新 id 目录（新目录已存在则以新为准，天然幂等，无需迁移标记），会话/角色/Skills 文件随之整体随迁；
 - `HostRuntime.homePage()` 默认顺序、README、docs、测试同步更新；
-- agent-api / eta-ui / brain 同代重打包（既有约束，本次沿用）。
+- agent-api / ev-ui / brain 同代重打包（既有约束，本次沿用）。
 
 **阶段 5｜打磨**
 - 减弱动效开关、空态文案、Monet 联调、真机动效走查清单。
