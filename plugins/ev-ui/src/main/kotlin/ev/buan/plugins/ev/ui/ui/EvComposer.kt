@@ -50,8 +50,11 @@ object EvComposerDefaults {
     val ActionSize = 36.dp
     val ActionGlyph = 17.dp
     val FieldMinResting = 24.dp
-    /** Two lines tall: enough to read as an expanded card without leaving a gap under one line. */
-    val FieldMinActive = 48.dp
+    /**
+     * Height of the expanded card (spec §7.3): the field owns the upper part and the toolbar sinks
+     * to the bottom edge, so this has to stay tall enough to read as a multi-line input area.
+     */
+    val FieldMinActive = 72.dp
     val PanelIconSize = 48.dp
     val PanelGlyph = 20.dp
 }
