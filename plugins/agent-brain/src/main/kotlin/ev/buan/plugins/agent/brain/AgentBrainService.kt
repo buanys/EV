@@ -200,34 +200,37 @@ class AgentBrainService internal constructor(
                 }
             }
 
-            for (outcome in outcomes) {
-                when (outcome) {
-                    is Outcome.ToolResult -> {
-                        val toolMessage = AgentMessage(
-                            role = AgentRole.TOOL,
-                            content = outcome.result,
-                            name = outcome.call.name,
-                            toolCallId = outcome.call.id,
-                        )
-                        inputs += toolMessage
-                        remember(memory, sessionId, toolMessage)
-                        events += AgentEvent(
-                            kind = AgentEvent.Kind.TOOL_RESULT,
-                            text = outcome.result,
-                            toolName = outcome.call.name,
-                            toolCallId = outcome.call.id,
-                        )
-                    }
-
-                    is Outcome.Reflection -> {
-                        // A system message in the middle of a conversation is rejected or ignored
-                        // by some OpenAI-compatible servers, so the nudge rides as a user message
-                        // and says explicitly that it comes from the runtime.
-                        val nudge = AgentMessage(AgentRole.USER, outcome.text)
-                        inputs += nudge
-                        remember(memory, sessionId, nudge)
-                    }
-                }
+            // Order is load-bearing: every TOOL message answering this assistant turn must come
+            // first and contiguously, then at most one nudge. A user message between tool results
+            // makes the conversation invalid for strict providers:
+            //   "An assistant message with 'tool_calls' must be followed by tool messages
+            //    responding to each 'tool_call_id' (insufficient tool messages)".
+            // That is what happened when one round asked for the same tool three times: the
+            // reflection landed between result 2 and result 3.
+            for (outcome in outcomes.filterIsInstance<Outcome.ToolResult>()) {
+                val toolMessage = AgentMessage(
+                    role = AgentRole.TOOL,
+                    content = outcome.result,
+                    name = outcome.call.name,
+                    toolCallId = outcome.call.id,
+                )
+                inputs += toolMessage
+                remember(memory, sessionId, toolMessage)
+                events += AgentEvent(
+                    kind = AgentEvent.Kind.TOOL_RESULT,
+                    text = outcome.result,
+                    toolName = outcome.call.name,
+                    toolCallId = outcome.call.id,
+                )
+            }
+            // One nudge per round is enough: several identical reminders would just eat context.
+            outcomes.filterIsInstance<Outcome.Reflection>().firstOrNull()?.let { nudge ->
+                // A system message in the middle of a conversation is rejected or ignored by some
+                // OpenAI-compatible servers, so the nudge rides as a user message and says
+                // explicitly that it comes from the runtime.
+                val message = AgentMessage(AgentRole.USER, nudge.text)
+                inputs += message
+                remember(memory, sessionId, message)
             }
 
             stopAfterRound?.let {

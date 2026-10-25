@@ -700,6 +700,37 @@ class AgentBrainServiceTest {
         assertTrue(model.requests[1].messages.any { it.content.contains("父目录不存在") })
     }
 
+    @Test
+    fun `a reflection never splits the tool messages of one assistant turn`() {
+        // Regression: one round asking for the same tool three times put the reflection between
+        // result 2 and result 3, and the provider rejected the request with
+        //   "An assistant message with 'tool_calls' must be followed by tool messages ...".
+        val firstRound = AgentReply(
+            message = AgentMessage(AgentRole.ASSISTANT, ""),
+            events = listOf(
+                toolCall("file_read", id = "c1"),
+                toolCall("file_read", id = "c2"),
+                toolCall("file_read", id = "c3"),
+            ),
+        )
+        val model = ScriptedModel(mutableListOf(firstRound, textReply("停")))
+        val registry = FakeRegistry(listOf(FakeTool(ToolSpec("file_read", "读文件", "{}"), "same")))
+
+        runBlocking { brain(model = model, tools = registry).send("session", "读三次") }
+
+        val messages = model.requests[1].messages
+        val assistantIndex = messages.indexOfLast { it.role == AgentRole.ASSISTANT && it.toolCalls.isNotEmpty() }
+        val rightAfter = messages.drop(assistantIndex + 1).take(3)
+        assertEquals(
+            "三条 tool 消息必须紧跟 assistant 且连续",
+            listOf("c1", "c2", "c3"),
+            rightAfter.map { it.toolCallId },
+        )
+        val nudge = messages.getOrNull(assistantIndex + 4)
+        assertEquals("反思排在全部 tool 结果之后", AgentRole.USER, nudge?.role)
+        assertTrue(nudge?.content.orEmpty().contains("结果没有变化"))
+    }
+
     // ------------------------------------------------------------------ fakes
 
     private fun brain(
