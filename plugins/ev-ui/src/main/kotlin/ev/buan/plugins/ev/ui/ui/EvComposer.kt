@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -35,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -56,6 +59,9 @@ object EvComposerDefaults {
      * to the bottom edge, so this has to stay tall enough to read as a multi-line input area.
      */
     val FieldMinActive = 52.dp
+
+    /** Three and a half lines: past this the field scrolls instead of pushing the toolbar away. */
+    val FieldMaxActive = 76.dp
     val PanelIconSize = 48.dp
     val PanelGlyph = 20.dp
 }
@@ -102,7 +108,10 @@ fun EvComposer(
     val tokens = EvThemeTokens.colors
     val reduced = EvThemeTokens.reducedMotion
     var focused by remember { mutableStateOf(false) }
-    val active = focused || value.isNotEmpty()
+    // Empty input: the card opens and closes with the keyboard. With text present it stays open -
+    // collapsing under the cursor while typing is worse than a tall card.
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val active = value.isNotEmpty() || imeVisible
 
     val radius by animateDpAsState(
         targetValue = if (active) EvThemeTokens.radii.large else EvComposerDefaults.RestingRadius,
@@ -146,7 +155,7 @@ fun EvComposer(
                     // field a one-line message is pinned to the top of a tall box, leaving a gap
                     // underneath. Centred here, one line sits in the middle and multi-line input
                     // still grows the container because the field is taller than the minimum.
-                    .heightIn(min = fieldMinHeight),
+                    .heightIn(min = fieldMinHeight, max = EvComposerDefaults.FieldMaxActive),
                 contentAlignment = if (active) Alignment.TopStart else Alignment.CenterStart,
             ) {
                 if (value.isEmpty()) {
