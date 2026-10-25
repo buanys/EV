@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -54,7 +55,7 @@ object EvComposerDefaults {
      * Height of the expanded card (spec §7.3): the field owns the upper part and the toolbar sinks
      * to the bottom edge, so this has to stay tall enough to read as a multi-line input area.
      */
-    val FieldMinActive = 72.dp
+    val FieldMinActive = 52.dp
     val PanelIconSize = 48.dp
     val PanelGlyph = 20.dp
 }
@@ -121,19 +122,22 @@ fun EvComposer(
 
     Column(
         modifier.fillMaxWidth()
-            .padding(horizontal = EvComposerDefaults.SidePadding, vertical = 10.dp),
+            .padding(horizontal = EvComposerDefaults.SidePadding, vertical = 10.dp)
+            // The card owns the whole shape: resting it is a one-row capsule, active it becomes two
+            // rows - input area on top, a dedicated toolbar row underneath (spec §7.3). Keeping the
+            // toolbar in the same row as the text is what forced the field to look like a tall box
+            // with a gap in it.
+            .clip(RoundedCornerShape(radius))
+            .background(containerColor)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(radius))
-                .background(containerColor)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            // Active: buttons sink to the bottom edge, so the tall field reads as "input on top,
-            // toolbar below" - the card state falls out of one row, no second layout exists.
-            verticalAlignment = if (active) Alignment.Bottom else Alignment.CenterVertically,
+            Modifier.fillMaxWidth(),
+            verticalAlignment = if (active) Alignment.Top else Alignment.CenterVertically,
         ) {
-            PlusButton(active = plusActive, onClick = onPlus)
+            if (!active) {
+                PlusButton(active = plusActive, onClick = onPlus)
+            }
             Box(
                 Modifier
                     .weight(1f)
@@ -143,7 +147,7 @@ fun EvComposer(
                     // underneath. Centred here, one line sits in the middle and multi-line input
                     // still grows the container because the field is taller than the minimum.
                     .heightIn(min = fieldMinHeight),
-                contentAlignment = Alignment.CenterStart,
+                contentAlignment = if (active) Alignment.TopStart else Alignment.CenterStart,
             ) {
                 if (value.isEmpty()) {
                     Text(
@@ -166,7 +170,20 @@ fun EvComposer(
                         },
                 )
             }
-            SendKey(value = value, busy = busy, onMic = onMic, onSend = onSend, onStop = onStop)
+            if (!active) {
+                SendKey(value = value, busy = busy, onMic = onMic, onSend = onSend, onStop = onStop)
+            }
+        }
+        if (active) {
+            // Dedicated toolbar row: `+` on the left, mic/send on the right, hugging both edges.
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PlusButton(active = plusActive, onClick = onPlus)
+                Spacer(Modifier.weight(1f))
+                SendKey(value = value, busy = busy, onMic = onMic, onSend = onSend, onStop = onStop)
+            }
         }
     }
 }
