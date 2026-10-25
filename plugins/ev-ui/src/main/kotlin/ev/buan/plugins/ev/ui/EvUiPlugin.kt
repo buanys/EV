@@ -199,16 +199,12 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
     private var finalizing by mutableStateOf(false)
 
     /**
-     * Full traces of replies produced in this session, keyed by message id.
+     * Manual expand state per work process, keyed by message id (or "live" while running).
      *
-     * The transcript stores counts only (a session file must stay small), so this map is what makes
-     * "expand" work right after a turn. After a reload it is empty and the same line renders as
-     * plain text - which is the honest state: the details were never persisted.
+     * Absent means "auto": expanded while that turn is still running, collapsed once it ends. A
+     * present value wins forever after - a block the user opened must not close under their finger.
      */
-    private val sessionDetails = mutableStateMapOf<String, List<RoundTrace>>()
-
-    /** Which stored round summaries the user opened, keyed by "messageId:round". */
-    private val summaryExpansion = mutableStateMapOf<String, Boolean>()
+    private val workExpansion = mutableStateMapOf<String, Boolean>()
 
     /** The job behind each in-flight turn, so the composer's stop button can cancel exactly one. */
     private val replyJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
@@ -331,9 +327,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
 
         val activeSession = sessions.firstOrNull { it.id == activeSessionId } ?: sessions.first()
         val replying = replyingSessionId == activeSession.id
-        // Which live rounds the user opened (true) or closed (false); absent means "auto", i.e.
-        // expanded while running and collapsed once done.
-        val roundExpansion = remember(activeSession.id) { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
 
         /**
          * Writes the whole document after an edit. Synchronous because the file is small and a
@@ -484,14 +477,12 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         lastTurnTokens = reply.usage?.totalTokens
                         val message = assistantMessage(
                             answer,
-                            // New messages are summarised by `traces`; carrying the flat
-                            // event list as well would render the same work twice after a
-                            // reload. Old messages keep their events and render as before.
-                            events = emptyList(),
+                            // Events stay: they are the only record of the tool work that
+                            // survives a reload, and the timeline is rebuilt from them.
+                            events = reply.events,
                             stopNote = stopNoteOf(reply.stop),
                             traces = rounds.map { it.toSummary() },
                         )
-                        sessionDetails[message.id] = rounds
                         append(sessionId, message)
                         // Hand over from the live blocks to the stored summary immediately, so
                         // the same round is never rendered twice.
@@ -899,27 +890,25 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                     modifier = Modifier.padding(top = gap),
                                 ) {
                                   Column {
-                                    message.traces.forEach { trace ->
-                                        val detail = sessionDetails[message.id]
-                                        val key = "${'$'}{message.id}:${'$'}{trace.round}"
-                                        val open = summaryExpansion[key] == true
-                                        EvTraceSummaryBlock(
-                                            summary = trace,
-                                            detail = detail,
-                                            expanded = open,
-                                            onToggle = if (detail == null) {
-                                                null
-                                            } else {
-                                                {
-                                                    summaryExpansion[key] = !open
-                                                }
-                                            },
+                                    // One block for the whole turn: the summary line plus a
+                                    // timeline, rebuilt from the events that were stored with it.
+                                    val doneSteps = workStepsOfEvents(message.events)
+                                    if (doneSteps.isNotEmpty()) {
+                                        val workKey = message.id
+                                        val workOpen = workExpansion[workKey] == true
+                                        EvWorkProcess(
+                                            steps = doneSteps,
+                                            expanded = workOpen,
+                                            onToggle = { workExpansion[workKey] = !workOpen },
+                                            label = workLabel(doneSteps, active = false),
                                         )
                                     }
                                     EvChatBubble(
                                         text = message.text,
                                         fromUser = message.fromUser,
-                                        events = if (message.traces.isEmpty()) message.events else emptyList(),
+                                        // The timeline above owns the tool work now; the bubble
+                                        // no longer repeats it.
+                                        events = emptyList(),
                                         lastInCluster = message.fromUser && next?.fromUser != true,
                                         streaming = replying && index == ordered.lastIndex && !message.fromUser,
                                         onRegenerate = if (message.fromUser) null else {
@@ -941,21 +930,18 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                   }
                                 }
                             }
-                            // Live rounds first: they appear while the agent works, in the spot
-                            // the reply will occupy. Each round auto-expands while running and
-                            // collapses to one line when it ends - unless the user opened it.
-                            liveRounds.forEach { live ->
-                                val auto = live.state == RoundState.Running
-                                val expandedNow = roundExpansion.value[live.round] ?: auto
-                                item(key = "live-${live.round}") {
-                                    EvRoundBlock(
-                                        round = live,
-                                        expanded = expandedNow,
-                                        onToggle = {
-                                            roundExpansion.value = roundExpansion.value.toMutableMap().apply {
-                                                put(live.round, !expandedNow)
-                                            }
-                                        },
+                            // The in-flight turn shows the same block, expanded and saying what
+                            // it is doing right now instead of how much it did.
+                            val liveSteps = liveRounds.flatMap { it.steps }
+                            if (liveSteps.isNotEmpty()) {
+                                val workKey = "live"
+                                val workOpen = workExpansion[workKey] ?: true
+                                item(key = "live-work") {
+                                    EvWorkProcess(
+                                        steps = liveSteps,
+                                        expanded = workOpen,
+                                        onToggle = { workExpansion[workKey] = !workOpen },
+                                        label = workLabel(liveSteps, active = true),
                                         modifier = Modifier.padding(
                                             start = EvChatDefaults.PagePadding,
                                             end = EvChatDefaults.PagePadding,
