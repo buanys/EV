@@ -12,11 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -693,14 +689,15 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 )
             },
         ) {
-            // The keyboard inset moves the composer, not the layout around it: offset shifts where
-            // the composer is drawn without reserving the keyboard's height, so the conversation
-            // above keeps its exact position and size while the keyboard is open.
-            val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-            Column(
+            // The composer floats over the conversation instead of sharing its column. Anything that
+            // reserves the keyboard height inside the column shrinks the list and drags the messages
+            // up with the keyboard; an overlay that pads itself with imePadding moves alone, because
+            // the column above it never learns that the IME exists.
+            Box(
                 modifier.fillMaxSize()
                     .background(MiuixTheme.colorScheme.background),
             ) {
+            Column(Modifier.fillMaxSize()) {
                 if (isRoot) HomeTopBar(onHost, onMenu = {
                     keyboard?.hide()
                     drawerOpen = true
@@ -753,13 +750,15 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     }
                 }
 
+                }
+
                 EvComposer(
                     value = draft,
                     onValueChange = { draft = it },
                     onSend = { send(draft) },
                     busy = replying,
                     onStop = { stopReply() },
-                    modifier = Modifier.offset(y = -imeBottom),
+                    modifier = Modifier.align(Alignment.BottomCenter).imePadding(),
                 )
             }
         }
