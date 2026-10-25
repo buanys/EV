@@ -613,6 +613,15 @@ class EtaUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             drawer = {
                 EtaDrawerContent(
                     groups = historyGroups(sessions, activeSession.id, searchQuery),
+                    // Identity line: how many of the three agent capabilities are live right now.
+                    statusLine = run {
+                        val online = listOf(
+                            directory?.lookup(ModelService.Key),
+                            directory?.lookup(ToolRegistry.Key),
+                            directory?.lookup(MemoryService.Key),
+                        ).count { it != null }
+                        "本地 · 能力 $online/3 在线"
+                    },
                     searching = searching,
                     query = searchQuery,
                     onQueryChange = { searchQuery = it },

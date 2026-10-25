@@ -42,7 +42,7 @@ fun EvPage(
         topBar = {
             SmallTopAppBar(
                 title = title,
-                color = MiuixTheme.colorScheme.surface,
+                color = EvThemeTokens.colors.surface0,
                 navigationIcon = {
                     if (onBack != null) {
                         // Miuix 0.9.4's SmallTopAppBar navigationIcon is a bare slot: whatever

@@ -58,7 +58,7 @@ fun EtaSettingsScreen(
             EvSettingsGroup {
                 EvSettingsRow(
                     title = "主题与显示",
-                    glyph = EvGlyphKind.Sparkle,
+                    glyph = EvGlyphKind.Theme,
                     summary = "${current.themeMode.label()} · ${(current.interfaceScale * 100).roundToInt()}%",
                     onClick = onOpenHostSettings,
                 )
@@ -77,7 +77,7 @@ fun EtaSettingsScreen(
                 EvSettingsDivider()
                 EvSettingsRow(
                     title = "工具",
-                    glyph = EvGlyphKind.Gear,
+                    glyph = EvGlyphKind.Tool,
                     summary = "agent-tools 发布的工具（只读）",
                     onClick = onOpenTools,
                 )
@@ -134,7 +134,7 @@ fun EtaSettingsScreen(
             EvSettingsGroup {
                 EvSettingsRow(
                     title = "Eta UI",
-                    glyph = EvGlyphKind.Sparkle,
+                    glyph = EvGlyphKind.Info,
                     summary = "插件 API $PLUGIN_API_VERSION",
                     trailing = EvSettingsTrailing.None,
                 )

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,13 +25,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
+import ev.buan.ui.EvThemeTokens
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** One conversation row in the drawer, already reduced to what the drawer renders. */
 data class EtaSessionSummary(
@@ -48,7 +45,10 @@ data class EtaHistoryGroup(
 )
 
 /**
- * Eta's drawer, rebuilt from the screenshots rather than from Eta's implementation.
+ * The drawer, three sections per spec §7.4: an identity block (logo, name, one status line),
+ * the capability rows whose glyphs each mean exactly one thing (spec §4), and the date-grouped
+ * session history with the accent bar marking the current one. Search stays pinned to the
+ * bottom where the thumb already is.
  *
  * Kept deliberately host-agnostic: it only knows "sessions", navigation callbacks and the current
  * search state. The plugin owns the data; this file owns the look.
@@ -70,15 +70,16 @@ fun EtaDrawerContent(
     onSkills: () -> Unit,
     onSettings: () -> Unit,
     onSearch: () -> Unit,
+    statusLine: String = "本地 · 插件宿主",
 ) {
     Column(Modifier.fillMaxWidth().fillMaxHeight()) {
-        DrawerHeader(onNewChat)
+        DrawerHeader(statusLine, onNewChat)
         if (searching) {
             SearchField(query, onQueryChange, onCancel = onSearch)
         } else {
             DrawerNav("插件中心", EvGlyphKind.Grid, onPlugins)
-            DrawerNav("模型服务", EvGlyphKind.Sparkle, onModel)
-            DrawerNav("工具", EvGlyphKind.Doc, onTools)
+            DrawerNav("模型服务", EvGlyphKind.Atom, onModel)
+            DrawerNav("工具", EvGlyphKind.Tool, onTools)
             DrawerNav("浏览器", EvGlyphKind.Globe, onBrowser)
             DrawerNav("记忆", EvGlyphKind.Memory, onMemory)
             DrawerNav("角色", EvGlyphKind.Person, onCharacters)
@@ -88,24 +89,21 @@ fun EtaDrawerContent(
         Spacer(Modifier.height(10.dp))
         Text(
             text = "会话历史",
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
             modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 6.dp),
         )
         Column(Modifier.weight(1f).fillMaxWidth()) {
             if (groups.isEmpty()) {
                 Text(
                     text = if (searching && query.isNotBlank()) "没有匹配的对话" else "暂无会话",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    style = EvThemeTokens.type.caption.style(EvThemeTokens.colors.textTertiary),
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 )
             } else {
                 groups.forEach { group ->
                     Text(
                         text = group.label,
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
                         modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 3.dp),
                     )
                     group.sessions.forEach { session ->
@@ -123,26 +121,26 @@ fun EtaDrawerContent(
 }
 
 @Composable
-private fun DrawerHeader(onNewChat: () -> Unit) {
+private fun DrawerHeader(statusLine: String, onNewChat: () -> Unit) {
+    val tokens = EvThemeTokens.colors
     Row(
         Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         EtaLogo()
         Spacer(Modifier.width(12.dp))
-        Text("EV", style = MiuixTheme.textStyles.subtitle, color = MiuixTheme.colorScheme.onBackground)
-        Spacer(Modifier.width(8.dp))
-        Badge("本地", MiuixTheme.colorScheme.primary)
-        Spacer(Modifier.width(6.dp))
-        Badge("插件", MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        Column {
+            Text("EV", style = EvThemeTokens.type.title.style(tokens.textPrimary))
+            Text(statusLine, style = EvThemeTokens.type.caption.style(tokens.textSecondary))
+        }
         Spacer(Modifier.weight(1f))
         Box(
             Modifier.size(38.dp).clip(CircleShape)
-                .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f))
-                .clickable(onClick = onNewChat),
+                .background(tokens.surface2)
+                .clickable(onClickLabel = "新会话", onClick = onNewChat),
             contentAlignment = Alignment.Center,
         ) {
-            EvGlyph(EvGlyphKind.Chat, color = MiuixTheme.colorScheme.onBackground, modifier = Modifier.size(18.dp))
+            EvGlyph(EvGlyphKind.Chat, color = tokens.textPrimary, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -150,8 +148,8 @@ private fun DrawerHeader(onNewChat: () -> Unit) {
 @Composable
 private fun EtaLogo() {
     Box(
-        Modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
-            .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f)),
+        Modifier.size(40.dp).clip(EvThemeTokens.radii.smallShape)
+            .background(EvThemeTokens.colors.surface2),
         contentAlignment = Alignment.Center,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -173,43 +171,41 @@ private fun Dot(color: Color) {
 }
 
 @Composable
-private fun Badge(text: String, tint: Color) {
-    Box(
-        Modifier.clip(RoundedCornerShape(6.dp))
-            .background(tint.copy(alpha = 0.14f))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    ) {
-        Text(text, style = MiuixTheme.textStyles.footnote1, color = tint)
-    }
-}
-
-@Composable
 private fun DrawerNav(label: String, glyph: EvGlyphKind, onClick: () -> Unit) {
+    val tokens = EvThemeTokens.colors
     Row(
         Modifier.fillMaxWidth().height(52.dp).clickable(onClick = onClick).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        EvGlyph(glyph, color = MiuixTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+        EvGlyph(glyph, color = tokens.textSecondary, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(18.dp))
-        Text(label, style = MiuixTheme.textStyles.body1, color = MiuixTheme.colorScheme.onBackground)
+        Text(label, style = EvThemeTokens.type.label.style(tokens.textPrimary))
     }
 }
 
 @Composable
 private fun HistoryItem(session: EtaSessionSummary, onSelect: (String) -> Unit) {
-    Box(
+    val tokens = EvThemeTokens.colors
+    Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 1.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (session.selected) MiuixTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
-            )
+            .clip(EvThemeTokens.radii.smallShape)
+            .background(if (session.selected) tokens.accentSoft else Color.Transparent)
             .clickable { onSelect(session.id) }
-            .padding(horizontal = 8.dp, vertical = 11.dp),
+            .padding(vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        // The 3dp accent bar marks the current session (spec §7.4).
+        Box(
+            Modifier.width(3.dp).height(16.dp)
+                .clip(CircleShape)
+                .background(if (session.selected) tokens.accent else Color.Transparent),
+        )
+        Spacer(Modifier.width(9.dp))
         Text(
             text = session.title,
-            style = MiuixTheme.textStyles.body1,
-            color = if (session.selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground,
+            style = EvThemeTokens.type.label.style(
+                if (session.selected) tokens.accent else tokens.textPrimary,
+            ),
             maxLines = 1,
         )
     }
@@ -221,35 +217,31 @@ private fun SearchField(
     onQueryChange: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val tokens = EvThemeTokens.colors
     val searchFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { searchFocus.requestFocus() }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).height(40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+            .clip(EvThemeTokens.radii.fullShape)
+            .background(tokens.surface2)
             .padding(start = 14.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        EvGlyph(
-            EvGlyphKind.Search,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            modifier = Modifier.size(16.dp),
-        )
+        EvGlyph(EvGlyphKind.Search, color = tokens.textTertiary, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(8.dp))
         BasicTextField(
             value = query,
             onValueChange = onQueryChange,
             singleLine = true,
-            textStyle = TextStyle(color = MiuixTheme.colorScheme.onBackground, fontSize = 14.sp),
-            cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
+            textStyle = EvThemeTokens.type.label.style(tokens.textPrimary),
+            cursorBrush = SolidColor(tokens.accent),
             modifier = Modifier.weight(1f).focusRequester(searchFocus),
             decorationBox = { inner ->
                 Box {
                     if (query.isEmpty()) {
                         Text(
                             "搜索对话",
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            style = EvThemeTokens.type.caption.style(tokens.textTertiary),
                         )
                     }
                     inner()
@@ -258,8 +250,7 @@ private fun SearchField(
         )
         Text(
             "取消",
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.primary,
+            style = EvThemeTokens.type.caption.style(tokens.accent),
             modifier = Modifier.clickable(onClick = onCancel).padding(horizontal = 8.dp, vertical = 4.dp),
         )
     }
@@ -271,29 +262,22 @@ private fun DrawerFooter(
     onSettings: () -> Unit,
     showSearch: Boolean,
 ) {
+    val tokens = EvThemeTokens.colors
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showSearch) {
             Row(
-                Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(20.dp))
-                    .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                Modifier.weight(1f).height(40.dp).clip(EvThemeTokens.radii.fullShape)
+                    .background(tokens.surface2)
                     .clickable(onClick = onSearch)
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                EvGlyph(
-                    EvGlyphKind.Search,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.size(16.dp),
-                )
+                EvGlyph(EvGlyphKind.Search, color = tokens.textTertiary, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    "搜索对话",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
+                Text("搜索对话", style = EvThemeTokens.type.caption.style(tokens.textTertiary))
             }
             Spacer(Modifier.width(10.dp))
         } else {
@@ -301,11 +285,11 @@ private fun DrawerFooter(
         }
         Box(
             Modifier.size(40.dp).clip(CircleShape)
-                .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                .background(tokens.surface2)
                 .clickable(onClick = onSettings),
             contentAlignment = Alignment.Center,
         ) {
-            EvGlyph(EvGlyphKind.Gear, color = MiuixTheme.colorScheme.onBackground, modifier = Modifier.size(18.dp))
+            EvGlyph(EvGlyphKind.Gear, color = tokens.textPrimary, modifier = Modifier.size(18.dp))
         }
     }
 }

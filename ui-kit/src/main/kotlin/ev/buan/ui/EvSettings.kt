@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,19 +24,20 @@ import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Settings layout from Eta: a small gray section label, then one rounded card holding rows that
- * each carry a coloured glyph, a title with optional subtitle, and either a chevron or a switch.
+ * Grouped-card settings layout (spec §7.5): a quiet micro-size group label sits outside one
+ * surface1 card; inside, rows carry a neutral surface2 glyph tile, a label/caption text stack
+ * and a chevron or switch. Glyph tiles are deliberately colourless - the "one coloured tile per
+ * row" look was the single largest source of visual noise, and semantic tints stay reserved for
+ * genuinely destructive rows ([tileColor]).
  */
 @Composable
 fun EvSettingsSection(label: String) {
     Text(
         text = label,
-        style = MiuixTheme.textStyles.footnote1,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        modifier = Modifier.padding(start = 28.dp, top = 18.dp, bottom = 8.dp),
+        style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
+        modifier = Modifier.padding(start = 20.dp, top = 24.dp, bottom = 8.dp),
     )
 }
 
@@ -46,8 +46,8 @@ fun EvSettingsGroup(content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(MiuixTheme.colorScheme.surface),
+            .clip(EvThemeTokens.radii.mediumShape)
+            .background(EvThemeTokens.colors.surface1),
         content = content,
     )
 }
@@ -56,13 +56,18 @@ fun EvSettingsGroup(content: @Composable ColumnScope.() -> Unit) {
 fun EvSettingsRow(
     title: String,
     glyph: EvGlyphKind,
-    tileColor: Color = MiuixTheme.colorScheme.primary,
+    tileColor: Color = Color.Unspecified,
     summary: String? = null,
     trailing: EvSettingsTrailing = EvSettingsTrailing.Chevron,
     checked: Boolean = false,
     onCheckedChange: ((Boolean) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
+    val tokens = EvThemeTokens.colors
+    // Unspecified means the neutral tile; only destructive rows pass a semantic tint.
+    val tinted = tileColor != Color.Unspecified
+    val tileBackground = if (tinted) tileColor.copy(alpha = 0.16f) else tokens.surface2
+    val glyphColor = if (tinted) tileColor else tokens.textSecondary
     Row(
         Modifier.fillMaxWidth()
             .heightIn(min = 56.dp)
@@ -71,21 +76,17 @@ fun EvSettingsRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(30.dp).clip(RoundedCornerShape(9.dp))
-                .background(tileColor.copy(alpha = 0.18f)),
+            Modifier.size(30.dp).clip(EvThemeTokens.radii.smallShape)
+                .background(tileBackground),
             contentAlignment = Alignment.Center,
         ) {
-            EvGlyph(glyph, color = tileColor, modifier = Modifier.size(16.dp))
+            EvGlyph(glyph, color = glyphColor, modifier = Modifier.size(16.dp))
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MiuixTheme.textStyles.body1, color = MiuixTheme.colorScheme.onBackground)
+            Text(title, style = EvThemeTokens.type.label.style(tokens.textPrimary))
             if (summary != null) {
-                Text(
-                    summary,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
+                Text(summary, style = EvThemeTokens.type.caption.style(tokens.textSecondary))
             }
         }
         when (trailing) {
@@ -93,7 +94,7 @@ fun EvSettingsRow(
                 imageVector = MiuixIcons.ChevronForward,
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
-                colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.onSurfaceVariantSummary),
+                colorFilter = ColorFilter.tint(tokens.textTertiary),
             )
 
             EvSettingsTrailing.Switch -> EvSwitch(
@@ -108,12 +109,13 @@ fun EvSettingsRow(
 
 enum class EvSettingsTrailing { Chevron, Switch, None }
 
+/** In-group hairline: the ghost divider, indented to align with the row text, not the icon. */
 @Composable
 fun EvSettingsDivider() {
     Box(
-        Modifier.fillMaxWidth().padding(start = 58.dp)
+        Modifier.fillMaxWidth().padding(start = 58.dp, end = 14.dp)
             .heightIn(min = 0.5.dp)
-            .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.07f)),
+            .background(EvThemeTokens.colors.dividerGhost),
     )
 }
 

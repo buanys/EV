@@ -96,13 +96,6 @@ public final class ev.buan.ui.EvAppearanceKt {
 public final class ev.buan.ui.EvBackButtonKt {
   public static final void EvBackButton(kotlin.jvm.functions.Function0<kotlin.Unit>, androidx.compose.ui.Modifier, androidx.compose.runtime.Composer, int, int);
     descriptor: (Lkotlin/jvm/functions/Function0;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
-public final class ev.buan.ui.EvCardDefaults {
-  public static final ev.buan.ui.EvCardDefaults INSTANCE;
-    descriptor: Lev/buan/ui/EvCardDefaults;
-  public static final int $stable;
-    descriptor: I
-  public final float getCornerRadius-D9Ej5fM();
-    descriptor: ()F
 public final class ev.buan.ui.EvCardKt {
   public static final void EvCard(androidx.compose.ui.Modifier, androidx.compose.foundation.layout.PaddingValues, top.yukonga.miuix.kmp.basic.CardColors, kotlin.jvm.functions.Function0<kotlin.Unit>, kotlin.jvm.functions.Function3<? super androidx.compose.foundation.layout.ColumnScope, ? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
     descriptor: (Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Ltop/yukonga/miuix/kmp/basic/CardColors;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
@@ -178,9 +171,11 @@ public final class ev.buan.ui.EvColorTokens {
 public final class ev.buan.ui.EvDrawerDefaults {
   public static final ev.buan.ui.EvDrawerDefaults INSTANCE;
     descriptor: Lev/buan/ui/EvDrawerDefaults;
+  public static final float WidthFraction;
+    descriptor: F
   public static final int $stable;
     descriptor: I
-  public final float getWidth-D9Ej5fM();
+  public final float getMaxWidth-D9Ej5fM();
     descriptor: ()F
   public final float getNavItemHeight-D9Ej5fM();
     descriptor: ()F
@@ -270,6 +265,12 @@ public final class ev.buan.ui.EvGlyphKind extends java.lang.Enum<ev.buan.ui.EvGl
   public static final ev.buan.ui.EvGlyphKind Refresh;
     descriptor: Lev/buan/ui/EvGlyphKind;
   public static final ev.buan.ui.EvGlyphKind Trash;
+    descriptor: Lev/buan/ui/EvGlyphKind;
+  public static final ev.buan.ui.EvGlyphKind Tool;
+    descriptor: Lev/buan/ui/EvGlyphKind;
+  public static final ev.buan.ui.EvGlyphKind Theme;
+    descriptor: Lev/buan/ui/EvGlyphKind;
+  public static final ev.buan.ui.EvGlyphKind Info;
     descriptor: Lev/buan/ui/EvGlyphKind;
   public static ev.buan.ui.EvGlyphKind[] values();
     descriptor: ()[Lev/buan/ui/EvGlyphKind;

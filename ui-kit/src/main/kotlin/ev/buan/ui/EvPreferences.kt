@@ -19,11 +19,14 @@ import top.yukonga.miuix.kmp.basic.CardColors
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/**
+ * Preference layout on the token system (spec §7.5): groups are surface1 cards spaced 24dp
+ * apart, group labels are micro/tertiary, and the in-group hairline is the ghost divider.
+ */
 object EvPreferenceDefaults {
     val SidePadding = 16.dp
-    val GroupSpacing = 16.dp
+    val GroupSpacing = 24.dp
     val RowMinHeight = 52.dp
     val ContentStart = 16.dp
 }
@@ -32,7 +35,7 @@ object EvPreferenceDefaults {
 fun EvPreferenceGroup(
     modifier: Modifier = Modifier,
     insideMargin: PaddingValues = PaddingValues(0.dp),
-    colors: CardColors = CardDefaults.defaultColors(),
+    colors: CardColors? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     EvCard(
@@ -40,7 +43,10 @@ fun EvPreferenceGroup(
             .padding(horizontal = EvPreferenceDefaults.SidePadding)
             .padding(bottom = EvPreferenceDefaults.GroupSpacing),
         insideMargin = insideMargin,
-        colors = colors,
+        colors = colors ?: CardDefaults.defaultColors(
+            color = EvThemeTokens.colors.surface1,
+            contentColor = EvThemeTokens.colors.textPrimary,
+        ),
         content = content,
     )
 }
@@ -49,9 +55,8 @@ fun EvPreferenceGroup(
 fun EvGroupTitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        style = MiuixTheme.textStyles.subtitle,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        modifier = modifier.padding(start = 32.dp, end = 32.dp, top = 4.dp, bottom = 8.dp),
+        style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
+        modifier = modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
     )
 }
 
@@ -69,7 +74,8 @@ fun EvPreferenceRow(
     endActions: @Composable RowScope.() -> Unit = {},
     onClick: (() -> Unit)? = null,
 ) {
-    val titleColor = if (enabled) MiuixTheme.colorScheme.onBackground else MiuixTheme.colorScheme.disabledOnSurface
+    val tokens = EvThemeTokens.colors
+    val titleColor = if (enabled) tokens.textPrimary else tokens.textTertiary
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -83,13 +89,9 @@ fun EvPreferenceRow(
             Spacer(Modifier.width(16.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(text = title, style = MiuixTheme.textStyles.body1, color = titleColor)
+            Text(text = title, style = EvThemeTokens.type.label.style(titleColor))
             if (summary != null) {
-                Text(
-                    text = summary,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
+                Text(text = summary, style = EvThemeTokens.type.caption.style(tokens.textSecondary))
             }
         }
         endActions()
@@ -104,6 +106,6 @@ fun EvPreferenceDivider(hasLeading: Boolean = true, modifier: Modifier = Modifie
             end = EvPreferenceDefaults.SidePadding,
         ),
         thickness = 0.33.dp,
-        color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.1f),
+        color = EvThemeTokens.colors.dividerGhost,
     )
 }

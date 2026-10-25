@@ -1,13 +1,10 @@
 package ev.buan.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -17,22 +14,35 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 object EvDrawerDefaults {
-    val Width = 300.dp
+    /** 78% of the screen, never wider than 320dp (spec §7.4). */
+    const val WidthFraction = 0.78f
+    val MaxWidth = 320.dp
     val NavItemHeight = 52.dp
 }
 
@@ -46,8 +56,13 @@ data class EvDrawerItem(
 data class EvHistoryGroup(val label: String, val titles: List<String>, val selected: String? = null)
 
 /**
- * Slide-over navigation, following Eta's drawer: identity header, icon rows with optional badges,
- * date-grouped conversation history, and a footer that holds the character plus search/settings.
+ * Slide-over navigation on the motion language (spec §6.3, §7.4).
+ *
+ * One spring-driven progress value runs everything: the drawer slides in, the content behind it
+ * scales to 0.94 and dims under the scrim - the "space" between the two layers is what makes the
+ * drawer feel physical instead of pasted on. The drawer follows a closing drag with the finger
+ * and flings to its resting state on release; with reduced motion every layer degrades to a
+ * plain fade.
  */
 @Composable
 fun EvDrawerScaffold(
@@ -56,24 +71,86 @@ fun EvDrawerScaffold(
     drawer: @Composable ColumnScope.() -> Unit,
     content: @Composable () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize()) {
-        content()
-        AnimatedVisibility(visible = open, enter = fadeIn(), exit = fadeOut()) {
-            Box(
-                Modifier.fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .clickable(onClick = onClose),
+    val tokens = EvThemeTokens.colors
+    val reduced = EvThemeTokens.reducedMotion
+    val density = LocalDensity.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val drawerWidth = minOf(screenWidth * EvDrawerDefaults.WidthFraction, EvDrawerDefaults.MaxWidth)
+    val widthPx = with(density) { drawerWidth.toPx() }
+    val scope = rememberCoroutineScope()
+
+    val progress = remember { Animatable(if (open) 1f else 0f) }
+    LaunchedEffect(open) {
+        progress.animateTo(
+            targetValue = if (open) 1f else 0f,
+            animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.gentle() },
+        )
+    }
+    val p = progress.value
+
+    fun settle(velocity: Float = 0f) {
+        scope.launch {
+            val closing = velocity < -600f || (velocity <= 600f && progress.value < 0.5f)
+            progress.animateTo(
+                targetValue = if (closing) 0f else 1f,
+                animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.gentle() },
+                initialVelocity = if (widthPx > 0) velocity / widthPx else 0f,
             )
+            if (closing) onClose()
         }
-        AnimatedVisibility(
-            visible = open,
-            enter = slideInHorizontally { -it },
-            exit = slideOutHorizontally { -it },
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        // Content layer: recedes slightly as the drawer covers it, giving the pair real depth.
+        Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                val scale = 1f - 0.06f * p
+                scaleX = scale
+                scaleY = scale
+                translationX = widthPx * 0.06f * p
+            },
         ) {
+            content()
+        }
+
+        if (p > 0.001f || open) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f * p))
+                    .pointerInput(widthPx) {
+                        detectTapGestures(onTap = { settle() })
+                    },
+            )
             Column(
-                Modifier.fillMaxHeight()
-                    .width(EvDrawerDefaults.Width)
-                    .background(MiuixTheme.colorScheme.background),
+                Modifier
+                    .fillMaxHeight()
+                    .width(drawerWidth)
+                    .offset { IntOffset((-widthPx * (1f - p)).roundToInt(), 0) }
+                    .clip(
+                        RoundedCornerShape(
+                            topEnd = EvThemeTokens.radii.large,
+                            bottomEnd = EvThemeTokens.radii.large,
+                        ),
+                    )
+                    .background(tokens.surface1)
+                    .pointerInput(widthPx) {
+                        var tracker = VelocityTracker()
+                        detectHorizontalDragGestures(
+                            onDragStart = { tracker = VelocityTracker() },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                tracker.addPosition(change.uptimeMillis, change.position)
+                                if (dragAmount < 0 || progress.value < 1f) {
+                                    scope.launch {
+                                        progress.snapTo((progress.value + dragAmount / widthPx).coerceIn(0f, 1f))
+                                    }
+                                }
+                            },
+                            onDragEnd = { settle(tracker.calculateVelocity().x) },
+                            onDragCancel = { settle() },
+                        )
+                    },
                 content = drawer,
             )
         }
@@ -82,61 +159,61 @@ fun EvDrawerScaffold(
 
 @Composable
 fun EvDrawerHeader(title: String, badge: String, onNewChat: () -> Unit) {
+    val tokens = EvThemeTokens.colors
     Row(
         Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(40.dp).clip(CircleShape)
-                .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.08f)),
+            Modifier.size(40.dp).clip(CircleShape).background(tokens.surface2),
             contentAlignment = Alignment.Center,
         ) {
-            EvGlyph(EvGlyphKind.Sparkle, color = MiuixTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            EvGlyph(EvGlyphKind.Sparkle, color = tokens.accent, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Text(title, style = MiuixTheme.textStyles.subtitle, color = MiuixTheme.colorScheme.onBackground)
+        Text(title, style = EvThemeTokens.type.title.style(tokens.textPrimary))
         Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.clip(RoundedCornerShape(6.dp))
-                .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.16f))
+            Modifier.clip(EvThemeTokens.radii.smallShape)
+                .background(tokens.accentSoft)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         ) {
-            Text(badge, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
+            Text(badge, style = EvThemeTokens.type.micro.style(tokens.accent))
         }
         Spacer(Modifier.weight(1f))
         Box(
             Modifier.size(36.dp).clip(CircleShape)
-                .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                .background(tokens.surface2)
                 .clickable(onClick = onNewChat),
             contentAlignment = Alignment.Center,
         ) {
-            EvGlyph(EvGlyphKind.Chat, color = MiuixTheme.colorScheme.onBackground, modifier = Modifier.size(18.dp))
+            EvGlyph(EvGlyphKind.Chat, color = tokens.textPrimary, modifier = Modifier.size(18.dp))
         }
     }
 }
 
 @Composable
 fun EvDrawerNavItem(item: EvDrawerItem) {
+    val tokens = EvThemeTokens.colors
     Row(
         Modifier.fillMaxWidth().height(EvDrawerDefaults.NavItemHeight)
             .clickable(onClick = item.onClick)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        EvGlyph(item.glyph, color = MiuixTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+        EvGlyph(item.glyph, color = tokens.textSecondary, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(18.dp))
         Text(
             item.label,
-            style = MiuixTheme.textStyles.body1,
-            color = MiuixTheme.colorScheme.onBackground,
+            style = EvThemeTokens.type.label.style(tokens.textPrimary),
             modifier = Modifier.weight(1f),
         )
         if (item.badge != null) {
             Box(
-                Modifier.clip(CircleShape).background(MiuixTheme.colorScheme.primary)
+                Modifier.clip(CircleShape).background(tokens.accent)
                     .padding(horizontal = 7.dp, vertical = 2.dp),
             ) {
-                Text(item.badge, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onPrimary)
+                Text(item.badge, style = EvThemeTokens.type.micro.style(tokens.onAccent))
             }
         }
     }
@@ -146,35 +223,41 @@ fun EvDrawerNavItem(item: EvDrawerItem) {
 fun EvDrawerSection(label: String) {
     Text(
         text = label,
-        style = MiuixTheme.textStyles.footnote1,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
         modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp),
     )
 }
 
 @Composable
 fun EvDrawerHistory(groups: List<EvHistoryGroup>) {
+    val tokens = EvThemeTokens.colors
     groups.forEach { group ->
         Text(
             text = group.label,
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = EvThemeTokens.type.micro.style(tokens.textTertiary),
             modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
         )
         group.titles.forEach { title ->
             val selected = title == group.selected
-            Box(
+            Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(
-                        if (selected) MiuixTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
-                    )
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                    .clip(EvThemeTokens.radii.smallShape)
+                    .background(if (selected) tokens.accentSoft else Color.Transparent)
+                    .padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                // The 3dp accent bar marks the selected session (spec §7.4).
+                Box(
+                    Modifier.width(3.dp).height(16.dp)
+                        .clip(CircleShape)
+                        .background(if (selected) tokens.accent else Color.Transparent),
+                )
+                Spacer(Modifier.width(9.dp))
                 Text(
                     text = title,
-                    style = MiuixTheme.textStyles.body2,
-                    color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground,
+                    style = EvThemeTokens.type.label.style(
+                        if (selected) tokens.accent else tokens.textPrimary,
+                    ),
                 )
             }
         }
@@ -184,44 +267,40 @@ fun EvDrawerHistory(groups: List<EvHistoryGroup>) {
 /** Footer: current identity, then the search pill and settings affordance. */
 @Composable
 fun EvDrawerFooter(identity: String, onSearch: () -> Unit, onSettings: () -> Unit) {
+    val tokens = EvThemeTokens.colors
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(36.dp).clip(CircleShape)
-                    .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.85f)),
+                Modifier.size(36.dp).clip(CircleShape).background(tokens.accent),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("E", style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onPrimary)
+                Text("E", style = EvThemeTokens.type.label.style(tokens.onAccent))
             }
             Spacer(Modifier.width(12.dp))
-            Text(identity, style = MiuixTheme.textStyles.body1, color = MiuixTheme.colorScheme.onBackground)
+            Text(identity, style = EvThemeTokens.type.label.style(tokens.textPrimary))
         }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Row(
                 Modifier.weight(1f).height(40.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                    .clip(EvThemeTokens.radii.fullShape)
+                    .background(tokens.surface2)
                     .clickable(onClick = onSearch)
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                EvGlyph(EvGlyphKind.Search, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.size(16.dp))
-                Text(
-                    "搜索对话",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
+                EvGlyph(EvGlyphKind.Search, color = tokens.textTertiary, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("搜索对话", style = EvThemeTokens.type.caption.style(tokens.textTertiary))
             }
             Spacer(Modifier.width(10.dp))
             Box(
                 Modifier.size(40.dp).clip(CircleShape)
-                    .background(MiuixTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                    .background(tokens.surface2)
                     .clickable(onClick = onSettings),
                 contentAlignment = Alignment.Center,
             ) {
-                EvGlyph(EvGlyphKind.Gear, color = MiuixTheme.colorScheme.onBackground, modifier = Modifier.size(18.dp))
+                EvGlyph(EvGlyphKind.Gear, color = tokens.textPrimary, modifier = Modifier.size(18.dp))
             }
         }
     }

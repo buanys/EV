@@ -14,6 +14,7 @@ import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Favorites
 import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.GridView
+import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Layers
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Lock
@@ -27,7 +28,9 @@ import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.icon.extended.Send
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Sidebar
+import top.yukonga.miuix.kmp.icon.extended.Theme
 import top.yukonga.miuix.kmp.icon.extended.Timer
+import top.yukonga.miuix.kmp.icon.extended.Tune
 
 /**
  * The semantic glyphs the design uses, resolved to the Miuix icon set.
@@ -43,6 +46,7 @@ import top.yukonga.miuix.kmp.icon.extended.Timer
 enum class EvGlyphKind {
     Menu, Plus, Mic, Atom, Send, Screen, Chat, Globe, Memory, More,
     Bell, Clock, Person, Grid, Gear, Search, Doc, Lock, Sparkle, Refresh, Trash,
+    Tool, Theme, Info,
 }
 
 @Composable
@@ -88,4 +92,7 @@ private val EvGlyphKind.icon: ImageVector
         EvGlyphKind.Sparkle -> MiuixIcons.Favorites
         EvGlyphKind.Refresh -> MiuixIcons.Refresh
         EvGlyphKind.Trash -> MiuixIcons.Delete
+        EvGlyphKind.Tool -> MiuixIcons.Tune
+        EvGlyphKind.Theme -> MiuixIcons.Theme
+        EvGlyphKind.Info -> MiuixIcons.Info
     }
