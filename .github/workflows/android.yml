@@ -47,13 +47,25 @@ jobs:
           java-version: "21"
           cache: gradle
 
+      # Use the Android command line tools the hosted Ubuntu image already provides instead of
+      # fetching a second copy: fewer downloads and no dependency on a third-party action that has
+      # to install its own tools before the build even starts.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "$sdk_root/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          export PATH="$sdk_root/cmdline-tools/latest/bin:$PATH"
+          sdkmanager --version
 
       # compileSdk is 37, which no hosted runner image ships preinstalled; AGP downloads the missing
-      # platform and build-tools itself, but only once the licenses are accepted.
+      # platform and build-tools itself, but only once the licenses are accepted. `yes` dies on
+      # SIGPIPE when sdkmanager stops reading, so pipefail must not turn that into a failure.
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses > /dev/null
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses > /dev/null
 
       # Committed as 100644, so the wrapper needs the executable bit before `./gradlew` works.
       - name: Make Gradle wrapper executable
