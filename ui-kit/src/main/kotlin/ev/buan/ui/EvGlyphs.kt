@@ -6,47 +6,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.Alarm
-import top.yukonga.miuix.kmp.icon.extended.Contacts
-import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.icon.extended.Favorites
-import top.yukonga.miuix.kmp.icon.extended.File
-import top.yukonga.miuix.kmp.icon.extended.GridView
-import top.yukonga.miuix.kmp.icon.extended.Info
-import top.yukonga.miuix.kmp.icon.extended.Layers
-import top.yukonga.miuix.kmp.icon.extended.Link
-import top.yukonga.miuix.kmp.icon.extended.Lock
-import top.yukonga.miuix.kmp.icon.extended.Messages
-import top.yukonga.miuix.kmp.icon.extended.Mic
-import top.yukonga.miuix.kmp.icon.extended.MindMap
-import top.yukonga.miuix.kmp.icon.extended.More
-import top.yukonga.miuix.kmp.icon.extended.Refresh
-import top.yukonga.miuix.kmp.icon.extended.ScreenCapture
-import top.yukonga.miuix.kmp.icon.extended.Search
-import top.yukonga.miuix.kmp.icon.extended.Send
-import top.yukonga.miuix.kmp.icon.extended.Settings
-import top.yukonga.miuix.kmp.icon.extended.Sidebar
-import top.yukonga.miuix.kmp.icon.extended.Theme
-import top.yukonga.miuix.kmp.icon.extended.Timer
-import top.yukonga.miuix.kmp.icon.extended.Tune
 
 /**
- * The semantic glyphs the design uses, resolved to the Miuix icon set.
+ * The glyph catalogue.
  *
- * These used to be hand-drawn Canvas paths because the host shipped icons-core only. Miuix ships its
- * own 156-symbol set as a normal dependency, so a glyph is now a name mapping: the shapes, optical
- * weight and corner language come from the icon set instead of from hand-tuned lines, and a symbol
- * that changes upstream updates everywhere at once.
- *
- * The enum and the [EvGlyph] signature are unchanged on purpose - they are part of the published
- * ui-kit contract that plugins compile against.
+ * Every mark is drawn in this repository (see EvGlyphVectors.kt) rather than borrowed from the
+ * platform icon set: a shared icon language is the one part of "premium" that cannot be reached by
+ * tuning spacing, and "nearest available metaphor" is exactly how a heart ended up meaning
+ * "assistant" and a chain meaning "browser".
  */
 enum class EvGlyphKind {
-    Menu, Plus, Mic, Atom, Send, Screen, Chat, Globe, Memory, More,
-    Bell, Clock, Person, Grid, Gear, Search, Doc, Lock, Sparkle, Refresh, Trash,
-    Tool, Theme, Info,
+    Menu, Plus, Mic, Atom, Send, Screen, Chat, Globe, World, Memory, More,
+    Bell, Clock, Person, Grid, Gear, Search, Doc, Note, Folder, Lock, Sparkle, Refresh, Trash,
+    Tool, Theme, Info, Help, Create, Skill, Chevron,
 }
 
 @Composable
@@ -54,7 +26,7 @@ fun EvGlyph(
     kind: EvGlyphKind,
     color: Color,
     modifier: Modifier = Modifier,
-    @Suppress("UNUSED_PARAMETER") strokeWidth: Float = 1.6f,
+    @Suppress("UNUSED_PARAMETER") strokeWidth: Float = 1.7f,
 ) {
     Image(
         imageVector = kind.icon,
@@ -64,35 +36,38 @@ fun EvGlyph(
     )
 }
 
-/**
- * Closest Miuix symbol for each semantic glyph. Four kinds have no exact counterpart:
- * `Atom` (agent/model), `Sparkle` (assistant), `Globe` (web) and `Memory` (context) use the nearest
- * metaphor the set offers rather than reintroducing a one-off drawing.
- */
 private val EvGlyphKind.icon: ImageVector
     get() = when (this) {
-        EvGlyphKind.Menu -> MiuixIcons.Sidebar
-        EvGlyphKind.Plus -> MiuixIcons.Add
-        EvGlyphKind.Mic -> MiuixIcons.Mic
-        EvGlyphKind.Atom -> MiuixIcons.MindMap
-        EvGlyphKind.Send -> MiuixIcons.Send
-        EvGlyphKind.Screen -> MiuixIcons.ScreenCapture
-        EvGlyphKind.Chat -> MiuixIcons.Messages
-        EvGlyphKind.Globe -> MiuixIcons.Link
-        EvGlyphKind.Memory -> MiuixIcons.Layers
-        EvGlyphKind.More -> MiuixIcons.More
-        EvGlyphKind.Bell -> MiuixIcons.Alarm
-        EvGlyphKind.Clock -> MiuixIcons.Timer
-        EvGlyphKind.Person -> MiuixIcons.Contacts
-        EvGlyphKind.Grid -> MiuixIcons.GridView
-        EvGlyphKind.Gear -> MiuixIcons.Settings
-        EvGlyphKind.Search -> MiuixIcons.Search
-        EvGlyphKind.Doc -> MiuixIcons.File
-        EvGlyphKind.Lock -> MiuixIcons.Lock
-        EvGlyphKind.Sparkle -> MiuixIcons.Favorites
-        EvGlyphKind.Refresh -> MiuixIcons.Refresh
-        EvGlyphKind.Trash -> MiuixIcons.Delete
-        EvGlyphKind.Tool -> MiuixIcons.Tune
-        EvGlyphKind.Theme -> MiuixIcons.Theme
-        EvGlyphKind.Info -> MiuixIcons.Info
+        EvGlyphKind.Menu -> EvIconMenu
+        EvGlyphKind.Plus -> EvIconPlus
+        EvGlyphKind.Create -> EvIconEdit
+        EvGlyphKind.Mic -> EvIconMic
+        EvGlyphKind.Atom -> EvIconChip8
+        EvGlyphKind.Gear -> EvIconHost
+        EvGlyphKind.Send -> EvIconSend
+        EvGlyphKind.Screen -> EvIconScreen
+        EvGlyphKind.Chat -> EvIconChat
+        // A page is a place: the globe is the only mark in the set that says "somewhere out there".
+        EvGlyphKind.Globe -> EvIconGlobe
+        EvGlyphKind.World -> EvIconGlobe
+        EvGlyphKind.Memory -> EvIconMemory
+        EvGlyphKind.More -> EvIconMore
+        EvGlyphKind.Bell -> EvIconBell
+        EvGlyphKind.Clock -> EvIconClock
+        EvGlyphKind.Person -> EvIconPerson
+        EvGlyphKind.Grid -> EvIconGrid
+        EvGlyphKind.Search -> EvIconSearch
+        EvGlyphKind.Doc -> EvIconDoc
+        EvGlyphKind.Note -> EvIconNote
+        EvGlyphKind.Folder -> EvIconFolder
+        EvGlyphKind.Lock -> EvIconLock
+        EvGlyphKind.Sparkle -> EvIconSparkle
+        EvGlyphKind.Refresh -> EvIconRefresh
+        EvGlyphKind.Trash -> EvIconTrash
+        EvGlyphKind.Tool -> EvIconTune
+        EvGlyphKind.Theme -> EvIconBrightness
+        EvGlyphKind.Info -> EvIconInfo
+        EvGlyphKind.Help -> EvIconHelp
+        EvGlyphKind.Skill -> EvIconSkill
+        EvGlyphKind.Chevron -> EvIconChevron
     }

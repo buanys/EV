@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
@@ -36,7 +37,7 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 fun EvSettingsSection(label: String) {
     Text(
         text = label,
-        style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
+        style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textSecondary),
         modifier = Modifier.padding(start = 20.dp, top = 24.dp, bottom = 8.dp),
     )
 }
@@ -66,7 +67,8 @@ fun EvSettingsRow(
     val tokens = EvThemeTokens.colors
     // Unspecified means the neutral tile; only destructive rows pass a semantic tint.
     val tinted = tileColor != Color.Unspecified
-    val tileBackground = if (tinted) tileColor.copy(alpha = 0.16f) else tokens.surface2
+    // surface3, not surface2: the tile sits on a surface1 card, and one step was invisible at 40dp.
+    val tileBackground = if (tinted) tileColor.copy(alpha = 0.18f) else tokens.surface3
     val glyphColor = if (tinted) tileColor else tokens.textSecondary
     Row(
         Modifier.fillMaxWidth()
@@ -84,17 +86,23 @@ fun EvSettingsRow(
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = EvThemeTokens.type.label.style(tokens.textPrimary))
+            // 16sp medium, not 14sp: a row title and its own caption used to differ by one point
+            // (label 14 / caption 13), so the two lines read as one block of small grey text.
+            // The step has to be visible at arm's length or the row has no hierarchy at all.
+            Text(
+                title,
+                style = EvThemeTokens.type.body.style(tokens.textPrimary)
+                    .copy(fontWeight = FontWeight.Medium),
+            )
             if (summary != null) {
-                Text(summary, style = EvThemeTokens.type.caption.style(tokens.textSecondary))
+                Text(summary, style = EvThemeTokens.type.caption.style(tokens.textTertiary))
             }
         }
         when (trailing) {
-            EvSettingsTrailing.Chevron -> Image(
-                imageVector = MiuixIcons.ChevronForward,
-                contentDescription = null,
+            EvSettingsTrailing.Chevron -> EvGlyph(
+                EvGlyphKind.Chevron,
+                color = tokens.textTertiary,
                 modifier = Modifier.size(14.dp),
-                colorFilter = ColorFilter.tint(tokens.textTertiary),
             )
 
             EvSettingsTrailing.Switch -> EvSwitch(

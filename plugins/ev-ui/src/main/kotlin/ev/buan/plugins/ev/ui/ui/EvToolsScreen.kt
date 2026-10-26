@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.agent.api.ToolSpec
+import ev.buan.ui.EvEmptyState
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsDivider
@@ -26,6 +27,7 @@ import ev.buan.ui.EvSettingsGroup
 import ev.buan.ui.EvSettingsRow
 import ev.buan.ui.EvSettingsSection
 import ev.buan.ui.EvSettingsTrailing
+import ev.buan.ui.EvThemeTokens
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -52,9 +54,12 @@ fun EvToolsScreen(
     // panel honest after the tools plugin was enabled on another screen without restarting the app.
     var refreshToken by remember { mutableStateOf(0) }
     val state = remember(refreshToken) { readTools(registry) }
+    // Count only; the empty state already names the problem (see EvMemoryScreen for the same rule).
+    val subtitle = (state as? ToolsState.Loaded)?.let { "${it.specs.size} 个已注册工具" }
 
     EvPage(
         title = "工具",
+        subtitle = subtitle,
         modifier = modifier,
         onBack = onBack,
         actions = {
@@ -90,7 +95,6 @@ fun EvToolsScreen(
             }
 
             is ToolsState.Loaded -> {
-                item { EvSettingsSection("已注册 ${state.specs.size} 个工具") }
                 item {
                     EvSettingsGroup {
                         state.specs.forEachIndexed { index, spec ->
@@ -184,26 +188,15 @@ private fun ParameterBlock(json: String) {
 
 @Composable
 private fun ToolsHint(title: String?, detail: String) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 18.dp)) {
-        if (title != null) {
-            Text(
-                text = title,
-                style = MiuixTheme.textStyles.body1,
-                color = MiuixTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = detail,
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        } else {
-            Text(
-                text = detail,
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        }
+    if (title != null) {
+        // Same widget as every other empty list in the app (see EvEmptyState).
+        EvEmptyState(title = title, detail = detail, glyph = EvGlyphKind.Tool)
+    } else {
+        Text(
+            text = detail,
+            style = EvThemeTokens.type.caption.style(EvThemeTokens.colors.textTertiary),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+        )
     }
 }
 

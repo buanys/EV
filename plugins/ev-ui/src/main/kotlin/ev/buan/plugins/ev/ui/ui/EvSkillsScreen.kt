@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import ev.buan.plugins.ev.ui.EvSkill
 import ev.buan.plugins.ev.ui.newSkill
+import ev.buan.ui.EvEmptyState
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsDivider
@@ -65,6 +66,7 @@ internal fun EvSkillsScreen(
 
     EvPage(
         title = "Skills",
+        subtitle = "会话的文本指令",
         modifier = modifier,
         onBack = onBack,
         actions = {
@@ -79,17 +81,12 @@ internal fun EvSkillsScreen(
             )
         },
     ) {
-        item {
-            LibraryHint(
-                title = null,
-                detail = "Skill 只是文本指令：它会被注入这个会话的系统提示，不会执行任何代码，也不写入记忆。",
-            )
-        }
         if (skills.isEmpty()) {
             item {
-                LibraryHint(
+                EvEmptyState(
                     title = "还没有 Skill",
-                    detail = "点右上角「新建」，写下希望模型在这一轮遵守的做法。",
+                    detail = "点右上角「新建」，写下希望模型在这一轮遵守的做法。Skill 只是文本指令，不执行代码。",
+                    glyph = EvGlyphKind.Skill,
                 )
             }
         } else {

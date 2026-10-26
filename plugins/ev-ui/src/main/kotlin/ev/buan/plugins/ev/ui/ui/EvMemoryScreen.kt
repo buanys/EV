@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentRole
 import ev.buan.plugins.agent.api.MemoryService
+import ev.buan.ui.EvEmptyState
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsDivider
@@ -27,6 +28,7 @@ import ev.buan.ui.EvSettingsGroup
 import ev.buan.ui.EvSettingsRow
 import ev.buan.ui.EvSettingsSection
 import ev.buan.ui.EvSettingsTrailing
+import ev.buan.ui.EvThemeTokens
 import ev.buan.ui.StatusError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -65,8 +67,13 @@ fun EvMemoryScreen(
         state = readMemory(memory, sessionId)
     }
 
+    // Only a count belongs up here. "没有记忆" as a subtitle would repeat the empty state's own
+    // title one line above it - the header says how much there is, never that there is nothing.
+    val subtitle = (state as? MemoryState.Loaded)?.let { "${it.messages.size} 条记忆" }
+
     EvPage(
         title = "记忆",
+        subtitle = subtitle,
         modifier = modifier,
         onBack = onBack,
         actions = {
@@ -103,18 +110,6 @@ fun EvMemoryScreen(
             }
 
             is MemoryState.Loaded -> {
-                item { EvSettingsSection("${current.messages.size} 条记忆") }
-                item {
-                    Text(
-                        text = "会话 ${sessionId}",
-                        style = MiuixTheme.textStyles.footnote1.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                        ),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 8.dp),
-                    )
-                }
                 item {
                     EvSettingsGroup {
                         current.messages.forEachIndexed { index, message ->
@@ -283,25 +278,15 @@ private fun ConfirmClear(onConfirm: () -> Unit, onCancel: () -> Unit) {
 
 @Composable
 private fun MemoryHint(title: String?, detail: String) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 18.dp)) {
-        if (title != null) {
-            Text(
-                text = title,
-                style = MiuixTheme.textStyles.body1,
-                color = MiuixTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = detail,
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        } else {
-            Text(
-                text = detail,
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        }
+    if (title != null) {
+        // Same widget as every other empty list in the app (see EvEmptyState).
+        EvEmptyState(title = title, detail = detail, glyph = EvGlyphKind.Memory)
+    } else {
+        Text(
+            text = detail,
+            style = EvThemeTokens.type.caption.style(EvThemeTokens.colors.textTertiary),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+        )
     }
 }
+

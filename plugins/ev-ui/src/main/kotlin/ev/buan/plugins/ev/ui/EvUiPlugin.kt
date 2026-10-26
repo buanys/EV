@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -53,6 +54,7 @@ import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.ev.ui.ui.EvBrowserScreen
 import ev.buan.plugins.ev.ui.ui.EvCharactersScreen
 import ev.buan.plugins.ev.ui.ui.EvDrawerContent
+import ev.buan.plugins.ev.ui.ui.ellipsize
 import ev.buan.plugins.ev.ui.ui.EvHistoryGroup
 import ev.buan.plugins.ev.ui.ui.EvMemoryScreen
 import ev.buan.plugins.ev.ui.ui.EvModelProvidersScreen
@@ -97,6 +99,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
@@ -289,6 +292,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         var activeSessionId by remember { mutableStateOf(sessions.first().id) }
         var draft by remember { mutableStateOf("") }
         var drawerOpen by remember { mutableStateOf(false) }
+        // Lives above the drawer so the group stays open the next time the drawer slides in:
+        // re-collapsing on every open would punish anyone who actually uses those rows.
+        var drawerMoreExpanded by remember { mutableStateOf(false) }
         var showSettings by remember { mutableStateOf(false) }
         var settingsChild by remember { mutableStateOf<SettingsChild?>(null) }
         var showTools by remember { mutableStateOf(false) }
@@ -536,7 +542,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             mutate(target.id) { session ->
                 session.copy(
                     messages = session.messages + userMessage(body),
-                    title = if (session.messages.none { it.fromUser }) body.take(18) else session.title,
+                    title = if (session.messages.none { it.fromUser }) body else session.title,
                     updatedAt = System.currentTimeMillis(),
                 )
             }
@@ -798,6 +804,8 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         searching = !searching
                         if (!searching) searchQuery = ""
                     },
+                    moreExpanded = drawerMoreExpanded,
+                    onToggleMore = { drawerMoreExpanded = !drawerMoreExpanded },
                 )
             },
         ) {
@@ -814,6 +822,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     // uses): the capsule mirrors whatever provider the contract resolves as current.
                     val currentModel = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model
                     HomeTopBar(
+                        // An empty conversation has no identity yet - the hero below already says
+                        // what this page is, so the top bar stays quiet instead of repeating it.
+                        title = activeSession.takeIf { it.messages.isNotEmpty() }?.displayTitle(),
                         modelName = currentModel,
                         approvalPending = approvalGate.pending.isNotEmpty(),
                         onMenu = {
@@ -845,12 +856,45 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     },
                 ) {
                     if (activeSession.messages.isEmpty()) {
+                        // What the agent can do right now, and where the person left off. Both were
+                        // two taps deep in the drawer while 235dp under the cards said nothing.
+                        val capabilityLine = run {
+                            val tools = directory?.lookup(ToolRegistry.Key)?.specs()?.size
+                            val memory = directory?.lookup(MemoryService.Key) != null
+                            listOfNotNull(
+                                tools?.let { "$it 个工具" },
+                                if (memory) "记忆已启用" else "记忆未启用",
+                            ).joinToString(" · ")
+                        }
+                        val recents = run {
+                            val zone = ZoneId.systemDefault()
+                            sessions
+                                .filter { it.id != activeSession.id && it.messages.isNotEmpty() }
+                                .sortedByDescending { it.updatedAt }
+                                .take(3)
+                                .map { session ->
+                                    EvSessionSummary(
+                                        id = session.id,
+                                        title = session.displayTitle(),
+                                        selected = false,
+                                        timeLabel = HISTORY_TIME.format(
+                                            Instant.ofEpochMilli(session.updatedAt).atZone(zone),
+                                        ),
+                                    )
+                                }
+                        }
                         EvHomeHero(
                             suggestions = Suggestions,
                             onPick = { suggestion ->
                                 // An empty prompt is a local action, not a message: today that is
                                 // the browser panel, the one suggestion that needs no agent at all.
                                 if (suggestion.prompt.isEmpty()) showBrowser = true else send(suggestion.prompt)
+                            },
+                            status = capabilityLine,
+                            recents = recents,
+                            onResume = { id ->
+                                keyboard?.hide()
+                                activeSessionId = id
                             },
                             modifier = Modifier.align(Alignment.Center),
                         )
@@ -903,6 +947,10 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                             label = workLabel(doneSteps, active = false),
                                             active = false,
                                         )
+                                        // The collapsed row is 10dp of padding tall; without this
+                                        // the answer underneath starts flush against it and the two
+                                        // read as one mashed block.
+                                        Spacer(Modifier.height(10.dp))
                                     }
                                     EvChatBubble(
                                         text = message.text,
@@ -1053,8 +1101,8 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         Column(
             modifier
                 .widthIn(min = 220.dp, max = 280.dp)
-                .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
-                .background(tokens.surface3)
+                .clip(EvThemeTokens.radii.largeShape)
+                .background(tokens.surface2)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             Text(
@@ -1105,6 +1153,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
      */
     @Composable
     private fun HomeTopBar(
+        title: String?,
         modelName: String?,
         approvalPending: Boolean,
         onMenu: () -> Unit,
@@ -1114,7 +1163,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
     ) {
         val tokens = EvThemeTokens.colors
         Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(start = 20.dp, end = 20.dp),
+            Modifier.fillMaxWidth().height(52.dp).padding(start = 16.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -1134,52 +1183,72 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     )
                 }
             }
-            Spacer(Modifier.weight(1f))
-            Row(
-                Modifier
-                    .clip(CircleShape)
-                    .background(tokens.surface2)
-                    .clickable(onClickLabel = "模型状态", onClick = onCapsule)
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (modelName != null) {
-                    Box(
-                        Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(tokens.success),
-                    )
-                    Spacer(Modifier.size(6.dp))
-                }
+            Spacer(Modifier.width(12.dp))
+            // The left half used to be two symmetric weights around the model capsule, which bought
+            // 71dp of dead space on either side. That space now says where you are: the conversation
+            // you are in. Identity outranks status, so the model drops to a quiet line beside it.
+            if (title != null) {
                 Text(
-                    text = modelName ?: "未接模型",
-                    style = EvThemeTokens.type.caption.style(
-                        if (modelName != null) tokens.textPrimary else tokens.textTertiary,
-                    ),
+                    // ~24 display units: enough for a real title, small enough that the model status
+                    // and the action pill keep their own breathing room on a 425dp bar.
+                    text = title.ellipsize(24),
+                    style = EvThemeTokens.type.label.style(tokens.textPrimary),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 140.dp),
+                    modifier = Modifier.weight(1f),
                 )
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
+            if (modelName != null) {
+                Row(
+                    Modifier
+                        .clip(EvThemeTokens.radii.smallShape)
+                        .clickable(onClickLabel = "模型状态", onClick = onCapsule)
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.size(6.dp).clip(CircleShape).background(tokens.success),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = modelName,
+                        style = EvThemeTokens.type.micro.style(tokens.textSecondary),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 84.dp),
+                    )
+                }
+            } else {
+                Text(
+                    text = "未接模型",
+                    style = EvThemeTokens.type.micro.style(tokens.textTertiary),
+                    modifier = Modifier
+                        .clip(EvThemeTokens.radii.smallShape)
+                        .clickable(onClickLabel = "模型状态", onClick = onCapsule)
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                )
+            }
+            if (title == null) Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(10.dp))
             Row(
                 Modifier
-                    .clip(CircleShape)
-                    .background(tokens.surface2),
+                    .clip(CircleShape),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
-                    Modifier.size(40.dp).clip(CircleShape).clickable(onClickLabel = "新会话", onClick = onNewChat),
+                    Modifier.size(32.dp).clip(CircleShape).clickable(onClickLabel = "新会话", onClick = onNewChat),
                     contentAlignment = Alignment.Center,
                 ) {
-                    EvGlyph(EvGlyphKind.Plus, color = tokens.textPrimary, modifier = Modifier.size(18.dp))
+                    // Both glyphs are secondary now: this pill holds two *conveniences*, not the
+                    // screen's primary action, and at surface2 it was the heaviest thing on an
+                    // otherwise empty page.
+                    EvGlyph(EvGlyphKind.Chat, color = tokens.textSecondary, modifier = Modifier.size(16.dp))
                 }
                 Box(
-                    Modifier.size(40.dp).clip(CircleShape).clickable(onClickLabel = "更多", onClick = onMore),
+                    Modifier.size(32.dp).clip(CircleShape).clickable(onClickLabel = "更多", onClick = onMore),
                     contentAlignment = Alignment.Center,
                 ) {
-                    EvGlyph(EvGlyphKind.More, color = tokens.textSecondary, modifier = Modifier.size(18.dp))
+                    EvGlyph(EvGlyphKind.More, color = tokens.textSecondary, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -1224,13 +1293,32 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
          * device-context and app-launch tools actually ship.
          */
         val Suggestions = listOf(
-            EvSuggestion("列出我的文件", EvGlyphKind.Doc, "列出存储区里有哪些文件"),
-            EvSuggestion("记一条笔记", EvGlyphKind.Plus, "帮我把「今晚记得给花浇水」追加到 notes/memo.md"),
-            EvSuggestion("你能做什么", EvGlyphKind.Sparkle, "你现在有哪些工具，能帮我做什么？"),
-            EvSuggestion("浏览网页", EvGlyphKind.Globe, ""),
+            EvSuggestion("列出我的文件", EvGlyphKind.Folder, "列出存储区里有哪些文件"),
+            EvSuggestion("记一条笔记", EvGlyphKind.Create, "帮我把「今晚记得给花浇水」追加到 notes/memo.md"),
+            EvSuggestion("你能做什么", EvGlyphKind.Help, "你现在有哪些工具，能帮我做什么？"),
+            EvSuggestion("浏览网页", EvGlyphKind.World, ""),
         )
     }
 }
+
+/** Clock time on a history row; the group label above it already says which day it was. */
+private val HISTORY_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+/**
+ * What a conversation is called: the first line of its first user turn.
+ *
+ * Older sessions stored a hard-cut 18-character title ("…再跑一次 l"), which is both ugly and
+ * identical across every conversation that opened with the same sentence. Deriving the label from
+ * the message repairs the existing history instead of only fixing sessions created from now on.
+ */
+private fun ChatSession.displayTitle(): String =
+    messages.firstOrNull { it.fromUser }
+        ?.text
+        ?.lineSequence()
+        ?.firstOrNull()
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: title
 
 private fun historyGroups(
     sessions: List<ChatSession>,
@@ -1257,7 +1345,18 @@ private fun historyGroups(
         .map { (label, list) ->
             EvHistoryGroup(
                 label = label,
-                sessions = list.map { EvSessionSummary(it.id, it.title, it.id == selectedId) },
+                sessions = list.map { session ->
+                    EvSessionSummary(
+                        id = session.id,
+                        title = session.displayTitle(),
+                        selected = session.id == selectedId,
+                        // The clock time is what separates three conversations that all start with
+                        // the same sentence; a bare title makes them look like duplicate rows.
+                        timeLabel = HISTORY_TIME.format(
+                            Instant.ofEpochMilli(session.updatedAt).atZone(zone),
+                        ),
+                    )
+                },
             )
         }
 }

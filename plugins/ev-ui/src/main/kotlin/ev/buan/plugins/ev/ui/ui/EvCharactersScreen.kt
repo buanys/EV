@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import ev.buan.plugins.ev.ui.EvCharacter
 import ev.buan.plugins.ev.ui.newCharacter
+import ev.buan.ui.EvEmptyState
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsDivider
@@ -67,6 +68,7 @@ internal fun EvCharactersScreen(
 
     EvPage(
         title = "角色",
+        subtitle = "会话的角色设定",
         modifier = modifier,
         onBack = onBack,
         actions = {
@@ -81,17 +83,12 @@ internal fun EvCharactersScreen(
             )
         },
     ) {
-        item {
-            LibraryHint(
-                title = null,
-                detail = "角色只影响模型收到的指令：不写入记忆，也不改变聊天气泡里的文字。",
-            )
-        }
         if (characters.isEmpty()) {
             item {
-                LibraryHint(
+                EvEmptyState(
                     title = "还没有角色",
-                    detail = "点右上角「新建」，给角色起个名字并写一段角色设定。",
+                    detail = "点右上角「新建」起个名字，再写一段设定。角色只影响模型收到的指令，不写入记忆。",
+                    glyph = EvGlyphKind.Person,
                 )
             }
         } else {

@@ -72,7 +72,12 @@ private sealed interface MarkdownSegment {
  */
 @Composable
 fun EvMarkdown(text: String, modifier: Modifier = Modifier) {
-    val segments = remember(text) { splitFences(text) }
+    // Models emit punctuation that looks like the ASCII marker but is not: fullwidth grave, modifier
+    // letter grave, reversed prime, Greek varia... The inline-code rule only matches U+0060, so
+    // anything else leaks into the answer as a visible mark. Rather than chasing codepoints one at
+    // a time, ask Unicode which characters are actually named "grave" and fold all of them.
+    val normalized = remember(text) { normalizeGraveAccents(text) }
+    val segments = remember(normalized) { splitFences(normalized) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         segments.forEach { segment ->
             when (segment) {
@@ -117,7 +122,9 @@ private fun CodeSlab(text: String) {
         ) {
             EvGlyph(
                 EvGlyphKind.Doc,
-                color = tokens.textTertiary,
+                // Tertiary on a surface1 slab was invisible at 14dp; the copy affordance has to be
+                // findable without becoming a second focal point.
+                color = tokens.textSecondary,
                 modifier = Modifier.size(14.dp),
             )
         }
@@ -129,7 +136,7 @@ private fun MarkdownBlockView(block: MarkdownBlock) {
     val tokens = EvThemeTokens.colors
     when (block) {
         is MarkdownBlock.Paragraph -> Text(
-            text = inlineMarkdown(block.text, tokens.accent),
+            text = inlineMarkdown(block.text, tokens.textSecondary),
             style = EvThemeTokens.type.body.style(tokens.textPrimary),
             modifier = Modifier.padding(horizontal = 2.dp),
         )
@@ -143,7 +150,7 @@ private fun MarkdownBlockView(block: MarkdownBlock) {
                 else -> EvThemeTokens.type.body.style(tokens.textPrimary).copy(fontWeight = FontWeight.Medium)
             }
             Text(
-                text = inlineMarkdown(block.text, tokens.accent),
+                text = inlineMarkdown(block.text, tokens.textSecondary),
                 style = style,
                 modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
             )
@@ -162,7 +169,7 @@ private fun MarkdownBlockView(block: MarkdownBlock) {
                         modifier = Modifier.widthIn(min = 20.dp),
                     )
                     Text(
-                        text = inlineMarkdown(item.text, tokens.accent),
+                        text = inlineMarkdown(item.text.replace("`", ""), tokens.textSecondary),
                         style = EvThemeTokens.type.body.style(tokens.textPrimary),
                         modifier = Modifier.weight(1f),
                     )
@@ -214,7 +221,10 @@ private fun MarkdownTableRow(cells: List<String>, columns: Int, header: Boolean)
     ) {
         for (index in 0 until columns) {
             Text(
-                text = inlineMarkdown(cells.getOrElse(index) { "" }, tokens.accent),
+                text = inlineMarkdown(
+                    cells.getOrElse(index) { "" },
+                    tokens.textSecondary,
+                ),
                 style = EvThemeTokens.type.caption.style(tokens.textPrimary).copy(
                     fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
                 ),
@@ -367,6 +377,38 @@ private fun parseTable(lines: List<String>): MarkdownBlock.Table {
 /** Two leading spaces count as one nesting level, capped so deep indentation cannot run off-page. */
 private fun indentDepth(indent: String): Int = (indent.length / 2).coerceIn(0, 4)
 
+/**
+ * Folds every Unicode character whose name is a grave accent into the ASCII backtick.
+ *
+ * A model writing Chinese happily emits U+FF40 ｀ or U+02CB ˋ where an API doc means ` - the glyphs
+ * are identical, and the inline-code rule only knows U+0060. Asking Unicode for the character name
+ * is a stable way to catch the whole family without enumerating codepoints by hand.
+ */
+private fun normalizeGraveAccents(input: String): String {
+    if (input.none { it.code > 0x7F }) return input
+    val out = StringBuilder(input.length)
+    for (ch in input) {
+        out.append(
+            when {
+                ch == '\uFF0A' -> '*'
+                ch.code <= 0x7F -> ch
+                isGraveAccent(ch) -> '`'
+                else -> ch
+            },
+        )
+    }
+    val text = out.toString()
+    // An odd count means a marker lost its partner: drop the leftovers rather than render them.
+    return if (text.count { it == '`' } % 2 == 0) text else text.replace("`", "")
+}
+
+private fun isGraveAccent(ch: Char): Boolean = try {
+    val name = Character.getName(ch.code) ?: return false
+    name == "MODIFIER LETTER GRAVE" || name.endsWith("GRAVE ACCENT")
+} catch (_: IllegalArgumentException) {
+    false
+}
+
 private fun inlineMarkdown(text: String, codeColor: Color): AnnotatedString {
     val pattern = Regex("""\*\*(.+?)\*\*|`([^`]+)`""")
     return buildAnnotatedString {
@@ -378,7 +420,15 @@ private fun inlineMarkdown(text: String, codeColor: Color): AnnotatedString {
             when {
                 bold.isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(bold) }
                 code.isNotEmpty() -> withStyle(
-                    SpanStyle(fontFamily = FontFamily.Monospace, color = codeColor),
+                    // DESIGN-EXTRACT 2.9 wants a 7% onSurface background behind inline code, but
+                    // miuix's Text swaps SpanStyle colour and background (verified on device: a
+                    // dark background renders as a light chip with dark text), so a background is
+                    // not usable here. Monospace plus the secondary text step separates code from
+                    // prose without a highlight that reads like a text selection.
+                    SpanStyle(
+                        fontFamily = FontFamily.Monospace,
+                        color = codeColor,
+                    ),
                 ) { append(code) }
             }
             cursor = match.range.last + 1

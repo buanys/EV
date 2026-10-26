@@ -103,7 +103,7 @@ fun EvSettingsScreen(
                 EvSettingsDivider()
                 EvSettingsRow(
                     title = "Skills",
-                    glyph = EvGlyphKind.Sparkle,
+                    glyph = EvGlyphKind.Skill,
                     summary = "会话的文本指令",
                     onClick = onOpenSkills,
                 )
@@ -114,7 +114,7 @@ fun EvSettingsScreen(
         item {
             EvSettingsGroup {
                 EvSettingsRow(
-                    title = "插件管理",
+                    title = "已安装的插件",
                     glyph = EvGlyphKind.Grid,
                     summary = "启用、禁用与检查插件",
                     onClick = onOpenPlugins,
@@ -133,9 +133,9 @@ fun EvSettingsScreen(
         item {
             EvSettingsGroup {
                 EvSettingsRow(
-                    title = "Ev UI",
+                    title = "EV 界面插件",
                     glyph = EvGlyphKind.Info,
-                    summary = "插件 API $PLUGIN_API_VERSION",
+                    summary = "版本 0.1.0 · 契约 API $PLUGIN_API_VERSION",
                     trailing = EvSettingsTrailing.None,
                 )
             }

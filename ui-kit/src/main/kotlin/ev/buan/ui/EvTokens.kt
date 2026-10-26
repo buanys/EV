@@ -114,6 +114,15 @@ data class EvTypeToken(
 /** Type scale. Chinese body text keeps line height >= 1.6x font size (spec §2.1). */
 data class EvTypeTokens(
     val display: EvTypeToken,
+    /**
+     * Page title: the one line that names the screen.
+     *
+     * Added after the 2026-10-26 cross-screen audit found every second-level page topping out at
+     * [title] — the same size as its own list rows — so entering a page had no visual entry point
+     * at all. 22sp sits three steps over body and six under display: far enough to read as "here
+     * you are", close enough that it never competes with the home hero.
+     */
+    val headline: EvTypeToken,
     val title: EvTypeToken,
     val body: EvTypeToken,
     val label: EvTypeToken,
@@ -123,6 +132,7 @@ data class EvTypeTokens(
 
 val DefaultEvTypeTokens = EvTypeTokens(
     display = EvTypeToken(28.sp, 36.sp, FontWeight.Medium),
+    headline = EvTypeToken(22.sp, 30.sp, FontWeight.Medium),
     title = EvTypeToken(18.sp, 26.sp, FontWeight.Medium),
     body = EvTypeToken(16.sp, 26.sp, FontWeight.Normal),
     label = EvTypeToken(14.sp, 20.sp, FontWeight.Medium),
@@ -166,7 +176,7 @@ data class EvRadiusTokens(
         topStart = 18.dp,
         topEnd = 18.dp,
         bottomStart = 18.dp,
-        bottomEnd = if (lastInCluster) 6.dp else 18.dp,
+        bottomEnd = if (lastInCluster) 0.dp else 18.dp,
     )
 }
 

@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -30,6 +32,7 @@ import ev.buan.plugins.agent.api.ModelDescriptor
 import ev.buan.plugins.agent.api.ModelParameters
 import ev.buan.plugins.agent.api.ModelProvider
 import ev.buan.plugins.agent.api.ModelProviderService
+import ev.buan.ui.EvEmptyState
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsDivider
@@ -37,6 +40,7 @@ import ev.buan.ui.EvSettingsGroup
 import ev.buan.ui.EvSettingsRow
 import ev.buan.ui.EvSettingsSection
 import ev.buan.ui.EvSettingsTrailing
+import ev.buan.ui.EvThemeTokens
 import ev.buan.ui.StatusError
 import ev.buan.ui.StatusSuccess
 import kotlinx.coroutines.CancellationException
@@ -114,8 +118,12 @@ internal fun EvModelProvidersScreen(
         return
     }
 
+    // Count only; "读取失败" / "未接入" is the empty state's job (same rule as tools and memory).
+    val subtitle = if (state is ProvidersState.Loaded) "${providers.size} 个 Provider" else null
+
     EvPage(
         title = "模型服务",
+        subtitle = subtitle,
         modifier = modifier,
         onBack = onBack,
         actions = {
@@ -129,17 +137,12 @@ internal fun EvModelProvidersScreen(
             )
         },
     ) {
-        item {
-            LibraryHint(
-                title = null,
-                detail = "这里只配置模型服务本身：地址、Key 与模型。角色与 Skills 在各自的页面里。",
-            )
-        }
         when (state) {
             ProvidersState.Missing -> item {
-                LibraryHint(
+                EvEmptyState(
                     title = "agent-model 未启用",
                     detail = "没有插件发布模型服务。在「插件中心」启用 agent-model 后回来刷新。",
+                    glyph = EvGlyphKind.Atom,
                 )
             }
 
@@ -150,21 +153,37 @@ internal fun EvModelProvidersScreen(
             is ProvidersState.Loaded -> {
                 item { ProviderSearchField(search, { search = it }, "搜索 Provider（名称 / 地址 / id）") }
                 val visible = filterProviders(providers, search)
-                item { EvSettingsSection("${visible.size} / ${providers.size} 个 Provider") }
                 if (visible.isEmpty()) {
-                    item { LibraryHint(title = "没有匹配的 Provider", detail = "换个关键字，或新增一个自定义 Provider。") }
+                    item {
+                        EvEmptyState(
+                            title = "没有匹配的 Provider",
+                            detail = "换个关键字，或新增一个自定义 Provider。",
+                            glyph = EvGlyphKind.Atom,
+                        )
+                    }
                 } else {
                     val current = currentModel(providers)
                     item {
                         EvSettingsGroup {
                             visible.forEachIndexed { index, provider ->
                                 if (index > 0) EvSettingsDivider()
-                                EvSettingsRow(
-                                    title = provider.name,
-                                    glyph = EvGlyphKind.Atom,
-                                    summary = providerSummary(provider, current),
-                                    onClick = { detailId = provider.id },
-                                )
+                                // A row that cannot be picked must not read at the same weight as
+                                // one that can: disabled providers drop back to 45%.
+                                Box(modifier = Modifier.alpha(if (provider.enabled) 1f else 0.45f)) {
+                                    EvSettingsRow(
+                                        title = provider.name,
+                                        glyph = EvGlyphKind.Atom,
+                                        // The tile carries the status colour, so the one row that
+                                        // the next message will actually use is visible at a glance.
+                                        tileColor = if (current?.provider == provider.id) {
+                                            EvThemeTokens.colors.success
+                                        } else {
+                                            Color.Unspecified
+                                        },
+                                        summary = providerSummary(provider, current),
+                                        onClick = { detailId = provider.id },
+                                    )
+                                }
                             }
                         }
                     }
@@ -509,7 +528,7 @@ private fun ProviderConfigTab(
             EvSettingsDivider()
             EvSettingsRow(
                 title = if (testing) "测试中…" else "测试连接",
-                glyph = EvGlyphKind.Globe,
+                glyph = EvGlyphKind.Info,
                 summary = "GET {Base URL}/models，验证地址与 Key",
                 onClick = if (testing) null else ({ test() }),
             )
@@ -637,7 +656,7 @@ private fun ProviderModelsTab(
         EvSettingsGroup {
             EvSettingsRow(
                 title = if (fetching) "拉取中…" else "拉取远端模型",
-                glyph = EvGlyphKind.Globe,
+                glyph = EvGlyphKind.Info,
                 summary = "GET {Base URL}/models；自定义模型会保留",
                 onClick = if (fetching) null else ({ fetchRemote() }),
             )

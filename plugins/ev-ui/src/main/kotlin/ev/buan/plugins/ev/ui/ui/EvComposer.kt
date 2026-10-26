@@ -54,6 +54,8 @@ object EvComposerDefaults {
     val SidePadding = 16.dp
     val ActionSize = 36.dp
     val ActionGlyph = 17.dp
+    /** The "+" is drawn one notch smaller: a cross fills its box, a mic does not. */
+    val PlusGlyph = 16.dp
     val FieldMinResting = 24.dp
     /**
      * Height of the expanded card (spec §7.3): the field owns the upper part and the toolbar sinks
@@ -63,7 +65,7 @@ object EvComposerDefaults {
 
     /** Three and a half lines: past this the field scrolls instead of pushing the toolbar away. */
     val FieldMaxActive = 76.dp
-    val PanelIconSize = 48.dp
+    val PanelIconSize = 44.dp
     val PanelGlyph = 20.dp
 }
 
@@ -144,7 +146,7 @@ fun EvComposer(
     // that ends up as padding is clamped. Crash that proved it: "Padding must be non-negative" at
     // this file while the inset sprang back from 40dp to 2dp and crossed zero.
     val sideInset by animateDpAsState(
-        targetValue = if (active) 2.dp else actionSize + 4.dp,
+        targetValue = if (active) 2.dp else actionSize - 4.dp,
         animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.snappy() },
         label = "composerSideInset",
     )
@@ -238,7 +240,9 @@ private fun PlusButton(active: Boolean, onClick: () -> Unit, modifier: Modifier 
         EvGlyph(
             EvGlyphKind.Plus,
             color = tint,
-            modifier = Modifier.size(EvComposerDefaults.ActionGlyph + 3.dp).graphicsLayer { rotationZ = rotation },
+            // Same optical size as the mic on the other end: the "+" is a convenience, and at +3dp
+            // it was the brightest, largest thing inside an otherwise quiet composer.
+            modifier = Modifier.size(EvComposerDefaults.PlusGlyph).graphicsLayer { rotationZ = rotation },
         )
     }
 }
@@ -265,7 +269,9 @@ private fun SendKey(
     }
     val disc by animateColorAsState(
         targetValue = when (face) {
-            SendFace.Mic -> tokens.surface3
+            // Quiet speech icon, not a filled disc: on an idle composer the only thing allowed to
+            // look solid is the primary action, and sending nothing is not an action yet (§7.3).
+            SendFace.Mic -> Color.Transparent
             else -> tokens.accent
         },
         animationSpec = EvMotionTokens.reducedAware(reduced) { EvMotionTokens.snappy() },
@@ -359,7 +365,7 @@ fun EvComposerPanel(
                         .background(tokens.surface3),
                     contentAlignment = Alignment.Center,
                 ) {
-                    EvGlyph(action.kind, color = tokens.textPrimary, modifier = Modifier.size(EvComposerDefaults.PanelGlyph))
+                    EvGlyph(action.kind, color = tokens.textSecondary, modifier = Modifier.size(EvComposerDefaults.PanelGlyph))
                 }
                 Text(
                     text = action.label,
