@@ -901,6 +901,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                             expanded = workOpen,
                                             onToggle = { workExpansion[workKey] = !workOpen },
                                             label = workLabel(doneSteps, active = false),
+                                            active = false,
                                         )
                                     }
                                     EvChatBubble(
@@ -942,6 +943,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                         expanded = workOpen,
                                         onToggle = { workExpansion[workKey] = !workOpen },
                                         label = workLabel(liveSteps, active = true),
+                                        active = true,
                                         modifier = Modifier.padding(
                                             start = EvChatDefaults.PagePadding,
                                             end = EvChatDefaults.PagePadding,

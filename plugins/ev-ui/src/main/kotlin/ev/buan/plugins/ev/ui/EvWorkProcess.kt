@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,13 +48,16 @@ internal fun EvWorkProcess(
     onToggle: () -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    active: Boolean = false,
     failed: Int = steps.count { it.state == StepState.Failed },
 ) {
     if (steps.isEmpty()) return
     val tokens = EvThemeTokens.colors
-    // Body size for the header: it is the only line that says what happened, and at caption size
-    // it read as fine print next to the reply. Nodes stay a step quieter.
-    val headerStyle = EvThemeTokens.type.body.style(tokens.textSecondary)
+    // DESIGN-EXTRACT 2.3 (照搬): body2 14sp for the title, 32dp row, 10dp radius, 6dp vertical
+    // padding; running uses onSurface and settles to onSurfaceVariantSummary once done.
+    val headerStyle = EvThemeTokens.type.label.style(
+        if (active) tokens.textPrimary else tokens.textSecondary,
+    )
     val caption = EvThemeTokens.type.label.style(tokens.textTertiary)
     val reduced = EvThemeTokens.reducedMotion
 
@@ -65,15 +69,20 @@ internal fun EvWorkProcess(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                 .clickable(onClick = onToggle)
-                .padding(vertical = 4.dp),
+                .heightIn(min = 32.dp)
+                .padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = label,
                 style = headerStyle,
-                color = if (failed > 0) tokens.textPrimary else tokens.textSecondary,
+                color = when {
+                    failed > 0 -> tokens.danger
+                    active -> tokens.textPrimary
+                    else -> tokens.textSecondary
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -205,6 +214,7 @@ private fun looksFailed(text: String): Boolean =
 private fun WorkStepNode(step: WorkStep, isLast: Boolean, compact: Boolean) {
     val tokens = EvThemeTokens.colors
     val caption = EvThemeTokens.type.label.style(tokens.textTertiary)
+    val fine = EvThemeTokens.type.micro.style(tokens.textTertiary)
     val failed = when (step) {
         is WorkStep.One -> step.step.state == StepState.Failed
         is WorkStep.Group -> step.failed > 0
@@ -235,13 +245,17 @@ private fun WorkStepNode(step: WorkStep, isLast: Boolean, compact: Boolean) {
         }
         Column(Modifier.weight(1f).padding(bottom = if (isLast) 0.dp else 8.dp)) {
             when (step) {
-                is WorkStep.One -> StepLine(step.step, caption, compact)
+                is WorkStep.One -> StepLine(step.step, caption, fine, compact)
                 is WorkStep.Group -> {
                     Text(
                         text = step.name + " ×" + step.calls.size +
                             if (step.failed > 0) " · ${step.failed} 个失败" else "",
                         style = caption,
-                        color = if (step.failed > 0) tokens.textSecondary else tokens.textTertiary,
+                        color = when {
+                            step.failed > 0 -> tokens.danger
+                            step.running -> tokens.textPrimary
+                            else -> tokens.textSecondary
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -252,12 +266,21 @@ private fun WorkStepNode(step: WorkStep, isLast: Boolean, compact: Boolean) {
 }
 
 @Composable
-private fun StepLine(step: ProgressStep, caption: androidx.compose.ui.text.TextStyle, compact: Boolean) {
+private fun StepLine(
+    step: ProgressStep,
+    caption: androidx.compose.ui.text.TextStyle,
+    fine: androidx.compose.ui.text.TextStyle,
+    compact: Boolean,
+) {
     val tokens = EvThemeTokens.colors
     Text(
         text = step.name + " " + step.state.word(),
         style = caption,
-        color = if (step.state == StepState.Failed) tokens.textSecondary else tokens.textTertiary,
+        color = when (step.state) {
+            StepState.Failed -> tokens.danger
+            StepState.Running, StepState.AwaitingApproval -> tokens.textPrimary
+            else -> tokens.textSecondary
+        },
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
@@ -267,9 +290,9 @@ private fun StepLine(step: ProgressStep, caption: androidx.compose.ui.text.TextS
             Spacer(Modifier.width(4.dp))
             Text(
                 text = preview.lineSequence().take(2).joinToString(" ").take(160),
-                style = caption,
+                style = fine,
                 color = tokens.textTertiary,
-                modifier = Modifier.padding(top = 1.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }
