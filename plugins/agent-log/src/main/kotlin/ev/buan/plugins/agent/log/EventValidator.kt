@@ -97,6 +97,9 @@ object EventValidator {
             if (ok) null else Violation(e.seq, "actor.invalid", "未知 actor：${e.actor}", Severity.WARN)
         }
 
+    /** 动作的**结果**事件，不是动作本身：`action.result` / `action.failed` / `action.unknown`。 */
+    private val RESULT_SUFFIXES = setOf("result", "failed", "unknown")
+
     // ---- 规则 1（核心）：不存在没有 allow 判定的 action.* ----
 
     private fun checkActionsHaveAllow(events: List<EvEvent>, byId: Map<String, EvEvent>): List<Violation> {
@@ -109,6 +112,10 @@ object EventValidator {
         val out = mutableListOf<Violation>()
         for (e in events) {
             if (!e.type.startsWith(EvTypes.ACTION)) continue
+            // 结果类事件（result/failed/unknown）不是"发起动作"，它们记录的是已经发生的事，
+            // 天然不会挂 allow 判定。要求它们挂判定会把每一条成功的执行都判成违规。
+            val suffix = e.type.removePrefix(EvTypes.ACTION)
+            if (suffix in RESULT_SUFFIXES) continue
             if (e.refs.none { it in allowVerdictIds }) {
                 out += Violation(
                     e.seq, "action.without-allow",

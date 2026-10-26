@@ -57,6 +57,9 @@ tasks.register("bundlePlugin") {
     group = "distribution"
     description = "Produce agent-log.jar and agent-log.json for EV/mods"
     dependsOn(bundlePluginJar)
+    // 在配置期把 Provider 捕获成局部变量：doLast 里直接引用 pluginDist 会被配置缓存
+    // 判定为"序列化 Gradle 脚本对象"，Gradle 9 会直接让构建失败。
+    val distDir = pluginDist
     doLast {
         val metadata = """
             {
@@ -67,6 +70,6 @@ tasks.register("bundlePlugin") {
               "permissions": ["PLUGIN_STORAGE"]
             }
         """.trimIndent()
-        File(pluginDist.get().asFile, "agent-log.json").writeText(metadata)
+        File(distDir.get().asFile, "agent-log.json").writeText(metadata)
     }
 }
