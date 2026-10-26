@@ -164,6 +164,7 @@ class HostRuntime(private val context: AndroidContext) {
     private var appearanceHandle: org.cordis.EffectHandle? = null
     private var navigationHandle: org.cordis.EffectHandle? = null
     private var directoryHandle: org.cordis.EffectHandle? = null
+    private var pageReaderHandle: org.cordis.EffectHandle? = null
 
     /** Start-pass bookkeeping; the public answer is [hasStarted]. */
     private val lifecycle = HostLifecycle()
@@ -236,6 +237,14 @@ class HostRuntime(private val context: AndroidContext) {
                     override fun openPluginManager() = openActivity(PluginsActivity::class.java)
                     override fun openSettings() = openActivity(SettingsActivity::class.java)
                 },
+            ).also { runCatching { it.awaitReady() } }
+        }
+        if (pageReaderHandle == null) {
+            // 离屏浏览器：插件抓不到静态内容时，由宿主用 WebView 渲染再取正文。
+            // 这里只在需要时才起 WebView，服务本身不持有任何实例。
+            pageReaderHandle = cordis.provide(
+                org.cordis.api.PageReader.Key,
+                HostPageReader(context) { (context as? EvApplication)?.currentActivity() },
             ).also { runCatching { it.awaitReady() } }
         }
         if (directoryHandle == null) {

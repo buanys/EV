@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- 网络：模型调用、网页搜索与抓取。以前只有依赖库的 manifest 合并进来这一条，
+         宿主自己没声明——那个库一换，网络就会静默失效。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <!-- 后台运行：Android 13+ 通知需要运行时授权；Android 14+ 前台服务必须声明类型与类型权限。 -->

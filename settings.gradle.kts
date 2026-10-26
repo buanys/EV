@@ -47,6 +47,7 @@ include(":plugins:agent-memory")
 include(":plugins:agent-brain")
 include(":plugins:agent-log")
 include(":plugins:agent-device")
+include(":plugins:agent-browse")
 include(":plugins:agent-web")
 include(":plugins:agent-shell")
 

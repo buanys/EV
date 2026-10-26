@@ -1,7 +1,10 @@
 package ev.buan
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import android.os.Process
+import java.lang.ref.WeakReference
 
 /**
  * Process-scoped owner of [HostRuntime].
@@ -19,7 +22,32 @@ class EvApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         installCrashHandler()
+        // 离屏浏览器（PageReader）要把 WebView 挂到一个真实的窗口树上才能可靠地跑 JS。
+        // 这里只记录最近一个 resumed 的 Activity，用完即弃，不在 Application 里持强引用。
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityResumed(activity: Activity) {
+                currentActivity = WeakReference(activity)
+            }
+
+            override fun onActivityPaused(activity: Activity) {
+                if (currentActivity?.get() === activity) currentActivity = null
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) {
+                if (currentActivity?.get() === activity) currentActivity = null
+            }
+        })
     }
+
+    @Volatile
+    private var currentActivity: WeakReference<Activity>? = null
+
+    /** 当前可见的 Activity；没有则为 null（离屏浏览器会退化成不挂载）。 */
+    fun currentActivity(): Activity? = currentActivity?.get()
 
     /** Creates the runtime on first use; safe to call from any component. */
     val runtime: HostRuntime
