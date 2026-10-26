@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 GRADLE=${GRADLE:-/opt/gradle-9.7.1/bin/gradle}
-export JAVA_HOME=${JAVA_HOME:-/usr/lib/jvm/java-25-openjdk-arm64}
+export JAVA_HOME=${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-arm64}
 export ANDROID_HOME=${ANDROID_HOME:-/opt/android-sdk}
 JAVA_PATHS=${JAVA_PATHS:-/usr/lib/jvm/java-21-openjdk-arm64,/usr/lib/jvm/java-25-openjdk-arm64}
 
@@ -27,13 +27,14 @@ echo "== 2/3 release 构建 + 门禁 =="
   -Dorg.gradle.java.installations.paths="$JAVA_PATHS"
 
 echo "== 3/3 插件 jar =="
-# 当前在构建内的插件：settings、eta-ui、agent 层 5 个。
-# eta-ui 依赖 ev.buan.plugins.agent.api，两者必须一起构建/安装，
-# 单独投放 eta-ui 会因 DEPENDENCY_MISSING 被拒。
-"$GRADLE" :plugins:settings:bundlePlugin :plugins:eta-ui:bundlePlugin \
+# 当前在构建内的 9 个插件，与 settings.gradle.kts 保持一致。
+# ev-ui / agent-* 依赖 ev.buan.plugins.agent.api，必须一起构建/投放，
+# 单独安装会因 DEPENDENCY_MISSING 被拒。
+"$GRADLE" :plugins:settings:bundlePlugin :plugins:ev-ui:bundlePlugin \
   :plugins:agent-api:bundlePlugin :plugins:agent-model:bundlePlugin \
   :plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
-  :plugins:agent-brain:bundlePlugin \
+  :plugins:agent-brain:bundlePlugin :plugins:agent-web:bundlePlugin \
+  :plugins:agent-shell:bundlePlugin \
   --no-configuration-cache --console=plain \
   -Dorg.gradle.java.installations.paths="$JAVA_PATHS"
 

@@ -56,6 +56,9 @@ ANDROID_HOME=/opt/android-sdk \
    线上表现为 `NoSuchMethodError`，而 md5 完全一致。
 4. **推设备**：`/app/export`（HTTP 桥）导出到 `Download/DSHA/`，再 `cp` 到 `/sdcard/EV/mods/`。
 5. **重启 EV**：插件在启动时复制到 `files/mods/` 再加载，**改插件必须重启进程**。
+6. **动了公共 API 就跑快照**：改 `:plugin-api` 或 `:ui-kit` 的公开声明后，
+   `gradle :plugin-api:apiSnapshot :ui-kit:apiSnapshot` 并提交 `api/*.txt`。
+   本地单测不会管这个，`apiSnapshotCheck` 只在 CI 跑——忘了就是一条红的 main。
 
 ---
 

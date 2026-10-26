@@ -1,6 +1,7 @@
 # EV 架构（四层）
 
-- 事实基线：提交 `8f268b0`（分支 `build/gradle9-agp9`，2026-10-25）。
+- 事实基线：以本文所述模块清单为准；不写死提交哈希（历史会被重写，硬编码的哈希一旦失效，
+  文档就会在无人察觉的情况下变成谎言）。
 - 内核处于**冻结状态**，规则见 [kernel-freeze.md](kernel-freeze.md)。
 - 本文只写代码与构建文件里能验证的事实。历史计划项一律指向
   [archive/](archive/)，不当作现状。文档导航见 [README.md](README.md)。
@@ -40,7 +41,7 @@ KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins
      |                          (因此插件编译期可见 org.cordis.*)
      +--compileOnly--> :plugin-api --compileOnly--> :core
      |                          \--api--> :ui-kit
-     +--compileOnly--> :ui-kit        （`ping-api` 不直接声明，见下方说明）
+     +--compileOnly--> :ui-kit        （契约插件不直接声明，见下方说明）
 
 :host  --implementation--> :core, :loader, :ui-kit, :plugin-api
 :host  --implementation--> :host-core                 （T02）
@@ -54,7 +55,7 @@ KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins
 证据：各模块 `build.gradle.kts` 的 `dependencies`；插件模块统一 `compileOnly(project(":loader"))`
 并排除运行期 `kotlin-stdlib`（例如 [plugins/probe/build.gradle.kts](../plugins/probe/build.gradle.kts)）。
 
-`ping-api` 不直接声明 `:ui-kit`；经 `:plugin-api` 的 `api` 依赖编译期仍可见 `ev.buan.ui`，
+契约插件不直接声明 `:ui-kit`；经 `:plugin-api` 的 `api` 依赖编译期仍可见 `ev.buan.ui`，
 但不打包、不使用。其余插件都直接 `compileOnly(project(":ui-kit"))`。
 
 两条方向性结论：
@@ -220,7 +221,7 @@ SDK = `:plugin-api` + `:ui-kit`，都是 `com.android.library`（`minSdk 33`、`
 |---|---|---|
 | 界面插件 | `AgentUi`（内联，可组多次）或 `AgentPage`（整页，单次 composition） | `ev-ui`（`AgentPage`，**默认主页**，EV 风格 UI，消费 `AgentService`）、`settings`；实验插件 `probe`、`coldapi`、`hello`、`ping-ui` 已摘除构建 |
 | 服务插件 | 向 `ServiceDirectory.publish` 发布实现，或从中 `lookup` 可选依赖 | `ping-impl`（发布 `PingService`）、`ping-ui`（消费，缺 publisher 时降级）、`agent-model`（发布 `ModelService`）、`agent-tools`（发布 `ToolRegistry`）、`agent-memory`（发布 `MemoryService`）、`agent-brain`（发布 `AgentService`，编排前三个） |
-| 契约插件 | 只装接口与 `ServiceKey`，供其他插件经依赖加载器取用 | `ping-api`（`PingService`，空壳 `Plugin`）、`agent-api`（`AgentService`/`ModelService`/`ToolRegistry`/`MemoryService`，空壳 `Plugin`） |
+| 契约插件 | 只装接口与 `ServiceKey`，供其他插件经依赖加载器取用 | `agent-api`（`AgentService`/`ModelService`/`ToolRegistry`/`MemoryService`/`ApprovalService`，空壳 `Plugin`） |
 
 `ping-impl` / `ping-ui` 的 sidecar 声明 `"dependencies": ["ev.buan.plugins.ping.api"]`，
 容器里没有 `PingService` 的实现——契约跨容器由依赖加载器解析，服务实例由 `ServiceDirectory` 传递。

@@ -2,11 +2,11 @@
 # EV 内核冻结门禁
 #
 # 内核目录（loader core hmr include packages）在 EV 里只当依赖用，不接受业务改动。
-# 本脚本把内核目录与基线提交 7b13e6b 比对：出现白名单
+# 本脚本把内核目录与基线提交比对：出现白名单
 # （gradle/kernel-freeze-allowlist.txt）之外的文件即失败，退出码 1。
 #
 # 用法：
-#   scripts/kernel-freeze.sh                    # 基线 7b13e6b
+#   scripts/kernel-freeze.sh                    # 基线 = 本仓库根提交
 #   scripts/kernel-freeze.sh --baseline <ref>   # 临时指定基线（排查用）
 #   KERNEL_FREEZE_BASELINE=<ref> scripts/kernel-freeze.sh
 #
@@ -15,7 +15,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASELINE=${KERNEL_FREEZE_BASELINE:-7b13e6b}
+# 基线默认取本仓库根提交，不写死哈希：历史一旦被重写（rebase / filter-branch），
+# 任何硬编码的提交都会消失，门禁会以"找不到对象"的方式坏掉，而不是继续保护内核。
+BASELINE=${KERNEL_FREEZE_BASELINE:-$(git rev-list --max-parents=0 HEAD | tail -1)}
 while [[ $# -gt 0 ]]; do
   case $1 in
     --baseline)
