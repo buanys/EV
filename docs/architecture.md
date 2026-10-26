@@ -22,7 +22,7 @@
 | SDK | `:plugin-api` | 宿主 ↔ 插件业务契约（`Agent*`、`AppearanceService`、`HostNavigation`、`ServiceDirectory`、`HostPermission`、`PermissionService`、`PluginStorage`、`BackgroundService`、`HostPackages`、`PLUGIN_API_VERSION`） | `plugin-api/src/main/kotlin/org/cordis/api/` |
 | SDK | `:ui-kit` | 设计系统 `ev.buan.ui.*`，宿主与插件共用 | `ui-kit/src/main/kotlin/ev/buan/ui/` |
 | 插件 | `:plugins:*` | 可侧载插件；容器形态与角色见第 6 节 | `plugins/*/src/main/kotlin/` |
-| 插件（agent 层） | `:plugins:agent-api` / `agent-model` / `agent-tools` / `agent-memory` / `agent-brain` | 契约（agent-api）+ 模型/工具/记忆能力 + 编排；`eta-ui` 是唯一界面插件（Eta 风格，消费 `AgentService`） | `plugins/agent-*/src/main/kotlin/`、`plugins/eta-ui/` |
+| 插件（agent 层） | `:plugins:agent-api` / `agent-model` / `agent-tools` / `agent-memory` / `agent-brain` | 契约（agent-api）+ 模型/工具/记忆能力 + 编排；`ev-ui` 是唯一界面插件（EV 风格，消费 `AgentService`） | `plugins/agent-*/src/main/kotlin/`、`plugins/ev-ui/` |
 
 模块注册见 [settings.gradle.kts](../settings.gradle.kts)。内核模块由根构建的 `kernelModules` 过滤器统一套上
 KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins:*` 是 Android-only 模块
@@ -181,8 +181,8 @@ SDK = `:plugin-api` + `:ui-kit`，都是 `com.android.library`（`minSdk 33`、`
 `EvStatusColors`、`EvBackButton`、`EvDrawer`。
 
 聊天组件（`EvChat`/`EvChatDefaults`/`EvComposer`/`EvComposerDefaults`/`EvHomeHero`/`EvSuggestion` 等）
-不属于设计系统，只服务聊天页；由 `eta-ui` 自己携带（`plugins/eta-ui/.../ui/`，
-包名 `ev.buan.plugins.eta.ui.ui`）（T12）。
+不属于设计系统，只服务聊天页；由 `ev-ui` 自己携带（`plugins/ev-ui/.../ui/`，
+包名 `ev.buan.plugins.ev.ui.ui`）（T12）。
 插件私有包**不得**定义 `ev.buan.ui` 下的类：`ev.buan.ui` 是共享包，插件里出现同名类会被
 `PluginValidator` 以 `DUPLICATE_PLATFORM_CLASS` 拒绝。
 
@@ -206,7 +206,7 @@ SDK = `:plugin-api` + `:ui-kit`，都是 `com.android.library`（`minSdk 33`、`
 | 形态 | 元数据 | 信任方式 | 例子 |
 |---|---|---|---|
 | APK | `AndroidManifest` 的 `<meta-data>`：`cordis.entry`、`cordis.api` | 必须与宿主证书一致（`PluginValidator` 签名门） | 无现存样例（`hello` 已摘除构建；宿主 `assets/plugins/android` 的 seed 扫描机制保留） |
-| jar | 同名 `.json` sidecar：`id`/`version`/`entryClass`/`apiVersion`（可选 `dependencies`、`permissions`） | 无 Android 签名；默认 `autoTrustUnsigned = true`，首次同步记录 (id, sha256)，字节变化后加载期拒载 | `eta-ui`、`settings`、`agent-*`（另有已摘除构建的实验插件：`probe`、`coldapi`、`ping-*`，代码保留在 `plugins/` 下） |
+| jar | 同名 `.json` sidecar：`id`/`version`/`entryClass`/`apiVersion`（可选 `dependencies`、`permissions`） | 无 Android 签名；默认 `autoTrustUnsigned = true`，首次同步记录 (id, sha256)，字节变化后加载期拒载 | `ev-ui`、`settings`、`agent-*`（另有已摘除构建的实验插件：`probe`、`coldapi`、`ping-*`，代码保留在 `plugins/` 下） |
 | dex | 同 jar（容器里是 `classes*.dex`） | 同 jar | 无现存样例 |
 
 容器里必须是 `classes*.dex`；jar 只放 `.class` 会在加载期 `ClassNotFoundException`
@@ -218,7 +218,7 @@ SDK = `:plugin-api` + `:ui-kit`，都是 `com.android.library`（`minSdk 33`、`
 
 | 角色 | 契约 | 例子 |
 |---|---|---|
-| 界面插件 | `AgentUi`（内联，可组多次）或 `AgentPage`（整页，单次 composition） | `eta-ui`（`AgentPage`，**默认主页**，Eta 风格 UI，消费 `AgentService`）、`settings`；实验插件 `probe`、`coldapi`、`hello`、`ping-ui` 已摘除构建 |
+| 界面插件 | `AgentUi`（内联，可组多次）或 `AgentPage`（整页，单次 composition） | `ev-ui`（`AgentPage`，**默认主页**，EV 风格 UI，消费 `AgentService`）、`settings`；实验插件 `probe`、`coldapi`、`hello`、`ping-ui` 已摘除构建 |
 | 服务插件 | 向 `ServiceDirectory.publish` 发布实现，或从中 `lookup` 可选依赖 | `ping-impl`（发布 `PingService`）、`ping-ui`（消费，缺 publisher 时降级）、`agent-model`（发布 `ModelService`）、`agent-tools`（发布 `ToolRegistry`）、`agent-memory`（发布 `MemoryService`）、`agent-brain`（发布 `AgentService`，编排前三个） |
 | 契约插件 | 只装接口与 `ServiceKey`，供其他插件经依赖加载器取用 | `ping-api`（`PingService`，空壳 `Plugin`）、`agent-api`（`AgentService`/`ModelService`/`ToolRegistry`/`MemoryService`，空壳 `Plugin`） |
 
@@ -228,9 +228,9 @@ SDK = `:plugin-api` + `:ui-kit`，都是 `com.android.library`（`minSdk 33`、`
 agent 能力层是同一规则的实例：`agent-api` 只放契约；`agent-model` / `agent-tools` / `agent-memory`
 是能力插件，各自向 `ServiceDirectory` 发布实现，sidecar 声明依赖 `ev.buan.plugins.agent.api`
 （model 另声明 `NETWORK`+`PLUGIN_STORAGE`，tools/memory 声明 `PLUGIN_STORAGE`）；`agent-brain` 是编排插件，
-每次发送时重新 `lookup` 这三项能力，缺失即降级，sidecar 只依赖 agent-api；`eta-ui` 是唯一界面插件
-（Eta 风格 UI，消费 `AgentService`，声明 `PLUGIN_STORAGE` 保存 `sessions.json`）。
-它依赖 agent-api，单独安装会被 `DEPENDENCY_MISSING` 拒绝。eta-ui 未获存储授权时
+每次发送时重新 `lookup` 这三项能力，缺失即降级，sidecar 只依赖 agent-api；`ev-ui` 是唯一界面插件
+（EV 风格 UI，消费 `AgentService`，声明 `PLUGIN_STORAGE` 保存 `sessions.json`）。
+它依赖 agent-api，单独安装会被 `DEPENDENCY_MISSING` 拒绝。ev-ui 未获存储授权时
 激活闸门拒绝，默认主页落到宿主兜底页。
 
 `agent-tools` 发布的 `ToolRegistry` 同时是**工具总线**：目录里只有这一个注册表，其他能力插件

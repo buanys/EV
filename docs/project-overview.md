@@ -20,7 +20,7 @@ host-core/                                        ← 宿主纯 JVM 逻辑（校
 plugin-api/                                       ← 宿主↔插件契约（服务接口、权限、PLUGIN_API_VERSION=1）
 ui-kit/                                           ← 设计系统（ev.buan.ui.*，宿主与插件共用）
 plugins/settings                                  ← 设置插件
-plugins/eta-ui                                    ← 主界面插件（唯一界面插件，默认主页，~7700 行）
+plugins/ev-ui                                    ← 主界面插件（唯一界面插件，默认主页，~7700 行）
 plugins/agent-api                                 ← agent 契约（AgentService/ModelService/ToolRegistry/MemoryService）
 plugins/agent-model                               ← 模型能力（多 Provider，OpenAI 兼容）
 plugins/agent-tools                               ← 工具能力（插件存储区文件读写）
@@ -46,11 +46,11 @@ scripts/release-smoke.sh                          ← release 冒烟 + 真机验
 
 - 架构加固（T01–T31）已完成并真机验收（PMX110 / Android 17），
   记录在 [archive/2026-10-24-arch-hardening/](archive/2026-10-24-arch-hardening/)。
-- 主构建收敛为 9 个插件：settings、eta-ui、agent-api/model/tools/memory/brain/web/shell。
-  旧聊天插件 `frontend` 已删除，eta-ui 是唯一界面。
+- 主构建收敛为 9 个插件：settings、ev-ui、agent-api/model/tools/memory/brain/web/shell。
+  旧聊天插件 `frontend` 已删除，ev-ui 是唯一界面。
 - 内核冻结门禁为绿（基线 `7b13e6b`）。
-- agent 链路已通：eta-ui 聊天 → brain 编排 → model 收发 + tools 工具轮（≤3 轮）+ memory 多轮。
-- 审批链路已通：`ToolSpec.dangerous` + `ApprovalService`（eta-ui 发布审批门，弹窗三选：
+- agent 链路已通：ev-ui 聊天 → brain 编排 → model 收发 + tools 工具轮（≤3 轮）+ memory 多轮。
+- 审批链路已通：`ToolSpec.dangerous` + `ApprovalService`（ev-ui 发布审批门，弹窗三选：
   拒绝/允许一次/本次运行放行）；高危调用无门即拒（fail-closed），拒绝理由回填给模型。
 - Web 控制台已通：agent-web 在局域网 8765 端口服务 React 控制台（令牌鉴权），
   聊天走 `/api/chat`；`/api/approve` 待接审批总线（当前 501）。

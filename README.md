@@ -94,25 +94,25 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 
 ## 主界面
 
-启动直接进**插件主页**（当前是 `eta-ui` 的 Eta 风格 UI），宿主管理页退到二级：主页左上角进入 `PluginsActivity`。
-选择顺序：`home.page` 偏好 → `ev.buan.plugins.eta.ui` → 任意实现 `AgentPage` 的插件 → 兜底页
+启动直接进**插件主页**（当前是 `ev-ui` 的 EV 风格 UI），宿主管理页退到二级：主页左上角进入 `PluginsActivity`。
+选择顺序：`home.page` 偏好 → `ev.buan.plugins.ev.ui` → 任意实现 `AgentPage` 的插件 → 兜底页
 （[HostRuntime.kt](host/src/main/kotlin/ev/buan/HostRuntime.kt) `homePage()`）。
 没有可用主页插件时不会白屏，兜底页仍可进入管理。
 
-`eta-ui` 声明了 `PLUGIN_STORAGE`，会话历史写在
-`files/plugins/ev.buan.plugins.eta.ui/sessions.json`。首次安装/升级后需在管理页授予「插件存储」；
-未授予时 `eta-ui` 不激活，主页落到宿主兜底页，不会崩。
+`ev-ui` 声明了 `PLUGIN_STORAGE`，会话历史写在
+`files/plugins/ev.buan.plugins.ev.ui/sessions.json`。首次安装/升级后需在管理页授予「插件存储」；
+未授予时 `ev-ui` 不激活，主页落到宿主兜底页，不会崩。
 
-`eta-ui` 每次发送时查找 `AgentService`（见下节）：装了 brain 就真实收发，
+`ev-ui` 每次发送时查找 `AgentService`（见下节）：装了 brain 就真实收发，
 没装/停用则保持原有的「未接模型」占位回复，任何失败都不会崩宿主。
 
-`eta-ui` 抽屉 → 设置 打开插件内部的 Eta 风格设置页：外观六项（主题、Monet、调色板、强调色、
+`ev-ui` 抽屉 → 设置 打开插件内部的 EV 风格设置页：外观六项（主题、Monet、调色板、强调色、
 纯黑、界面缩放）通过宿主 `AppearanceService` 修改；模型/工具/记忆/插件管理与宿主设置是跳转入口，
 不在插件里复制配置表单。
 
 抽屉还提供三个插件内面板：**工具**只读展示 `ToolRegistry.specs()`（不执行工具）；**浏览器**是
 面板内 WebView（地址栏/后退/前进/刷新，不打开外部应用、无标签页/下载）；**记忆**通过
-`MemoryService` 查看/清空当前会话的 agent-memory（不删除 eta-ui 聊天历史）。三者都不新增宿主权限。
+`MemoryService` 查看/清空当前会话的 agent-memory（不删除 ev-ui 聊天历史）。三者都不新增宿主权限。
 **角色**面板管理角色库（`characters.json`），角色按会话选择：发送/重新生成时把角色设定作为
 `AgentService.send(..., systemPrompt=)` 传入；agent-brain 把它放在本轮模型输入最前，但不写入记忆。
 **Skills** 面板管理 `skills.json`，同样按会话选择；发送时把「角色设定 + 当前 Skill instruction」
@@ -146,21 +146,21 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 
 | 插件 | id | 角色 | 依赖 | 权限 |
 |---|---|---|---|---|
-| eta-ui | `ev.buan.plugins.eta.ui` | **默认主页**（唯一界面插件）：Eta 风格首页/抽屉/聊天/会话历史，消费 `AgentService` | agent-api | `PLUGIN_STORAGE` |
+| ev-ui | `ev.buan.plugins.ev.ui` | **默认主页**（唯一界面插件）：EV 风格首页/抽屉/聊天/会话历史，消费 `AgentService` | agent-api | `PLUGIN_STORAGE` |
 
-- **安装**：把上表 5 个 agent jar + `eta-ui`（默认主页）的 jar 与同名 json
-  一起放进 `EV/mods`；依赖顺序由 sidecar 的 `dependencies` 决定，与文件名无关。`eta-ui` 依赖 agent-api（消费
-  `AgentService`），单独放界面插件会被 `DEPENDENCY_MISSING` 拒绝。eta-ui 还需在管理页授予
+- **安装**：把上表 5 个 agent jar + `ev-ui`（默认主页）的 jar 与同名 json
+  一起放进 `EV/mods`；依赖顺序由 sidecar 的 `dependencies` 决定，与文件名无关。`ev-ui` 依赖 agent-api（消费
+  `AgentService`），单独放界面插件会被 `DEPENDENCY_MISSING` 拒绝。ev-ui 还需在管理页授予
   「插件存储」才会激活（用于 `sessions.json`）；未授予时主页落到宿主兜底页。agent-api 的 `send` 增加
-  可选 `systemPrompt` 后 JVM 签名有变化：agent-api、eta-ui、agent-brain 必须同代重新打包/投放，
+  可选 `systemPrompt` 后 JVM 签名有变化：agent-api、ev-ui、agent-brain 必须同代重新打包/投放，
   不能混装旧 jar。
 - **配置模型**：插件管理 → `ev.buan.plugins.agent.model` 卡片 → 授予「网络访问」「插件存储」；
-  再到 `eta-ui` 设置 → 模型服务，配置 Provider/Key/模型并设为当前。旧版单配置
+  再到 `ev-ui` 设置 → 模型服务，配置 Provider/Key/模型并设为当前。旧版单配置
   `config/model.json` 会在首次读取时迁移为「默认」Provider；旧卡片表单已删除。
   多 Provider 配置写在 `config/providers.json`，没有系统提示词字段。
 - **降级**：`agent-brain` 每次发送时重新查找 ModelService/ToolRegistry/MemoryService，插件后启或
   先停都不需要重开页面。缺 model → 回复「未连接模型 / 尚未配置」；缺 tools → 纯文本问答；缺 memory
-  → 单轮对话；任一能力抛错都变成可读回复，不崩宿主。`eta-ui` 找不到 `AgentService` 时保持
+  → 单轮对话；任一能力抛错都变成可读回复，不崩宿主。`ev-ui` 找不到 `AgentService` 时保持
   原来的「未接模型」占位回复。
 - **工具轮次**：模型返回 tool call 时由 brain 执行，按原生 OpenAI tool 协议回填——assistant 的
   `tool_calls` 消息在前，每个结果一条 `tool` 角色消息（id 对应），随后再次请求模型
@@ -192,12 +192,12 @@ agent 层容器（jar + sidecar）用对应模块的 `bundlePlugin` 构建：
 ```bash
 :plugins:agent-api:bundlePlugin :plugins:agent-model:bundlePlugin \
 :plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
-:plugins:agent-brain:bundlePlugin :plugins:eta-ui:bundlePlugin
+:plugins:agent-brain:bundlePlugin :plugins:ev-ui:bundlePlugin
 ```
 
 ## 真机验收清单（agent 层）
 
-前置：真机已授予 EV「所有文件访问权限」；`EV/mods` 内放齐上表 5 个 agent jar 与 `eta-ui` 的
+前置：真机已授予 EV「所有文件访问权限」；`EV/mods` 内放齐上表 5 个 agent jar 与 `ev-ui` 的
 jar/json；真机问答需要一个可用的 OpenAI 兼容服务。本仓库的 CI/本机自动化只覆盖构建与纯逻辑单测
 （`AgentBrainServiceTest`），以下条目需人工逐条执行：
 
@@ -211,7 +211,7 @@ jar/json；真机问答需要一个可用的 OpenAI 兼容服务。本仓库的 
 3. **全开并保存配置**：在 `agent-model` 卡片授予「网络访问」「插件存储」、填写基址/Key/模型并保存
    （卡片提示「已保存：模型名」）→ 发送「你好」→ 收到真实模型回复，而不是占位文案。
 4. **停用 agent-model 后再发送**：→ 回复未就绪文案；重新启用后**无需重开页面**即可继续问答
-   （eta-ui 每次发送都重新查找 `AgentService`）。
+   （ev-ui 每次发送都重新查找 `AgentService`）。
 5. **停用 agent-brain 后再发送**：→ 回到第 1 条的「未接模型」占位回复；重新启用后恢复真实问答。
 6. **工具轮**：要求模型写文件（如「把 hello 写入 notes.txt」）→ 工具被执行，最终回复基于工具结果；
    管理页 `agent-tools` 的「插件存储」占用随之变化。

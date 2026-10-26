@@ -46,6 +46,27 @@ object PluginStorageLayout {
     }
 
     /**
+     * Carries a renamed plugin's storage area forward: for each `old id -> new id` pair, an existing
+     * old area is renamed to the new id's directory when the new one does not exist yet.
+     *
+     * Must run before [pruneUnknown]: without it a rename reads as an uninstall and the user's data
+     * is deleted instead of carried over. A new area that already exists wins - the old directory is
+     * left alone (prune will collect it later), so a downgrade-then-upgrade never clobbers fresh
+     * data with stale. Returns the applied renames as `"old -> new"` directory names.
+     */
+    fun migrateRenames(root: File, renames: Map<String, String>): List<String> {
+        val applied = mutableListOf<String>()
+        renames.forEach { (oldId, newId) ->
+            val from = File(root, directoryName(oldId))
+            val to = File(root, directoryName(newId))
+            if (from.isDirectory && !to.exists() && from.renameTo(to)) {
+                applied += "${from.name} -> ${to.name}"
+            }
+        }
+        return applied.sorted()
+    }
+
+    /**
      * Deletes per-plugin directories under [root] whose plugin id is no longer installed.
      *
      * Uninstall is only detected from a completed sync (the caller decides when the accepted set is

@@ -17,7 +17,7 @@
 对设置页无所谓：每次重组都从 `AppearanceService` 读当前值。
 对聊天页是灾难：草稿文字、滚动位置会出现两套，切换页面时"消息没了"或"输入框清空"。
 
-所以聊天页（`plugins/eta-ui`）实现 `AgentPage` 而非 `AgentUi`，宿主只给它页面这一条路径。
+所以聊天页（`plugins/ev-ui`）实现 `AgentPage` 而非 `AgentUi`，宿主只给它页面这一条路径。
 
 ## 规则
 

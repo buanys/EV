@@ -5,10 +5,10 @@
 
 ## 1. 背景与问题
 
-agent-model 的设置页写死在 `eta-ui` 里（抽屉 → 设置 → 模型服务）。后果：
+agent-model 的设置页写死在 `ev-ui` 里（抽屉 → 设置 → 模型服务）。后果：
 
 - 能力插件不拥有自己的 UI，能力做了但没有门面；
-- 每加一个能力插件，eta-ui 都要改代码——插件系统的"可扩展"在 UI 层失效。
+- 每加一个能力插件，ev-ui 都要改代码——插件系统的"可扩展"在 UI 层失效。
 
 ## 2. 目标与非目标
 
@@ -42,12 +42,12 @@ Composable 是代码不是数据，纯声明做不到。分两层：
 
 广告层的价值：
 
-- eta-ui 抽屉据 manifest 直接显示"模型服务"入口，点击后才触达插件代码；
+- ev-ui 抽屉据 manifest 直接显示"模型服务"入口，点击后才触达插件代码；
 - 安装期可校验：插槽不存在、元数据不全 → 拒载，错误前置。
 
 ### 3.2 送货层（ServiceDirectory）
 
-插件 `apply` 时把真正的页面实现 publish 到 `ServiceDirectory`；eta-ui 点击条目时
+插件 `apply` 时把真正的页面实现 publish 到 `ServiceDirectory`；ev-ui 点击条目时
 `lookup` 获取并渲染。**复用现有注册机制，不另起注册表。**
 
 ```kotlin
@@ -60,7 +60,7 @@ interface SettingsContribution {
 // agent-model：apply 时发布
 services.publish(SettingsContribution::class, ModelSettingsContribution(...))
 
-// eta-ui：渲染抽屉时收集
+// ev-ui：渲染抽屉时收集
 val entries = contributions.lookupAll(SettingsContribution::class)
 ```
 
@@ -71,7 +71,7 @@ val entries = contributions.lookupAll(SettingsContribution::class)
 | `plugin-api` | 插槽契约：插槽 id 常量、贡献接口；随 `PLUGIN_API_VERSION` 版本化 |
 | `host-core` | sidecar `contributes` 字段解析与校验（插槽存在性、元数据完整性） |
 | 宿主 `:host` | 把校验通过的贡献清单透传给插件上下文（不做仲裁业务） |
-| 消费插件（eta-ui） | 枚举贡献、渲染条目、零贡献时降级为静态抽屉 |
+| 消费插件（ev-ui） | 枚举贡献、渲染条目、零贡献时降级为静态抽屉 |
 | 贡献插件（agent-model 等） | sidecar 声明 + publish 实现 |
 
 **内核零改动。**
@@ -85,7 +85,7 @@ val entries = contributions.lookupAll(SettingsContribution::class)
 
 ## 6. 后续扩展（v1 跑通后再议）
 
-- 工具面板插槽（eta-ui 抽屉的工具区）；
+- 工具面板插槽（ev-ui 抽屉的工具区）；
 - 主页卡片插槽；
 - `ev.settings.page` 之外的贡献类型（内联 `AgentUi`）。
 

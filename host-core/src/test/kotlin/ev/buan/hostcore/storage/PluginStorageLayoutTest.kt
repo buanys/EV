@@ -74,4 +74,41 @@ class PluginStorageLayoutTest {
         assertTrue(removed.isEmpty())
         assertTrue(File(root, encoded).isDirectory)
     }
+
+    @Test
+    fun `migrateRenames 把旧 id 的目录连同内容改名到新 id`() {
+        val root = temp.resolve("plugins").toFile()
+        File(root, "old.plugin").apply { mkdirs(); resolve("sessions.json").writeText("history") }
+
+        val applied = PluginStorageLayout.migrateRenames(root, mapOf("old.plugin" to "new.plugin"))
+
+        assertEquals(listOf("old.plugin -> new.plugin"), applied)
+        assertFalse(File(root, "old.plugin").exists())
+        assertEquals("history", File(root, "new.plugin/sessions.json").readText())
+    }
+
+    @Test
+    fun `migrateRenames 新目录已存在时保留新目录不动旧目录`() {
+        val root = temp.resolve("plugins").toFile()
+        File(root, "old.plugin").apply { mkdirs(); resolve("sessions.json").writeText("stale") }
+        File(root, "new.plugin").apply { mkdirs(); resolve("sessions.json").writeText("fresh") }
+
+        val applied = PluginStorageLayout.migrateRenames(root, mapOf("old.plugin" to "new.plugin"))
+
+        assertTrue(applied.isEmpty())
+        assertTrue(File(root, "old.plugin").isDirectory)
+        assertEquals("fresh", File(root, "new.plugin/sessions.json").readText())
+    }
+
+    @Test
+    fun `migrateRenames 之后 pruneUnknown 不会误删迁移来的目录`() {
+        val root = temp.resolve("plugins").toFile()
+        File(root, "old.plugin").apply { mkdirs(); resolve("sessions.json").writeText("history") }
+
+        PluginStorageLayout.migrateRenames(root, mapOf("old.plugin" to "new.plugin"))
+        val removed = PluginStorageLayout.pruneUnknown(root, setOf("new.plugin"))
+
+        assertTrue(removed.isEmpty())
+        assertEquals("history", File(root, "new.plugin/sessions.json").readText())
+    }
 }

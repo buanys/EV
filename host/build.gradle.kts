@@ -106,7 +106,7 @@ dependencies {
 
     // Shared runtime the host lends to every plugin. Plugins compileOnly these coordinates and
     // must not package them, or the class identity would split across the class-loader boundary.
-    // Versions follow Eta's catalog so a migrated plugin needs no second copy.
+    // Versions follow EV's catalog so a migrated plugin needs no second copy.
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.runtime:runtime:1.12.0")
     implementation("androidx.compose.ui:ui:1.12.0")
