@@ -27,7 +27,10 @@ UI 规范：`docs/DESIGN-EXTRACT.md`（从 Eta 提取，**判定栏写"照搬"�
 
 ## 2. 构建（这台机器很特殊，别用标准命令）
 
-主机是 aarch64，Android build-tools 是 x86-64，整套工具链走 qemu 转译。**必须**：
+主机是 aarch64。Kotlin 编译、Gradle、R8 全是 JVM 任务，原生跑；**唯一需要转译的是 aapt2**——
+官方只发 x86-64 二进制，这里用 `qemu-x86_64-static` 包了一层，通过
+`/root/.gradle/gradle.properties` 的 `android.aapt2FromMavenOverride` 覆盖 AGP 自带的那份。
+所以"慢"主要慢在资源编译，不是整条链。**必须**：
 
 ```bash
 cd /root/EV
