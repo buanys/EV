@@ -57,14 +57,25 @@ object EvComposerDefaults {
     /** The "+" is drawn one notch smaller: a cross fills its box, a mic does not. */
     val PlusGlyph = 16.dp
     val FieldMinResting = 24.dp
-    /**
-     * Height of the expanded card (spec §7.3): the field owns the upper part and the toolbar sinks
-     * to the bottom edge, so this has to stay tall enough to read as a multi-line input area.
-     */
-    val FieldMinActive = 52.dp
 
-    /** Three and a half lines: past this the field scrolls instead of pushing the toolbar away. */
-    val FieldMaxActive = 76.dp
+    /**
+     * 展开后的**起始**高度 = 一行。
+     *
+     * 以前这里是 52.dp（约两行），于是输入框一获得焦点就先长到两行高，
+     * 哪怕一个字都没打——用户看到的是"展开即最高"。输入框应该按内容长，
+     * 最小高度只负责"空着的时候也有一行的高度"。
+     *
+     * 26.dp = body 的行高（16sp/26sp）。不按字号算是因为 Compose 的 sp→dp 会受
+     * 系统字体缩放影响，而这个值是布局下限，取一个稳定的行长更可预期。
+     */
+    val FieldMinActive = 26.dp
+
+    /**
+     * 三行半。超过这个高度输入框内部滚动，不再把工具栏往下挤。
+     *
+     * 3.5 × 26 = 91，取 92 留 1dp 余量，免得最后半行被裁掉一个像素。
+     */
+    val FieldMaxActive = 92.dp
     val PanelIconSize = 44.dp
     val PanelGlyph = 20.dp
 }
