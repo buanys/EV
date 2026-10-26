@@ -1,0 +1,159 @@
+name: Release
+
+# 出包流程：打 tag（v*）或手动触发 → 构建签名 release APK 与 9 个插件 jar → 创建 GitHub Release。
+#
+# 签名材料不在仓库里（keystore.properties 与 *.jks 都被 gitignore），CI 从 Secrets 还原：
+#   KEYSTORE_BASE64      release-keystore.jks 的 base64（`base64 -w0 release-keystore.jks`）
+#   KEYSTORE_PROPERTIES  完整的 keystore.properties 文本
+# 两个都缺失时 workflow 会带着可读的错误失败，而不是打出一个 debug 签名的包混进 Release。
+#
+# 已装旧版（debug 签名或不同密钥）的用户无法覆盖安装，这是签名机制决定的，不是 bug。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的版本号（例如 v0.1.0）"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build signed release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # fetch-depth: 0 是硬要求：内核冻结门禁把基线解析成真实提交，浅克隆会让它无法工作。
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Kernel freeze gate
+        run: bash scripts/kernel-freeze.sh --baseline "$(git rev-list --max-parents=0 HEAD)"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        run: |
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "$sdk_root/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          export PATH="$sdk_root/cmdline-tools/latest/bin:$PATH"
+          sdkmanager --version
+
+      - name: Accept Android SDK licenses
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses > /dev/null
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      # 签名材料还原失败必须当场失败。悄悄跳过会让 Release 里出现一个 debug 签名的包，
+      # 那种包用户装上之后再也无法被后续正式版本覆盖。
+      - name: Restore signing material
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PROPERTIES: ${{ secrets.KEYSTORE_PROPERTIES }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PROPERTIES" ]; then
+            echo "::error::缺少 KEYSTORE_BASE64 或 KEYSTORE_PROPERTIES secret，拒绝打出未签名的 release 包" >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
+          printf '%s' "$KEYSTORE_PROPERTIES" > keystore.properties
+          # 只打印别名与文件是否存在，不打印任何密码。
+          grep -E '^(storeFile|keyAlias)=' keystore.properties
+          test -s release-keystore.jks
+
+      # 出包前先过 CI 门禁，避免把一个本来就红的提交发出去。
+      - name: Run JVM and unit tests
+        run: ./gradlew test --console=plain
+
+      - name: Check SDK API snapshots
+        run: ./gradlew :plugin-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
+
+      - name: Assemble signed release APK
+        run: ./gradlew :host:assembleRelease --console=plain
+
+      - name: Verify the APK is signed with the release key
+        run: |
+          apk=host/build/outputs/apk/release/host-release.apk
+          test -f "$apk"
+          # apksigner 不在 hosted runner 的 PATH 上，要从 SDK 的 build-tools 里取最新一份。
+          sdk_root="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          apksigner="$(ls -d "$sdk_root"/build-tools/*/ | sort -V | tail -1)apksigner"
+          test -x "$apksigner" || { echo "::error::找不到 apksigner（$apksigner）" >&2; exit 1; }
+          # `verify --print-certs` 会打印证书；debug 证书的主题固定是 CN=Android Debug。
+          "$apksigner" verify --print-certs "$apk" | tee /tmp/certs.txt
+          if grep -q "CN=Android Debug" /tmp/certs.txt; then
+            echo "::error::APK 仍是 debug 签名，不可发布" >&2
+            exit 1
+          fi
+
+      - name: Bundle the nine plugin jars
+        run: |
+          set -euo pipefail
+          ./gradlew \
+            :plugins:settings:bundlePlugin :plugins:ev-ui:bundlePlugin \
+            :plugins:agent-api:bundlePlugin :plugins:agent-model:bundlePlugin \
+            :plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
+            :plugins:agent-brain:bundlePlugin :plugins:agent-web:bundlePlugin \
+            :plugins:agent-shell:bundlePlugin \
+            --console=plain
+          mkdir -p dist/plugins
+          # 每个插件目录里除了 jar 还有一份同名 .json sidecar，必须一起发，否则加载期缺元数据。
+          for dir in plugins/*/build/dist; do
+            cp -v "$dir"/*.jar "$dir"/*.json dist/plugins/ 2>/dev/null || true
+          done
+          ls -l dist/plugins
+          ( cd dist/plugins && zip -q -9 ../plugins.zip ./* )
+
+      - name: Name the artifacts after the version
+        id: version
+        run: |
+          version="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          mkdir -p dist
+          cp host/build/outputs/apk/release/host-release.apk "dist/EV-${version}.apk"
+          mv dist/plugins.zip "dist/EV-${version}-plugins.zip" 2>/dev/null || true
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          ls -lh dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: EV ${{ steps.version.outputs.version }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/EV-${{ steps.version.outputs.version }}.apk
+            dist/EV-${{ steps.version.outputs.version }}-plugins.zip
+          body: |
+            EV ${{ steps.version.outputs.version }}
+
+            **安装说明**
+            - `EV-<version>.apk`：宿主应用，release 签名
+            - `EV-<version>-plugins.zip`：9 个插件（jar + json sidecar）
+
+            插件是独立分发的：解压后把 jar 和 json 一起放进 `/sdcard/EV/mods/`，
+            启动应用后在「插件管理」里逐个确认（未签名插件需要人工批准，这是刻意的设计）。
+
+            如果设备上装过 debug 签名或不同密钥的版本，**必须先卸载**再安装本版本，
+            否则会因签名不一致安装失败（数据会丢，插件文件在 /sdcard 不受影响）。
