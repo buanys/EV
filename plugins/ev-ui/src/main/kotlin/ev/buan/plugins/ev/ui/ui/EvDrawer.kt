@@ -8,6 +8,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -25,7 +31,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,6 +100,7 @@ fun EvDrawerContent(
     query: String,
     onQueryChange: (String) -> Unit,
     onSelectSession: (String) -> Unit,
+    onDeleteSession: (String) -> Unit,
     onNewChat: () -> Unit,
     onPlugins: () -> Unit,
     onModel: () -> Unit,
@@ -106,6 +115,9 @@ fun EvDrawerContent(
     moreExpanded: Boolean = false,
     onToggleMore: () -> Unit = {},
 ) {
+    // 待删除的会话。放在确认框里而不是一按就删：会话一旦删掉，里面的对话就没了。
+    var pendingDelete by remember { mutableStateOf<EvSessionSummary?>(null) }
+    Box(Modifier.fillMaxWidth().fillMaxHeight()) {
     Column(Modifier.fillMaxWidth().fillMaxHeight()) {
         DrawerHeader(statusLine, onNewChat)
         if (searching) {
@@ -130,22 +142,32 @@ fun EvDrawerContent(
             style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
             modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 6.dp),
         )
-        Column(Modifier.weight(1f).fillMaxWidth()) {
+        // LazyColumn 而不是 Column + forEach：会话一多，后者既不滚动也不会回收，
+        // 列表尾部直接长到屏幕外，用户看着就是「划不动」。
+        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
             if (groups.isEmpty()) {
-                Text(
-                    text = if (searching && query.isNotBlank()) "没有匹配的对话" else "暂无会话",
-                    style = EvThemeTokens.type.caption.style(EvThemeTokens.colors.textTertiary),
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                )
+                item {
+                    Text(
+                        text = if (searching && query.isNotBlank()) "没有匹配的对话" else "暂无会话",
+                        style = EvThemeTokens.type.caption.style(EvThemeTokens.colors.textTertiary),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                }
             } else {
                 groups.forEach { group ->
-                    Text(
-                        text = group.label,
-                        style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
-                        modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 3.dp),
-                    )
-                    group.sessions.forEach { session ->
-                        HistoryItem(session, onSelectSession)
+                    item(key = "label-" + group.label) {
+                        Text(
+                            text = group.label,
+                            style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textTertiary),
+                            modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 3.dp),
+                        )
+                    }
+                    items(group.sessions, key = { it.id }) { session ->
+                        HistoryItem(
+                            session = session,
+                            onSelect = onSelectSession,
+                            onRequestDelete = { pendingDelete = session },
+                        )
                     }
                 }
             }
@@ -154,6 +176,17 @@ fun EvDrawerContent(
             onSearch = onSearch,
             showSearch = !searching,
         )
+    }
+    pendingDelete?.let { victim ->
+        DeleteSessionDialog(
+            title = victim.title,
+            onDismiss = { pendingDelete = null },
+            onConfirm = {
+                onDeleteSession(victim.id)
+                pendingDelete = null
+            },
+        )
+    }
     }
 }
 
@@ -311,13 +344,22 @@ private fun DrawerSubNav(label: String, glyph: EvGlyphKind, onClick: () -> Unit)
 }
 
 @Composable
-private fun HistoryItem(session: EvSessionSummary, onSelect: (String) -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+private fun HistoryItem(
+    session: EvSessionSummary,
+    onSelect: (String) -> Unit,
+    onRequestDelete: () -> Unit = {},
+) {
     val tokens = EvThemeTokens.colors
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 1.dp)
             .clip(EvThemeTokens.radii.smallShape)
             .background(if (session.selected) tokens.accent.copy(alpha = 0.12f) else Color.Transparent)
-            .clickable { onSelect(session.id) }
+            // 长按删除：列表是单列文字，塞不下删除按钮；长按是列表删除的通用手势。
+            .combinedClickable(
+                onClick = { onSelect(session.id) },
+                onLongClick = onRequestDelete,
+            )
             .padding(vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -418,5 +460,78 @@ private fun DrawerFooter(
                 Text("搜索对话", style = EvThemeTokens.type.caption.style(tokens.textTertiary))
             }
         }
+    }
+}
+
+/**
+ * 删除会话前的确认。会话是用户唯一不可重建的东西——一旦删掉，里面的对话就没了，
+ * 所以这里必须显式点一次「删除」，不做滑动即删。
+ */
+@Composable
+private fun DeleteSessionDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val tokens = EvThemeTokens.colors
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.62f))
+            // 点遮罩等于取消：删除不是需要"挡住误触"的危险操作，它本身还有二次确认。
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .padding(horizontal = 28.dp)
+                .fillMaxWidth()
+                .clip(EvThemeTokens.radii.largeShape)
+                .background(tokens.surface2)
+                .clickable(enabled = false) {}
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+            Text(
+                text = "删除会话",
+                style = EvThemeTokens.type.title.style(tokens.textPrimary),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "「" + title.ellipsize(28) + "」及其中全部对话将被删除，无法恢复。",
+                style = EvThemeTokens.type.caption.style(tokens.textSecondary),
+            )
+            Spacer(Modifier.height(18.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                DialogAction("取消", tokens.textSecondary, tokens.surface1, Modifier.weight(1f), onDismiss)
+                DialogAction("删除", tokens.danger, tokens.surface1, Modifier.weight(1f), onConfirm)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogAction(
+    label: String,
+    color: Color,
+    background: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier
+            .heightIn(min = 44.dp)
+            .clip(EvThemeTokens.radii.smallShape)
+            .background(background)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = EvThemeTokens.type.label.style(color),
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
     }
 }

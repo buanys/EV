@@ -747,6 +747,18 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         keyboard?.hide()
                         drawerOpen = false
                     },
+                    onDeleteSession = { id ->
+                        val index = sessions.indexOfFirst { it.id == id }
+                        if (index >= 0) {
+                            val wasActive = sessions[index].id == activeSessionId
+                            sessions.removeAt(index)
+                            // 全删光之后必须补一个空会话：界面上总得有一个可写的地方，
+                            // 否则下一次发送没有目标会话。
+                            if (sessions.isEmpty()) sessions += newSession()
+                            if (wasActive) activeSessionId = sessions.first().id
+                            persist()
+                        }
+                    },
                     onNewChat = { newChat() },
                     onPlugins = {
                         navigation?.openPluginManager()
