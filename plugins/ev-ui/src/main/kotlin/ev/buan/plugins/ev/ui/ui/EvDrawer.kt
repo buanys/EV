@@ -101,7 +101,6 @@ fun EvDrawerContent(
     onQueryChange: (String) -> Unit,
     onSelectSession: (String) -> Unit,
     onDeleteSession: (String) -> Unit,
-    onNewChat: () -> Unit,
     onPlugins: () -> Unit,
     onModel: () -> Unit,
     onTools: () -> Unit,
@@ -119,7 +118,7 @@ fun EvDrawerContent(
     var pendingDelete by remember { mutableStateOf<EvSessionSummary?>(null) }
     Box(Modifier.fillMaxWidth().fillMaxHeight()) {
     Column(Modifier.fillMaxWidth().fillMaxHeight()) {
-        DrawerHeader(statusLine, onNewChat)
+        DrawerHeader(statusLine, onSettings)
         if (searching) {
             SearchField(query, onQueryChange, onCancel = onSearch)
         } else {
@@ -133,7 +132,6 @@ fun EvDrawerContent(
                 DrawerSubNav("记忆", EvGlyphKind.Memory, onMemory)
                 DrawerSubNav("角色", EvGlyphKind.Person, onCharacters)
                 DrawerSubNav("Skills", EvGlyphKind.Skill, onSkills)
-                DrawerSubNav("设置", EvGlyphKind.Gear, onSettings)
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -191,7 +189,7 @@ fun EvDrawerContent(
 }
 
 @Composable
-private fun DrawerHeader(statusLine: String, onNewChat: () -> Unit) {
+private fun DrawerHeader(statusLine: String, onSettings: () -> Unit) {
     val tokens = EvThemeTokens.colors
     Row(
         Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 18.dp),
@@ -204,13 +202,15 @@ private fun DrawerHeader(statusLine: String, onNewChat: () -> Unit) {
             Text(statusLine, style = EvThemeTokens.type.caption.style(tokens.textSecondary))
         }
         Spacer(Modifier.weight(1f))
+        // 设置放在这里，而不是收进「更多工具」：那是唯一一个用户会主动去找、却找不到就会被
+        // 判为「这应用没有设置」的入口。新建对话在聊天页顶栏已经有一个，抽屉里不必重复。
         Box(
             Modifier.size(38.dp).clip(CircleShape)
                 .background(tokens.surface2)
-                .clickable(onClickLabel = "新会话", onClick = onNewChat),
+                .clickable(onClickLabel = "设置", onClick = onSettings),
             contentAlignment = Alignment.Center,
         ) {
-            EvGlyph(EvGlyphKind.Chat, color = tokens.textPrimary, modifier = Modifier.size(18.dp))
+            EvGlyph(EvGlyphKind.Gear, color = tokens.textPrimary, modifier = Modifier.size(18.dp))
         }
     }
 }

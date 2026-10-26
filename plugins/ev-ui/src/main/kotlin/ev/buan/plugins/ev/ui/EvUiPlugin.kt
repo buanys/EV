@@ -759,7 +759,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                             persist()
                         }
                     },
-                    onNewChat = { newChat() },
                     onPlugins = {
                         navigation?.openPluginManager()
                         drawerOpen = false
