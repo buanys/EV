@@ -15,7 +15,9 @@ plugins {
 }
 
 allprojects {
-    group = "io.github.meteor149"
+    // 发布坐标必须用本仓库拥有者的 GitHub 命名空间：io.github.* 的 Maven Central 坐标要靠
+    // 对应 GitHub 账号的 ownership 校验，上游的 io.github.meteor149 不是我们的。
+    group = "io.github.buanys"
     version = "0.0.1-SNAPSHOT"
 }
 

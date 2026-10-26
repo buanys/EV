@@ -87,7 +87,9 @@ internal class WebConsoleServer(
     }
 
     private fun authorized(request: HttpRequest): Boolean =
-        request.header("x-ev-token") == token || request.query["token"] == token
+        // 只认请求头。token 走 URL 会被浏览器历史、访问日志、Referer 和中间代理记下来，
+        // 而拿到它就能驱动这个 agent（执行 shell、读写文件），泄露代价太高。
+        request.header("x-ev-token") == token
 
     private fun capabilities(): HttpResponse {
         val agent = directory.lookup(AgentService.Key)

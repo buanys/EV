@@ -80,7 +80,14 @@ class PluginInstaller(
      * The hash is still recorded, so a byte swap after sync is refused at load time; what is gone
      * is the manual "信任" step. Flip to false to require explicit approval per container.
      */
-    private val autoTrustUnsigned: Boolean = true,
+    /**
+     * 未签名插件是否无需确认即可加载。默认 **false**：插件列表页会把这些插件列为「待确认」
+     * （[PendingUnsigned]），用户在那里逐个批准，批准记录按 id + sha256 保存。
+     *
+     * 曾经默认 true——侧载时方便，但它意味着"丢进目录即可执行"，一旦对外分发就是任意代码
+     * 执行入口。改成 false 不会让人装不上插件：宿主启动后停在插件管理页，导入 + 确认即可。
+     */
+    private val autoTrustUnsigned: Boolean = false,
 ) {
 
     private val privateRoot: File = File(context.filesDir, "mods")
