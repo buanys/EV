@@ -26,33 +26,84 @@ internal class BrowseTools(
 
     fun all(): List<Tool> = listOf(Tool_(SEARCH_SPEC) { search(it) }, Tool_(FETCH_SPEC) { fetch(it) })
 
-    private fun search(args: JSONObject): String {
+    private suspend fun search(args: JSONObject): String {
         val query = args.optString("query", "").trim()
         if (query.isEmpty()) return error("query 不能为空")
         val limit = args.optInt("limit", 8).coerceIn(1, 20)
 
-        val hits = WebSearch.search(client, query, limit)
-        if (hits.isEmpty()) {
-            return error("没有搜到结果（可能被限流，或该引擎当前返回了空结果页）")
+        // 快路径：能直连 DDG 的网络里，一次 GET 就够。
+        // 用短超时的独立客户端：国内这条线必然超时，不能让它把一次搜索拖到十几秒。
+        if (!staticDead) {
+            val hits = try {
+                WebSearch.searchStatic(shortClient, query, limit)
+            } catch (t: Throwable) {
+                // 记下来，这个进程里不再试——省得每次搜索都白等一轮。
+                staticDead = true
+                emptyList()
+            }
+            if (hits.isNotEmpty()) {
+                return JSONObject()
+                    .put("query", query)
+                    .put("via", "http")
+                    .put("count", hits.size)
+                    .put(
+                        "results",
+                        JSONArray().apply {
+                            hits.forEach { h ->
+                                put(
+                                    JSONObject()
+                                        .put("title", h.title)
+                                        .put("url", h.url)
+                                        .put("snippet", h.snippet),
+                                )
+                            }
+                        },
+                    )
+                    .toString()
+            }
         }
-        return JSONObject()
-            .put("query", query)
-            .put("count", hits.size)
-            .put(
-                "results",
-                JSONArray().apply {
-                    hits.forEach { h ->
-                        put(
-                            JSONObject()
-                                .put("title", h.title)
-                                .put("url", h.url)
-                                .put("snippet", h.snippet),
-                        )
-                    }
-                },
-            )
-            .toString()
+
+        // 慢路径：读屏。把引擎页渲染完，取结果区的可见文本交给模型。
+        val reader = pageReader ?: return error(
+            "这条网络上静态搜索不可用（结果页靠 JS 渲染），且宿主没有提供离屏浏览器，无法读屏搜索",
+        )
+        var lastError = "所有引擎都没有返回内容"
+        for (engine in WebSearch.engines(query)) {
+            val page = try {
+                reader.render(engine.url, selector = engine.selector)
+            } catch (t: Throwable) {
+                lastError = "${engine.name} 渲染失败：${t.message ?: t.javaClass.simpleName}"
+                continue
+            }
+            // 空文本比错误更糟：模型会据此回答"没搜到"，而实际只是被验证码拦了。换下一个引擎。
+            if (!WebSearch.acceptable(page.text)) {
+                lastError = page.error ?: "${engine.name} 的结果区没有可见文本"
+                continue
+            }
+            return JSONObject()
+                .put("query", query)
+                .put("via", "browser")
+                .put("engine", engine.name)
+                .put("url", engine.url)
+                .put("chars", page.text.length)
+                .put("text", page.text)
+                .put("hint", "以上是 ${engine.name} 结果页上被渲染出来的可见文本。请自行挑出相关条目，" +
+                    "要读某一篇再用 web_fetch 打开它的地址。")
+                .toString()
+        }
+        return error("读屏搜索失败：$lastError")
     }
+
+    /** 静态搜索路径已确认不可用：同一进程内不再重试。 */
+    @Volatile
+    private var staticDead = false
+
+    /** 只用于静态快路径的短超时客户端。 */
+    private val shortClient: OkHttpClient = client.newBuilder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
+        .build()
+
 
     private suspend fun fetch(args: JSONObject): String {
         val url = args.optString("url", "").trim()

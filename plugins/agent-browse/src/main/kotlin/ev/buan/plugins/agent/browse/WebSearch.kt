@@ -7,48 +7,71 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 
 /**
- * 网页搜索：抓 DuckDuckGo 的 HTML 版结果页。
+ * 网页搜索。
  *
- * 为什么是 HTML 版而不是 API：`html.duckduckgo.com` 是给无 JS 客户端用的纯 HTML 页面，
- * 不需要 key、不需要浏览器、解析稳定。真正的 API 要申请 key，而这件事的价值主要在
- * "模型能不能查到东西"，先不引入一个要用户配置的依赖。
+ * 两条路径，顺序是"先便宜、失败就转读屏"：
  *
- * 换搜索引擎时只需要改 [parse] 的 selector 与 [ENDPOINT]——这是刻意的：
- * 搜索质量不满意时，替换成本应该是一处而不是一层。
+ * 1. **静态**：抓结果页的 HTML 解析。在能直连 DDG 的网络里，一次 GET 就完成。
+ * 2. **读屏**：用离屏浏览器把引擎页跑完 JS，取结果区的可见文本交给模型。
+ *
+ * 为什么必须有第 2 条：国内网络下静态这条路**整体不可用**——
+ * DuckDuckGo 连不上，百度/Bing 的结果靠 JS 渲染（静态 HTML 只有骨架），
+ * 搜狗直接回反爬验证页。这不是"某个选择器要更新"，是整个抓法在这里不成立。
+ * 读屏不做结构解析：引擎改版只影响美观，不影响"模型能不能看到结果"。
  */
 internal object WebSearch {
 
-    private const val ENDPOINT = "https://html.duckduckgo.com/html/"
-
-    /**
-     * 必须伪装成普通浏览器。默认的 `OkHttp` UA 会被直接返回 202 + 空结果页，
-     * 那不是解析出错，是对方不想服务脚本客户端。
-     */
     private const val USER_AGENT =
-        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/124.0.0.0 Mobile Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/124.0.0.0 Safari/537.36"
 
     data class Hit(val title: String, val url: String, val snippet: String)
 
-    fun search(client: OkHttpClient, query: String, limit: Int): List<Hit> {
+    /**
+     * 引擎与它的结果容器。
+     *
+     * [selector] 只用来**缩小取文本的范围**，不用于解析结构——所以引擎改版时，
+     * 最坏情况是选择器匹配不到（退回整页），而不是完全搜不到东西。
+     */
+    data class Engine(val name: String, val url: String, val selector: String)
+
+    /**
+     * 读屏引擎，按顺序尝试。
+     *
+     * Bing 排第一：它对无 cookie 的 WebView 最宽松，结果区也干净。
+     * 百度必然能打开，但广告多，作为第二选择。
+     *
+     * 返回纯数据而不是在这里发请求：渲染是 suspend 且依赖宿主契约，
+     * 留在这里会让这段"顺序与选择器"的决策没法单测。
+     */
+    fun engines(query: String): List<Engine> = listOf(
+        Engine("bing", "https://cn.bing.com/search?q=" + enc(query), "#b_results"),
+        Engine("baidu", "https://www.baidu.com/s?wd=" + enc(query), "#content_left"),
+    )
+
+    /**
+     * 读回来的文本够不够当结果用。
+     *
+     * 少于这个字数基本等于没读到：要么被验证码拦了，要么选择器失效。
+     * 把它当成功的话，模型会得到一段空白并据此回答"没搜到"——比报错更糟。
+     */
+    fun acceptable(text: String): Boolean = text.length >= MIN_READABLE
+
+    // ---- 路径 1：静态抓取 ----
+
+    fun searchStatic(client: OkHttpClient, query: String, limit: Int): List<Hit> {
         val request = Request.Builder()
-            .url(ENDPOINT + "?q=" + URLEncoder.encode(query, "UTF-8"))
+            .url("https://html.duckduckgo.com/html/?q=" + enc(query))
             .header("User-Agent", USER_AGENT)
             .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
             .build()
         client.newCall(request).execute().use { response ->
             val body = response.body.string()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("搜索请求失败：HTTP ${response.code}")
-            }
+            if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
             return parse(body, limit)
         }
     }
 
-    /**
-     * 解析结果页。抽成独立函数是为了能拿真实 HTML 片段做单测——
-     * 搜索这种功能挂掉时，最需要的就是"到底是解析变了还是网络不通"。
-     */
     fun parse(html: String, limit: Int): List<Hit> {
         val doc = Jsoup.parse(html)
         return doc.select("div.result")
@@ -59,7 +82,6 @@ internal object WebSearch {
                 if (title.isEmpty()) return@mapNotNull null
                 val url = resolveHref(anchor.attr("href"))
                 if (url.isEmpty()) return@mapNotNull null
-                // DDG 不同版本里摘要的 class 名换过几次，逐个试比只认一个稳。
                 val snippet = (el.selectFirst("a.result__snippet")
                     ?: el.selectFirst(".result__snippet")
                     ?: el.selectFirst(".result-snippet"))
@@ -70,21 +92,24 @@ internal object WebSearch {
             .toList()
     }
 
-    /**
-     * DDG 的链接是跳转形式：`//duckduckgo.com/l/?uddg=<encoded>&rut=…`。
-     * 不解码的话，模型拿到的是一堆 duckduckgo.com 的跳转地址，点开才落地——
-     * 而它接下来要 `web_fetch` 的是真实地址。
-     */
     private fun resolveHref(href: String): String {
         val trimmed = href.trim()
         if (trimmed.isEmpty()) return ""
-        val encoded = when {
-            trimmed.contains("uddg=") -> trimmed.substringAfter("uddg=").substringBefore("&")
-            else -> ""
+        val encoded = if (trimmed.contains("uddg=")) {
+            trimmed.substringAfter("uddg=").substringBefore("&")
+        } else {
+            ""
         }
         if (encoded.isNotEmpty()) {
             return runCatching { URLDecoder.decode(encoded, "UTF-8") }.getOrDefault("")
         }
         return if (trimmed.startsWith("//")) "https:$trimmed" else trimmed
     }
+
+    // ---- 路径 2：读屏 ----
+
+    /** 少于这个字数基本等于没读到结果：要么被验证码拦住，要么选择器失效了。 */
+    private const val MIN_READABLE = 80
+
+    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 }

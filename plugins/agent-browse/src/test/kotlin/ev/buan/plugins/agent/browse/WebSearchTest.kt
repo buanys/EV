@@ -148,3 +148,35 @@ class PageFetchTest {
         assertEquals(1000, page.text.length)
     }
 }
+
+/**
+ * 读屏策略：顺序、选择器、判空。
+ *
+ * 这条路径的失败模式很隐蔽：空结果被当成成功时，模型会得到一段空白，
+ * 然后据此回答"没搜到"——而实际上只是第一个引擎被验证码拦了。
+ */
+class ReadScreenPolicyTest {
+
+    @Test
+    fun `引擎顺序是 Bing 优先且带各自的结果容器`() {
+        val engines = WebSearch.engines("kotlin")
+
+        assertEquals(listOf("bing", "baidu"), engines.map { it.name })
+        assertEquals("#b_results", engines[0].selector)
+        assertEquals("#content_left", engines[1].selector)
+    }
+
+    @Test
+    fun `查询被正确编码进地址`() {
+        val url = WebSearch.engines("kotlin 协程")[0].url
+
+        assertTrue("空格要编码，否则地址会被截断", url.contains("kotlin+%E5%8D%8F%E7%A8%8B"))
+    }
+
+    @Test
+    fun `空文本和过短文本都不可接受`() {
+        assertFalse("完全空 = 没读到", WebSearch.acceptable(""))
+        assertFalse("几个字 = 被验证码拦了", WebSearch.acceptable("请完成验证"))
+        assertTrue("有实质内容才当结果", WebSearch.acceptable("结果行 ".repeat(30)))
+    }
+}

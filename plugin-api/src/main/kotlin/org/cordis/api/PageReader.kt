@@ -20,7 +20,17 @@ interface PageReader {
      * [timeoutMs] 到点即放弃并返回当前已有的内容（哪怕是空的），不抛异常——
      * 一次工具调用失败不该掀翻整个对话回合，调用方需要拿到"没抓到"这个结果本身。
      */
-    suspend fun render(url: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): RenderedPage
+    /**
+     * [selector] 可选 CSS 选择器：给了就只取该元素内的文本，不给取整页。
+     *
+     * 搜索页整页读回来全是导航、广告和"相关搜索"，把结果区单独框出来，
+     * 模型看到的才是它要的东西。选择器由调用方给——浏览器只负责渲染和取值。
+     */
+    suspend fun render(
+        url: String,
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+        selector: String? = null,
+    ): RenderedPage
 
     companion object {
         const val DEFAULT_TIMEOUT_MS = 20_000L

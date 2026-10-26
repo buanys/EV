@@ -44,7 +44,7 @@ class HostPageReader(
 
     private val main = Handler(Looper.getMainLooper())
 
-    override suspend fun render(url: String, timeoutMs: Long): RenderedPage = withContext(Dispatchers.Main) {
+    override suspend fun render(url: String, timeoutMs: Long, selector: String?): RenderedPage = withContext(Dispatchers.Main) {
         val outcome = CompletableDeferred<RenderedPage>()
         val started = AtomicBoolean(false)
         var container: FrameLayout? = null
@@ -81,7 +81,7 @@ class HostPageReader(
                     override fun onPageFinished(v: WebView, loadedUrl: String) {
                         if (!started.compareAndSet(false, true)) return
                         // SPA 在 onPageFinished 之后还会再渲染一轮；给它一点时间再取。
-                        main.postDelayed({ extract(v, loadedUrl, ::finish) }, SETTLE_DELAY_MS)
+                        main.postDelayed({ extract(v, loadedUrl, selector, ::finish) }, SETTLE_DELAY_MS)
                     }
 
                     override fun onPageStarted(v: WebView, startedUrl: String, icon: Bitmap?) = Unit
@@ -129,10 +129,21 @@ class HostPageReader(
     }
 
     /** 取出可见文本。用 `innerText` 而不是 `innerHTML`：模型要看的是内容，不是标签。 */
-    private fun extract(view: WebView, url: String, finish: (RenderedPage) -> Unit) {
+    private fun extract(view: WebView, url: String, selector: String?, finish: (RenderedPage) -> Unit) {
+        // 选择器用 JSON 编码后再拼进 JS：直接字符串拼接会被引号打断，也给了页面注入的机会。
+        val selectorJson = org.json.JSONObject.quote(selector ?: "")
         val js = """
             (function(){
-              var t = (document.body && document.body.innerText) ? document.body.innerText : '';
+              var sel = $selectorJson;
+              var root = document.body;
+              if (sel) {
+                // 选择器可能匹配多个，取第一个有内容的：'#content_left, .result' 这类写法很常见。
+                var nodes = document.querySelectorAll(sel);
+                for (var i = 0; i < nodes.length; i++) {
+                  if (nodes[i] && nodes[i].innerText && nodes[i].innerText.trim()) { root = nodes[i]; break; }
+                }
+              }
+              var t = (root && root.innerText) ? root.innerText : '';
               t = t.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
               return JSON.stringify({ title: document.title || '', text: t });
             })()
