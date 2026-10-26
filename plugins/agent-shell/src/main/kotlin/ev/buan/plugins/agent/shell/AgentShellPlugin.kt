@@ -37,7 +37,7 @@ class AgentShellPlugin : Plugin<Unit>, AgentSurface {
             // it degrades to "no tools" instead of crashing the host.
             return
         }
-        registry.register(PLUGIN_ID, ShellTools.all(SuShellRunner()))
+        registry.register(PLUGIN_ID, ShellTools.all(ProbingShellRunner()))
         // Identity is unnecessary here (unregister is owner-scoped): even a stale disposer can
         // only remove this plugin's own group, which is exactly what disposal means.
         effect.collect {

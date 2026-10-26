@@ -52,18 +52,28 @@ internal object ShellTools {
             } catch (error: Exception) {
                 // ProcessBuilder throws IOException when the binary does not exist: an unrooted
                 // phone is a normal runtime fact, not a crash.
-                return errorJson("su 不可用（设备未 root 或已拒绝授权）：${error.message ?: error::class.simpleName}")
+                return errorJson("shell 启动失败：${error.message ?: error::class.simpleName}")
             }
             return JSONObject()
                 .put("exit", result.exitCode ?: JSONObject.NULL)
                 .put("timedOut", result.timedOut)
                 .put("stdout", result.stdout)
                 .put("stderr", result.stderr)
+                // 身份必须回报：同一条命令在 root 下能跑、在应用 uid 下会 Permission denied。
+                // agent 不知道自己是哪种身份，就会把"没权限"误读成"文件不存在"。
+                .put("shell", result.shell)
+                .put("isRoot", result.isRoot)
                 .apply {
                     if (result.stdoutTruncated) put("stdoutTruncated", true)
                     if (result.stderrTruncated) put("stderrTruncated", true)
                     if (result.timedOut) {
-                        put("hint", "命令超时被杀。首次执行可能停在 Magisk 授权弹窗——到手机上确认后重试。")
+                        put("hint", "命令超时被杀。若 shell=su，可能停在授权弹窗；否则命令本身太慢。")
+                    }
+                    // 只在"确实跑完且失败"时补这条提示。超时时 exitCode 是 null，
+                    // `null != 0` 同样成立，会把超时提示覆盖成权限提示——那会误导 agent
+                    // 以为命令跑过了只是没权限。
+                    if (!result.isRoot && !result.timedOut && (result.exitCode ?: 0) != 0) {
+                        put("hint", "当前不是 root（shell=${result.shell}），访问 /data 等受保护路径会失败。")
                     }
                 }
                 .toString()

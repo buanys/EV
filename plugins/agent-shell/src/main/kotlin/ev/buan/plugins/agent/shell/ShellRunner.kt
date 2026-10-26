@@ -17,6 +17,14 @@ internal data class RawShellResult(
     val timedOut: Boolean,
     val stdoutTruncated: Boolean = false,
     val stderrTruncated: Boolean = false,
+    /**
+     * 实际用的是哪个 shell：`su`（root）或 `/system/bin/sh`（应用自己的 uid）。
+     *
+     * 必须回报给 agent：同一条 `ls /data/data/...`，root 下成功、普通 uid 下 Permission denied，
+     * agent 如果不知道自己是哪种身份，就会把"权限不够"误判成"文件不存在"。
+     */
+    val shell: String = "unknown",
+    val isRoot: Boolean = false,
 )
 
 /** The process boundary, factored out so tool logic is testable on a plain JVM with a fake. */
@@ -41,7 +49,46 @@ internal const val MAX_CAPTURE_BYTES = 256 * 1024
  * [shellBinary] is injectable for one reason: JVM unit tests point it at a real `sh` and exercise
  * this class end to end without a rooted phone.
  */
-internal class SuShellRunner(private val shellBinary: String = "su") : ShellRunner {
+/**
+ * 选择用哪个 shell：先试 root，不行退到应用自己的 shell。
+ *
+ * 之前只有 `SuShellRunner`，而 EV 的进程根本没有 root（设备上没有可用的 `su`），
+ * 结果 `run_shell` 一条命令都跑不起来——连 `ls` 这种不需要特权的也不行。
+ * 普通命令不需要 root，退到 `/system/bin/sh` 就能用；能拿到 root 的时候仍然优先用它。
+ *
+ * 探测只做一次并缓存：`su` 存在但未授权时进程会停在授权弹窗上，所以探测必须带超时，
+ * 超时就当"没有 root"——这比每次调用都挂几秒强得多。
+ */
+internal class ProbingShellRunner(
+    private val rootBinary: String = "su",
+    private val plainBinary: String = "/system/bin/sh",
+) : ShellRunner {
+
+    private val delegate: ShellRunner by lazy {
+        if (probeRoot()) ProcessShellRunner(rootBinary, isRoot = true)
+        else ProcessShellRunner(plainBinary, isRoot = false)
+    }
+
+    override fun exec(command: String, timeoutMillis: Long): RawShellResult =
+        delegate.exec(command, timeoutMillis)
+
+    /** 真跑一条命令确认拿到的是 uid 0——只看 `su` 文件存在不够，它可能没被授权。 */
+    private fun probeRoot(): Boolean = runCatching {
+        val process = ProcessBuilder(rootBinary, "-c", "id").start()
+        val finished = process.waitFor(3, TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            return false
+        }
+        val out = process.inputStream.bufferedReader().readText()
+        process.exitValue() == 0 && out.contains("uid=0")
+    }.getOrDefault(false)
+}
+
+internal class ProcessShellRunner(
+    private val shellBinary: String = "su",
+    private val isRoot: Boolean = shellBinary == "su",
+) : ShellRunner {
 
     override fun exec(command: String, timeoutMillis: Long): RawShellResult {
         val process = ProcessBuilder(shellBinary, "-c", command).start()
@@ -62,6 +109,8 @@ internal class SuShellRunner(private val shellBinary: String = "su") : ShellRunn
                 timedOut = true,
                 stdoutTruncated = stdout.truncated,
                 stderrTruncated = stderr.truncated,
+                shell = shellBinary,
+                isRoot = isRoot,
             )
         }
         stdout.join()
@@ -71,6 +120,8 @@ internal class SuShellRunner(private val shellBinary: String = "su") : ShellRunn
             stdout = stdout.text(),
             stderr = stderr.text(),
             timedOut = false,
+            shell = shellBinary,
+            isRoot = isRoot,
             stdoutTruncated = stdout.truncated,
             stderrTruncated = stderr.truncated,
         )

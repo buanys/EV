@@ -75,7 +75,8 @@ class ShellToolsTest {
         assertTrue(json.getBoolean("timedOut"))
         assertEquals(JSONObject.NULL, json.get("exit"))
         assertEquals("partial", json.getString("stdout"))
-        assertTrue(json.getString("hint").contains("Magisk"))
+        // 提示不再承诺"一定是 Magisk 弹窗"——现在可能是普通 shell 里的慢命令。
+        assertTrue(json.getString("hint").contains("超时"))
     }
 
     @Test
@@ -94,17 +95,35 @@ class ShellToolsTest {
     }
 
     @Test
-    fun `a missing su comes back as a readable error result`() {
+    fun `a shell that cannot start comes back as a readable error result`() {
         val tool = tool(FakeRunner(failWith = IOException("No such file or directory")))
 
         val json = invoke(tool, """{"command":"id"}""")
-        assertTrue(json.getString("error").contains("su 不可用"))
+        // 以前这里断言的是「su 不可用」——那是把"没有 root"当成"命令跑不了"。
+        // 现在没有 root 会降级到普通 shell，只有两个都起不来才算失败。
+        assertTrue(json.getString("error").contains("shell 启动失败"))
+    }
+
+    @Test
+    fun `结果里回报实际身份，agent 才知道自己能不能碰受保护路径`() {
+        val tool = tool(
+            FakeRunner(
+                RawShellResult(
+                    exitCode = 0, stdout = "ok", stderr = "", timedOut = false,
+                    shell = "/system/bin/sh", isRoot = false,
+                ),
+            ),
+        )
+
+        val json = invoke(tool, """{"command":"ls /data"}""")
+        assertEquals("/system/bin/sh", json.getString("shell"))
+        assertFalse(json.getBoolean("isRoot"))
     }
 
     @Test
     fun `the real runner executes, captures and times out against sh`() {
         assumeTrue("sh available", java.io.File("/bin/sh").exists())
-        val runner = SuShellRunner(shellBinary = "/bin/sh")
+        val runner = ProcessShellRunner(shellBinary = "/bin/sh")
 
         val hello = runner.exec("echo hello; echo oops >&2; exit 3", 5_000)
         assertEquals(3, hello.exitCode)
