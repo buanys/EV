@@ -14,6 +14,8 @@
 | [plugin-ui-composition.md](plugin-ui-composition.md) | 插件 UI 如何组合进宿主界面 |
 | [release-signing.md](release-signing.md) | 发布签名方案 |
 | [extension-points.md](extension-points.md) | 扩展点机制设计方案（**草案，未实施**）：声明式插件挂载 |
+| [research/on-device-compiler.md](research/on-device-compiler.md) | **设备端编译 Kotlin（已实测）**：手机离线完成 源码→class→dex→插件→运行，含 8 个 ART 兼容坑与修法 |
+| [research/agent-harness.md](research/agent-harness.md) | agent harness 调研 |
 
 ## 决策（ADR）
 
