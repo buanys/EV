@@ -54,6 +54,7 @@ Kotlin 源码
 | `classes7.dex` | `trove4j` | 428 KB |
 | `classes8..9.dex` | `d8`（build-tools 37.0.0） | 11 MB |
 | `classes10.dex` | `org.jetbrains:annotations` | 13 KB |
+| `classes11.dex` | Compose 编译器插件（**重定位后**的 `ev.buan.taotie.cplugin.*`） | 1.1 MB |
 
 资源文件（打进 jar，运行时解压到磁盘）：
 
@@ -175,6 +176,32 @@ Caused by: ClassNotFoundException: org.jetbrains.annotations.NotNull
 
 ---
 
+### 4.9 Compose 编译器插件：`-Xplugin=` 在 ART 上加载不了 jar 里的类
+
+```
+ClassNotFoundException: androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar
+  at ServiceLoaderLite.loadImplementations
+Caused by: ClassCastException: UnsupportedOperationException cannot be cast to ClassNotFoundException
+```
+
+`-Xplugin=某jar` 依赖 `URLClassLoader` 从 jar 里加载 `.class`——**这是 JVM 才有的能力**。ART 的 ClassLoader 只认 dex。那个 `ClassCastException` 是 ART 特有的假象，别被它带偏。
+
+**修法**（CodeAssist 同款）：jar 里只留 `META-INF/services` 描述符给 `-Xplugin` 读，类本体 dex 化打进插件，`Class.forName` 走父加载器从 dex 里拿到。
+
+### 4.10 Compose 编译器插件撞共享包前缀
+
+`ModuleLoader` 判断宿主类用的是**前缀匹配**：
+
+```kotlin
+if (sharedPackages.any { name == it || name.startsWith("$it.") })
+```
+
+`androidx.compose` 是共享包 → `androidx.compose.compiler.plugins.kotlin.*`（编译器插件，251 个类）全部被 `DUPLICATE_PLATFORM_CLASS` 拒掉，尽管宿主根本没有这些类。
+
+**修法**：ASM `ClassRemapper` 把 `androidx/compose/compiler` 整体重定位到 `ev/buan/taotie/cplugin`（270 个类 + 4 个 services 文件里的类名同步改）。改完本地验证：编出的 `@Composable` 产物里有 `Composer.startRestartGroup` 调用，证明插件仍然生效。
+
+**通用结论**：任何想带上设备的 Kotlin 编译器插件，都要走「services 留 jar + 类体 dex 化 + 包名避开共享前缀」三件套。
+
 ## 5. 验收标准（重要）
 
 **不要把"编译一个 `Counter` 成功"当成验证通过。**
@@ -196,7 +223,7 @@ Caused by: ClassNotFoundException: org.jetbrains.annotations.NotNull
 
 ## 7. 尚未验证
 
-- **Compose 插件**：需要额外的 `kotlin-compose-compiler-plugin-embeddable`，且 Compose 编译器插件加载路径与普通编译器不同，未测
+- ~~Compose 插件~~ **已验证（2026-10-27）**：`@Composable` 在设备上编译 → dex → 打包 → EV 加载运行全通过。前提是编译器插件 dex 化 + 包名重定位（见 4.9/4.10）。**未验证的**：带真实 UI 的 Compose 插件（布局、状态、miuix 组件）
 - **复杂项目**：目前只验证了单文件、无第三方依赖的插件
 - **增量编译**：每次全量编译，没有利用 K2 的增量能力
 - **编译耗时随代码量增长的情况**：1.9 秒是 20 行源码的数据
