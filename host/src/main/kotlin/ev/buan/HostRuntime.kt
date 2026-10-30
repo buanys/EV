@@ -23,6 +23,7 @@ import org.cordis.api.ServiceDirectory
 import org.cordis.loader.AndroidModuleDescriptor
 import org.cordis.loader.AndroidModuleLoader
 import org.cordis.api.PLUGIN_API_VERSION
+import org.cordis.api.DeviceContextService
 import org.cordis.api.HostRestart
 import org.cordis.api.PluginInstallRequest
 import org.cordis.api.PluginInstallResult
@@ -176,6 +177,7 @@ class HostRuntime(private val context: AndroidContext) {
     private var pageReaderHandle: org.cordis.EffectHandle? = null
     private var installHandle: org.cordis.EffectHandle? = null
     private var restartHandle: org.cordis.EffectHandle? = null
+    private var deviceContextHandle: org.cordis.EffectHandle? = null
 
     /** Start-pass bookkeeping; the public answer is [hasStarted]. */
     private val lifecycle = HostLifecycle()
@@ -268,6 +270,8 @@ class HostRuntime(private val context: AndroidContext) {
         if (installHandle == null) {
             // 安装契约：插件把容器字节交给宿主装上去（forge 的产物走这条路，不再靠人工拷文件）。
             installHandle = cordis.provide(PluginInstallService.Key, InstallService())
+                .also { runCatching { it.awaitReady() } }
+            deviceContextHandle = cordis.provide(DeviceContextService.Key, DeviceContextServiceImpl(context))
                 .also { runCatching { it.awaitReady() } }
             restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context))
                 .also { runCatching { it.awaitReady() } }

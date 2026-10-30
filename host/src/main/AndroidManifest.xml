@@ -7,10 +7,23 @@
 
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
+    <!-- 设备状态里的网络类型：没有这条，ConnectivityManager 会抛 SecurityException，
+         工具只能报 unknown——那会让模型以为手机没网。 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- 后台运行：Android 13+ 通知需要运行时授权；Android 14+ 前台服务必须声明类型与类型权限。 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- API 30+ 的包可见性：不声明这一条，queryIntentActivities 会把可启动应用过滤成空。
+         只声明"要查启动器意图"，不用 QUERY_ALL_PACKAGES 那种全量权限。 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".EvApplication"
