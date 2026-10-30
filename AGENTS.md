@@ -108,5 +108,7 @@ ANDROID_HOME=/opt/android-sdk \
 
 - `ChatMessage.traces` 现在只写不读，是死数据，待清理。
 - `apiVersion` 未随契约变更 bump，跨版本插件混装会报 `NoSuchMethodError` 而不是清晰错误。
-- 设备上 EV 进程**拿不到 root**（`su` 不存在），`run_shell` 因此不可用；
-  宿主的 shell 能力要等接 Shizuku 或授权才有效。
+- ~~设备上 EV 进程拿不到 root~~ **已实测（2026-10-31）**：设备装有 KernelSU，`/system/bin/su` 存在，
+  EV 通过 real-run_shell 执行 `su -c id` 返回 `uid=0(root) context=u:r:ksu:s0`。
+  `run_shell` 因此是**可用的 root shell**（首次调用 KernelSU 会弹一次授权）。
+  注意这是设备事实、不是代码保证：换一台没有 root 管理器的机器，同一行命令会退回普通 uid。
