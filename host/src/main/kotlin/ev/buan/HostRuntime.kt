@@ -23,6 +23,15 @@ import org.cordis.api.ServiceDirectory
 import org.cordis.loader.AndroidModuleDescriptor
 import org.cordis.loader.AndroidModuleLoader
 import org.cordis.api.PLUGIN_API_VERSION
+import org.cordis.api.HostRestart
+import org.cordis.api.PluginInstallRequest
+import org.cordis.api.PluginInstallResult
+import org.cordis.api.PluginInstallService
+import org.cordis.api.PluginInstallStatus
+import ev.buan.hostcore.install.InstallDecision
+import ev.buan.hostcore.install.InstallOutcome
+import ev.buan.hostcore.install.InstallStatus
+import org.json.JSONObject
 import ev.buan.hostcore.lifecycle.HostLifecycle
 import ev.buan.hostcore.storage.PluginStorageLayout
 import ev.buan.hostcore.validation.HostPolicy
@@ -165,6 +174,8 @@ class HostRuntime(private val context: AndroidContext) {
     private var navigationHandle: org.cordis.EffectHandle? = null
     private var directoryHandle: org.cordis.EffectHandle? = null
     private var pageReaderHandle: org.cordis.EffectHandle? = null
+    private var installHandle: org.cordis.EffectHandle? = null
+    private var restartHandle: org.cordis.EffectHandle? = null
 
     /** Start-pass bookkeeping; the public answer is [hasStarted]. */
     private val lifecycle = HostLifecycle()
@@ -254,6 +265,41 @@ class HostRuntime(private val context: AndroidContext) {
             directoryHandle = cordis.provide(ServiceDirectory.Key, ServiceDirectoryImpl())
                 .also { runCatching { it.awaitReady() } }
         }
+        if (installHandle == null) {
+            // 安装契约：插件把容器字节交给宿主装上去（forge 的产物走这条路，不再靠人工拷文件）。
+            installHandle = cordis.provide(PluginInstallService.Key, InstallService())
+                .also { runCatching { it.awaitReady() } }
+            restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context))
+                .also { runCatching { it.awaitReady() } }
+        }
+        syncAndActivate()
+        // Only a pass that actually ran outside safe mode counts. Safe mode loaded no plugin, and a
+        // start that throws never reaches this line, so both leave the process unable to render a
+        // plugin page - which is exactly what PluginPageActivity needs to know.
+        lifecycle.completeStart(safeMode = safeMode != null)
+        snapshot()
+    }
+
+    /**
+     * Re-runs the install pass and re-evaluates activation, without restarting the process.
+     *
+     * This is what makes an install take effect **in the same launch**: sync used to run exactly
+     * once, in [start], so a container that arrived while the process was alive was copied to
+     * private storage and then sat there until the next launch. The install contract needs the
+     * second half of that sentence.
+     */
+    suspend fun resync(): HostState = withContext(Dispatchers.IO) {
+        syncAndActivate()
+        snapshot()
+    }
+
+    /**
+     * The single pass both [start] and [resync] run: scan → publish → order → activate.
+     *
+     * Kept as one function on purpose. Two callers meant two chance for the rules to drift, and the
+     * rules here are exactly the ones a plugin author will blame the host for ("装完为什么不生效").
+     */
+    private suspend fun syncAndActivate() {
         val sync = installer.sync()
         syncErrors = sync.errors
         pendingUnsigned = sync.pending
@@ -278,11 +324,6 @@ class HostRuntime(private val context: AndroidContext) {
                 else -> deactivate(plugin.id)
             }
         }
-        // Only a pass that actually ran outside safe mode counts. Safe mode loaded no plugin, and a
-        // start that throws never reaches this line, so both leave the process unable to render a
-        // plugin page - which is exactly what PluginPageActivity needs to know.
-        lifecycle.completeStart(safeMode = safeMode != null)
-        snapshot()
     }
 
     /**
@@ -371,9 +412,123 @@ class HostRuntime(private val context: AndroidContext) {
         installed.remove(id)
         failures.remove(id)
         runCatching { installer.removeExternal(id) }
+        // 私有镜像一并删掉：只删外部那份会让"已卸载"的容器继续占着几十 MB，
+        // 而且下次扫描才被 prune——中间这段时间它在插件页里像个幽灵。
+        installer.removePrivate(id)
         preferences.edit().remove(key(id)).apply()
         snapshot()
     }
+
+    /**
+     * 安装契约的宿主实现：搬字节 → 触发一次同步 → 把结论翻译成契约形状。
+     *
+     * 这里刻意不做判断：装得成不成由 [InstallDecision] 决定（那部分在 `:host-core` 里可测），
+     * 校验由既有的 `PluginValidator` 决定。本类只负责两件宿主独占的事——写进 `EV/mods`、
+     * 以及把这一轮扫描的结果原样交出去。
+     */
+    private inner class InstallService : PluginInstallService {
+
+        override suspend fun install(request: PluginInstallRequest): PluginInstallResult = withContext(Dispatchers.IO) {
+            val sidecar = runCatching { JSONObject(request.sidecarJson) }.getOrNull()
+            val declaredId = sidecar?.optString("id")?.takeIf { it.isNotBlank() }
+            val entryClass = sidecar?.optString("entryClass")?.takeIf { it.isNotBlank() }
+            val version = sidecar?.optString("version")?.takeIf { it.isNotBlank() }
+
+            // 形状不对就先拒绝，不碰磁盘：一个 id 不合法的容器写进 mods 只会在下一轮扫描里变成噪音。
+            val early = InstallDecision.decide(
+                declaredId = declaredId,
+                entryClass = entryClass,
+                acceptedIds = emptySet(),
+                pending = emptyMap(),
+                errors = emptyList(),
+                active = false,
+            )
+            if (early.status == InstallStatus.REJECTED && early.code == InstallDecision.CODE_METADATA) {
+                return@withContext early.toContract(version = version)
+            }
+            val id = declaredId!!
+
+            // 落盘：宿主的外部 mods 目录，jar 与 sidecar 同名，扫描才找得到这一对。
+            val staging = File(context.cacheDir, "install-staging").apply { mkdirs() }
+            val jarFile = File(staging, "$id.jar")
+            val jsonFile = File(staging, "$id.json")
+            runCatching {
+                jarFile.writeBytes(request.jar)
+                jsonFile.writeText(request.sidecarJson)
+            }.onFailure { error ->
+                return@withContext InstallOutcome(
+                    status = InstallStatus.REJECTED,
+                    pluginId = id,
+                    code = "WRITE_FAILED",
+                    message = "写入暂存区失败：${error.message ?: error::class.simpleName}",
+                ).toContract(version = version)
+            }
+            val importedJar = installer.importExternal(jarFile, "$id.jar", overwrite = true)
+            val importedJson = installer.importExternal(jsonFile, "$id.json", overwrite = true)
+            runCatching { jarFile.delete(); jsonFile.delete() }
+            if (importedJar == null || importedJson == null) {
+                return@withContext InstallOutcome(
+                    status = InstallStatus.REJECTED,
+                    pluginId = id,
+                    code = "MODS_UNWRITABLE",
+                    message = "无法写入 EV/mods：给宿主共享存储权限后再试",
+                ).toContract(version = version)
+            }
+
+            // 调用方只应在用户对**这一份字节**点头之后传 true；哈希在这里现算，不信调用方给的。
+            val sha = androidModuleHash(importedJar)
+            if (request.approveUnsigned) approvals.approve(id, sha)
+
+            // 只重扫 + 只激活这一颗，不走 resync()。
+            //
+            // resync() 会顺手停掉"这一轮没扫到"的插件。而安装的调用方本身就是一颗正在 apply()
+            // 的插件：一旦它在这轮里被判为不可用，宿主就 dispose 掉它的 Fiber，调用方的协程
+            // 当场被取消，安装流程断在半路（实测 JobCancellationException）。
+            // 安装语义不需要动别人，就别动别人。
+            val sync = installer.sync()
+            syncErrors = sync.errors
+            pendingUnsigned = sync.pending
+            installed.clear()
+            sync.plugins.forEach { installed[it.id] = it }
+            if (sync.errors.isEmpty()) pruneStorageOfUninstalled()
+            val fresh = installed[id]
+            if (fresh != null && isEnabled(id) && safeMode == null) activate(fresh)
+
+            val outcome = InstallDecision.decide(
+                declaredId = id,
+                entryClass = entryClass,
+                acceptedIds = installed.keys.toSet(),
+                pending = sync.pending.associate { it.id to it.sha256 },
+                errors = sync.errors.map { error ->
+                    error.substringBefore(':', missingDelimiterValue = "") to error
+                },
+                active = active.containsKey(id),
+            )
+            outcome.toContract(version = version)
+        }
+
+        override suspend fun uninstall(pluginId: String): Boolean = withContext(Dispatchers.IO) {
+            val known = installed.containsKey(pluginId) || pendingUnsigned.any { it.id == pluginId }
+            if (!known) return@withContext false
+            this@HostRuntime.uninstall(pluginId)
+            true
+        }
+    }
+
+    /** host-core 的结论 → 契约形状。两边 enum 刻意分开，映射只发生在这一个地方。 */
+    private fun InstallOutcome.toContract(version: String?): PluginInstallResult = PluginInstallResult(
+        status = when (status) {
+            InstallStatus.INSTALLED -> PluginInstallStatus.INSTALLED
+            InstallStatus.NEEDS_APPROVAL -> PluginInstallStatus.NEEDS_APPROVAL
+            InstallStatus.REJECTED -> PluginInstallStatus.REJECTED
+        },
+        pluginId = pluginId,
+        version = version,
+        sha256 = sha256,
+        code = code,
+        message = message,
+        active = active,
+    )
 
     /**
      * Deletes one plugin's stored files (management "清理") and restarts it when enabled, so the

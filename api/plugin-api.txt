@@ -97,6 +97,27 @@ public final class org.cordis.api.HostPermission$Companion {
     descriptor: (Ljava/util/Set;Ljava/util/Set;)Ljava/util/Set;
   public org.cordis.api.HostPermission$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
     descriptor: (Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+public interface org.cordis.api.HostRestart {
+  public static final org.cordis.api.HostRestart$Companion Companion;
+    descriptor: Lorg/cordis/api/HostRestart$Companion;
+  public abstract boolean request(java.lang.String);
+    descriptor: (Ljava/lang/String;)Z
+public final class org.cordis.api.HostRestart$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.HostRestart> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
+public interface org.cordis.api.PageReader {
+  public static final org.cordis.api.PageReader$Companion Companion;
+    descriptor: Lorg/cordis/api/PageReader$Companion;
+  public static final long DEFAULT_TIMEOUT_MS;
+    descriptor: J
+  public abstract java.lang.Object render(java.lang.String, long, java.lang.String, kotlin.coroutines.Continuation<? super org.cordis.api.RenderedPage>);
+    descriptor: (Ljava/lang/String;JLjava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+public final class org.cordis.api.PageReader$Companion {
+  public static final long DEFAULT_TIMEOUT_MS;
+    descriptor: J
+  public final org.cordis.ServiceKey<org.cordis.api.PageReader> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.PageReader$DefaultImpls {
 public interface org.cordis.api.PermissionService {
   public static final org.cordis.api.PermissionService$Companion Companion;
     descriptor: Lorg/cordis/api/PermissionService$Companion;
@@ -107,6 +128,85 @@ public interface org.cordis.api.PermissionService {
 public final class org.cordis.api.PermissionService$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.PermissionService> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.PluginInstallRequest {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.PluginInstallRequest(byte[], java.lang.String, boolean);
+    descriptor: ([BLjava/lang/String;Z)V
+  public org.cordis.api.PluginInstallRequest(byte[], java.lang.String, boolean, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: ([BLjava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final byte[] getJar();
+    descriptor: ()[B
+  public final java.lang.String getSidecarJson();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getApproveUnsigned();
+    descriptor: ()Z
+public final class org.cordis.api.PluginInstallResult {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.PluginInstallResult(org.cordis.api.PluginInstallStatus, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean);
+    descriptor: (Lorg/cordis/api/PluginInstallStatus;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V
+  public org.cordis.api.PluginInstallResult(org.cordis.api.PluginInstallStatus, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Lorg/cordis/api/PluginInstallStatus;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final org.cordis.api.PluginInstallStatus getStatus();
+    descriptor: ()Lorg/cordis/api/PluginInstallStatus;
+  public final java.lang.String getPluginId();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getVersion();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getSha256();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getCode();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getMessage();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getActive();
+    descriptor: ()Z
+  public final org.cordis.api.PluginInstallStatus component1();
+    descriptor: ()Lorg/cordis/api/PluginInstallStatus;
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component4();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component5();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component6();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component7();
+    descriptor: ()Z
+  public final org.cordis.api.PluginInstallResult copy(org.cordis.api.PluginInstallStatus, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean);
+    descriptor: (Lorg/cordis/api/PluginInstallStatus;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Lorg/cordis/api/PluginInstallResult;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public interface org.cordis.api.PluginInstallService {
+  public static final org.cordis.api.PluginInstallService$Companion Companion;
+    descriptor: Lorg/cordis/api/PluginInstallService$Companion;
+  public abstract java.lang.Object install(org.cordis.api.PluginInstallRequest, kotlin.coroutines.Continuation<? super org.cordis.api.PluginInstallResult>);
+    descriptor: (Lorg/cordis/api/PluginInstallRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object uninstall(java.lang.String, kotlin.coroutines.Continuation<? super java.lang.Boolean>);
+    descriptor: (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+public final class org.cordis.api.PluginInstallService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.PluginInstallService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.PluginInstallStatus extends java.lang.Enum<org.cordis.api.PluginInstallStatus> {
+  public static final org.cordis.api.PluginInstallStatus INSTALLED;
+    descriptor: Lorg/cordis/api/PluginInstallStatus;
+  public static final org.cordis.api.PluginInstallStatus NEEDS_APPROVAL;
+    descriptor: Lorg/cordis/api/PluginInstallStatus;
+  public static final org.cordis.api.PluginInstallStatus REJECTED;
+    descriptor: Lorg/cordis/api/PluginInstallStatus;
+  public static org.cordis.api.PluginInstallStatus[] values();
+    descriptor: ()[Lorg/cordis/api/PluginInstallStatus;
+  public static org.cordis.api.PluginInstallStatus valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/PluginInstallStatus;
+  public static kotlin.enums.EnumEntries<org.cordis.api.PluginInstallStatus> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
 public interface org.cordis.api.PluginStorage {
   public static final org.cordis.api.PluginStorage$Companion Companion;
     descriptor: Lorg/cordis/api/PluginStorage$Companion;
@@ -131,6 +231,41 @@ public final class org.cordis.api.PluginStorageQuotaExceededException extends ja
     descriptor: (Ljava/lang/String;Ljava/lang/Throwable;)V
   public org.cordis.api.PluginStorageQuotaExceededException(java.lang.String, java.lang.Throwable, int, kotlin.jvm.internal.DefaultConstructorMarker);
     descriptor: (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+public final class org.cordis.api.RenderedPage {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.RenderedPage(java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;)V
+  public org.cordis.api.RenderedPage(java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.lang.String getUrl();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getTitle();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getText();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getTruncated();
+    descriptor: ()Z
+  public final java.lang.String getError();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component1();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component4();
+    descriptor: ()Z
+  public final java.lang.String component5();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.RenderedPage copy(java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;)Lorg/cordis/api/RenderedPage;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
 public interface org.cordis.api.ServiceDirectory {
   public static final org.cordis.api.ServiceDirectory$Companion Companion;
     descriptor: Lorg/cordis/api/ServiceDirectory$Companion;

@@ -119,6 +119,26 @@ class PluginInstaller(
     }
 
     /**
+     * 删掉这个 id 在私有目录里的镜像副本。
+     *
+     * 卸载时用：外部那份删掉之后，私有这份要等到下一次 [sync] 才被 prune，
+     * 中间它继续占着几十 MB（载荷类容器一份 27 MB），插件页里也还是一张卡片。
+     * 路径必须走 [privateFileFor]——与写入时同一个函数，拼字符串错一次就是"删了个寂寞"。
+     */
+
+    fun removePrivate(id: String): Boolean {
+        val file = privateFileFor(id)
+        if (!file.exists()) return false
+        // 目录平时是 r-x：宿主在 sync 结束时用 setReadOnly 锁住，防止容器被就地改写。
+        // unlink 需要的是**目录**可写，所以这里短暂解锁、删、立刻锁回去——与 sync 同一套写法。
+        privateRoot.setWritable(true)
+        val deleted = runCatching { file.delete() }.getOrDefault(false)
+        privateRoot.setReadOnly()
+        if (!deleted) android.util.Log.w("EV", "removePrivate 失败：${file.absolutePath}（由下次 sync 的 prune 收尾）")
+        return deleted
+    }
+
+    /**
      * Copies a user-picked container into the external mods directory.
      *
      * The name is kept verbatim: sidecar lookup is by the jar's own file name, so renaming here
