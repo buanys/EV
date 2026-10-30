@@ -24,6 +24,7 @@
 | [0001](adr/0001-kernel-consumption.md) | 内核消费方式 | 同仓源码 + 冻结门禁 + 发布快照，不拆仓 |
 | [0002](adr/0002-plugin-interface.md) | 插件接口 | 插件直接实现 `org.cordis.Plugin`，不加适配层 |
 | [0003](adr/0003-permission-scope.md) | 权限范围 | 声明 + 授权 + 门控 + 审计，不承诺 OS 级沙箱 |
+| [0004](adr/0004-on-device-forge.md) | 设备端锻造（forge） | 编译器独立成能力包（默认关闭），安装/重启由宿主让出契约；v1 装完提示重启 |
 
 新决策开新编号，旧 ADR 只追加状态，不改写历史。
 

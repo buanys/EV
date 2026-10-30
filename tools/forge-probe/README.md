@@ -36,4 +36,9 @@
 
 ## 已知限制
 
-只验证了单文件、无第三方依赖、不含 Compose 的插件。Compose 编译需要额外的编译器插件，未测。
+只验证了单文件、无第三方依赖的插件。Compose 的 `@Composable` 已于 2026-10-27 验证通过
+（编译器插件 dex 化 + 包名重定位，见[研究文档 §4.9/4.10](../../docs/research/on-device-compiler.md)）；
+仍未验证的是**带真实 UI 的 Compose 插件**（布局、状态、miuix 组件）。
+
+> 正式能力已开工：见 [ADR-0004](../../docs/adr/0004-on-device-forge.md) 与 `:plugins:forge` / `:plugins:forge-compiler`。
+> 本目录保留为**回归基准**——它的产物是载荷 Tier 1 的来源（`scripts/forge-payload.sh --from-probe`）。

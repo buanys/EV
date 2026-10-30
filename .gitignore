@@ -24,3 +24,6 @@ graphflow-out/
 
 # 本地参考的姊妹项目（自带 .git，含 62MB rootfs 资产），不进本仓库
 kcode/
+
+# forge 载荷（约 26 MB 的编译器 dex + jar），由 scripts/forge-payload.sh 生成，不入库
+plugins/forge-compiler/payload/

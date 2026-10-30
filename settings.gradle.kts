@@ -50,6 +50,8 @@ include(":plugins:agent-device")
 include(":plugins:agent-browse")
 include(":plugins:agent-web")
 include(":plugins:agent-shell")
+include(":plugins:forge")
+include(":plugins:forge-compiler")
 
 // 实验插件（hello, probe, coldapi, ping-api, ping-impl, ping-ui）已于 2026-10-25 删除：
 // 它们不参与构建，唯一的作用是每次 ui-kit 契约变更后还要跟着重编一遍。
