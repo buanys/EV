@@ -79,3 +79,9 @@ tasks.register("bundlePlugin") {
         File(distDir.get().asFile, "agent-browse.json").writeText(metadata)
     }
 }
+
+// The agent-api class jar is produced by another project and only exists after its compile step, so
+// a clean build needs this ordering edge; without it the two builds race.
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
+}
