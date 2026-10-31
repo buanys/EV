@@ -272,6 +272,9 @@ internal val LocalEvTypeTokens = staticCompositionLocalOf { DefaultEvTypeTokens 
 internal val LocalEvSpacingTokens = staticCompositionLocalOf { DefaultEvSpacingTokens }
 internal val LocalEvRadiusTokens = staticCompositionLocalOf { DefaultEvRadiusTokens }
 
+/** The active theme's icon language; unmentioned glyphs fall back to the built-in marks. */
+internal val LocalEvIconSet = staticCompositionLocalOf { EvIconSet.Default }
+
 /**
  * Token accessor, following the MaterialTheme/MiuixTheme pattern: the composable [EvTheme]
  * provides the values, components read them here.
@@ -292,6 +295,10 @@ object EvThemeTokens {
     /** Liquid-glass parameters from the active [EvThemeSpec]. */
     val glass: EvGlassSpec
         @Composable @ReadOnlyComposable get() = LocalEvGlassSpec.current
+
+    /** The active theme's icon language; unmentioned glyphs fall back to the built-in marks. */
+    val icons: EvIconSet
+        @Composable @ReadOnlyComposable get() = LocalEvIconSet.current
 
     /** Whether animated specs must degrade to instant switches (spec §6.4 / §9). */
     val reducedMotion: Boolean

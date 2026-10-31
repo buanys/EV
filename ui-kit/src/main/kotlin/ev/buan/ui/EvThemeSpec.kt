@@ -51,6 +51,8 @@ data class EvThemeSpec(
     val glass: EvGlassSpec = EvGlassSpec(),
     /** Spring physics and fade timing. A theme may move slower, tighter or livelier. */
     val motion: EvMotionSpec = EvMotionSpec.Default,
+    /** Icon language. A theme may redraw any glyph; the rest keep the built-in marks. */
+    val icons: EvIconSet = EvIconSet.Default,
 ) {
     companion object {
         /** The built-in theme. Its values are exactly the ones the tokens used before this split. */

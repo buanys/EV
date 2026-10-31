@@ -1,6 +1,12 @@
 package ev.buan.plugins.theme
 
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
+import ev.buan.ui.EvGlyphKind
+import ev.buan.ui.EvIconSet
+import ev.buan.ui.evThemeGlyph
 import ev.buan.ui.EvGlassSpec
 import ev.buan.ui.EvMotionSpec
 import ev.buan.ui.EvRadiusTokens
@@ -68,6 +74,8 @@ class DefaultThemePlugin : Plugin<Unit> {
                     snappyStiffness = 380f,
                     fadeMillis = 220,
                 ),
+                // Round theme, round marks: the overflow cue becomes three larger discs.
+                icons = EvIconSet.of(mapOf(EvGlyphKind.More to RoundMore)),
                 glass = EvGlassSpec(
                     blurRadius = 32.dp,
                     tintAlpha = 0.5f,
@@ -88,7 +96,42 @@ class DefaultThemePlugin : Plugin<Unit> {
                     snappyStiffness = 900f,
                     fadeMillis = 110,
                 ),
+                // Square theme, square marks: the same cue as three hard squares.
+                icons = EvIconSet.of(mapOf(EvGlyphKind.More to SquareMore)),
             ),
         )
     }
+}
+
+/**
+ * Three discs, drawn as filled paths: the round theme's overflow cue.
+ *
+ * A theme redraws a mark with the same primitives the built-in set uses, so the two languages
+ * stay compatible - this is a redraw, not a second icon system.
+ */
+private val RoundMore: ImageVector = evThemeGlyph("ThemeMoreRound") {
+    fun disc(cx: Float) = path(fill = SolidColor(androidx.compose.ui.graphics.Color.Black)) {
+        moveTo(cx - 1.7f, 12f)
+        arcTo(1.7f, 1.7f, 0f, true, true, cx + 1.7f, 12f)
+        arcTo(1.7f, 1.7f, 0f, true, true, cx - 1.7f, 12f)
+        close()
+    }
+    disc(6.5f)
+    disc(12f)
+    disc(17.5f)
+}
+
+/** Three squares, same cue in the square theme's language. */
+private val SquareMore: ImageVector = evThemeGlyph("ThemeMoreSquare") {
+    fun square(cx: Float) =
+        path(fill = SolidColor(androidx.compose.ui.graphics.Color.Black)) {
+            moveTo(cx - 1.6f, 10.4f)
+            lineTo(cx + 1.6f, 10.4f)
+            lineTo(cx + 1.6f, 13.6f)
+            lineTo(cx - 1.6f, 13.6f)
+            close()
+        }
+    square(6.5f)
+    square(12f)
+    square(17.5f)
 }

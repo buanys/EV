@@ -21,6 +21,27 @@ enum class EvGlyphKind {
     Tool, Theme, Info, Help, Create, Skill, Chevron,
 }
 
+/**
+ * A theme's icon language.
+ *
+ * Each theme may redraw any glyph it wants; everything it does not mention keeps the built-in mark.
+ * Overrides are per glyph rather than a whole replacement set so a theme can restyle one shape
+ * without having to ship 33 drawings it does not want to change.
+ */
+fun interface EvIconSet {
+    /** The theme's drawing for [kind], or null to use the built-in mark. */
+    fun icon(kind: EvGlyphKind): ImageVector?
+
+    companion object {
+        /** No overrides: the built-in language. */
+        val Default: EvIconSet = EvIconSet { null }
+
+        /** An icon set that redraws exactly [overrides]. */
+        fun of(overrides: Map<EvGlyphKind, ImageVector>): EvIconSet =
+            EvIconSet { overrides[it] }
+    }
+}
+
 @Composable
 fun EvGlyph(
     kind: EvGlyphKind,
@@ -29,7 +50,7 @@ fun EvGlyph(
     @Suppress("UNUSED_PARAMETER") strokeWidth: Float = 1.7f,
 ) {
     Image(
-        imageVector = kind.icon,
+        imageVector = EvThemeTokens.icons.icon(kind) ?: kind.icon,
         contentDescription = null,
         modifier = modifier,
         colorFilter = ColorFilter.tint(color),

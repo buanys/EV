@@ -26,6 +26,26 @@ import androidx.compose.ui.unit.dp
 private const val STROKE = 2.0f
 private val ink = SolidColor(Color.Black)
 
+/**
+ * Draws one mark in EV's own icon language: 24dp grid, 2dp round-capped stroke, black ink (the
+ * caller tints it). Exposed so a theme plugin can redraw a glyph without copying the builder setup
+ * or inventing a second visual grammar.
+ */
+fun evThemeGlyph(name: String, build: ImageVector.Builder.() -> Unit): ImageVector =
+    ImageVector.Builder(
+        name = name,
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply(build).build()
+
+/** Ink a theme glyph is drawn with before tinting. */
+val EvThemeGlyphInk = SolidColor(Color.Black)
+
+/** Stroke width of the icon language, in the 24 unit grid. */
+const val EV_GLYPH_STROKE = 2.0f
+
 private fun glyph(name: String, build: ImageVector.Builder.() -> Unit): ImageVector =
     ImageVector.Builder(
         name = name,
