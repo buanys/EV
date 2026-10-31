@@ -538,9 +538,11 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             open = ui.drawerOpen,
             onClose = { ui.drawerOpen = false },
             drawer = {
-                EvDrawerContent(
-                    groups = historyGroups(sessions, activeSession.id, ui.searchQuery),
-                    // Identity line: how many of the three agent capabilities are live right now.
+                EvChatDrawer(
+                    ui = ui,
+                    sessions = sessions,
+                    chat = chat,
+                    activeSessionId = activeSession.id,
                     statusLine = run {
                         val online = listOf(
                             directory?.lookup(ModelService.Key),
@@ -549,220 +551,34 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         ).count { it != null }
                         "本地 · 能力 $online/3 在线"
                     },
-                    searching = ui.searching,
-                    query = ui.searchQuery,
-                    onQueryChange = { ui.searchQuery = it },
-                    onSelectSession = { id ->
-                        chat.select(id)
-                        ui.searching = false
-                        ui.searchQuery = ""
-                        keyboard?.hide()
-                        ui.drawerOpen = false
-                    },
-                    onDeleteSession = { id ->
-                        val index = sessions.indexOfFirst { it.id == id }
-                        if (index >= 0) {
-                            val wasActive = sessions[index].id == chat.activeSessionId
-                            sessions.removeAt(index)
-                            // 全删光之后必须补一个空会话：界面上总得有一个可写的地方，
-                            // 否则下一次发送没有目标会话。
-                            if (sessions.isEmpty()) sessions += newSession()
-                            if (wasActive) chat.select(sessions.first().id)
-                            chat.persist()
-                        }
-                    },
-                    onPlugins = {
-                        navigation?.openPluginManager()
-                        ui.drawerOpen = false
-                    },
-                    onModel = {
-                        // The drawer is the second way into the same in-plugin provider page as
-                        // Settings -> 模型服务; host plugin management is only reached from there.
-                        keyboard?.hide()
-                        ui.drawerOpen = false
-                        openSettings(SettingsChild.Models)
-                    },
-                    onTools = {
-                        // The read-only panel for whatever agent-tools publishes; the settings page's
-                        // own "工具" row keeps pointing at the plugin manager for enabling it.
-                        keyboard?.hide()
-                        ui.drawerOpen = false
-                        ui.pages.push(EvPage.Tools)
-                    },
-                    onBrowser = {
-                        keyboard?.hide()
-                        ui.drawerOpen = false
-                        ui.pages.push(EvPage.Browser)
-                    },
-                    onMemory = {
-                        // The active conversation is what the panel reads and can clear; clearing it
-                        // leaves the chat bubbles above untouched.
-                        keyboard?.hide()
-                        ui.drawerOpen = false
-                        ui.pages.push(EvPage.Memory)
-                    },
-                    onCharacters = {
-                        // Roles are per session: the panel edits the selected conversation's choice.
-                        keyboard?.hide()
-                        ui.drawerOpen = false
-                        ui.pages.push(EvPage.Characters)
-                    },
-                    onSkills = {
-                        // Skills are per session too; nothing is executed, the text only reaches the
-                        // model inside this conversation's system prompt.
-                        keyboard?.hide()
-                        ui.drawerOpen = false
-                        ui.pages.push(EvPage.Skills)
-                    },
-                    onSettings = {
-                        // Ev's own settings page, inside this plugin: the host page stays reachable
-                        // from the drawer's "宿主设置" row on the settings screen itself.
-                        keyboard?.hide()
-                        ui.drawerOpen = false
-                        openSettings()
-                    },
-                    onSearch = {
-                        ui.searching = !ui.searching
-                        if (!ui.searching) ui.searchQuery = ""
-                    },
-                    moreExpanded = ui.drawerMoreExpanded,
-                    onToggleMore = { ui.drawerMoreExpanded = !ui.drawerMoreExpanded },
+                    newSession = { newSession() },
+                    openPlugins = { navigation?.openPluginManager() },
+                    openSettings = { openSettings() },
+                    openSettingsSection = { section -> openSettings(section) },
                 )
             },
         ) {
-            // The composer shares the column with the conversation. The keyboard then shrinks the
-            // list instead of covering it, which is the only arrangement where the newest message
-            // stays visible while typing. Scrolling deliberately does not dismiss the keyboard (no
-            // imeNestedScroll); tapping the conversation does.
-            Column(
-                modifier.fillMaxSize()
-                    .background(MiuixTheme.colorScheme.background),
-            ) {
-                if (isRoot) {
-                    // Live lookup per composition (same cheap map read the drawer's status line
-                    // uses): the capsule mirrors whatever provider the contract resolves as current.
-                    val currentModel = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model
-                    EvHomeTopBar(
-                        // An empty conversation has no identity yet - the hero below already says
-                        // what this page is, so the top bar stays quiet instead of repeating it.
-                        title = activeSession.takeIf { it.messages.isNotEmpty() }?.displayTitle(),
-                        modelName = currentModel,
-                        approvalPending = approvalGate.pending.isNotEmpty(),
-                        onMenu = {
-                            keyboard?.hide()
-                            ui.modelCardOpen = false
-                            ui.drawerOpen = true
-                        },
-                        onCapsule = {
-                            keyboard?.hide()
-                            ui.modelCardOpen = !ui.modelCardOpen
-                        },
-                        onNewChat = { chat.newChat(); keyboard?.hide(); ui.drawerOpen = false; ui.searching = false; ui.searchQuery = "" },
-                        onMore = {
-                            keyboard?.hide()
-                            openSettings()
-                        },
-                    )
-                } else {
-                    EvPageTopBar(pageTitle, onHost)
-                }
-
-                Box(
-                    Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
-                        detectTapGestures(onTap = {
-                            keyboard?.hide()
-                            ui.modelCardOpen = false
-                        })
-                    },
-                ) {
-                    // What the agent can do right now, and where the person left off.
-                    val capabilityLine = run {
-                        val tools = directory?.lookup(ToolRegistry.Key)?.specs()?.size
-                        val memory = directory?.lookup(MemoryService.Key) != null
-                        listOfNotNull(
-                            tools?.let { "$it 个工具" },
-                            if (memory) "记忆已启用" else "记忆未启用",
-                        ).joinToString(" · ")
-                    }
-                    if (activeSession.messages.isEmpty()) {
-                        EvChatEmptyState(
-                            sessions = sessions,
-                            activeSessionId = activeSession.id,
-                            capabilityLine = capabilityLine,
-                            suggestions = Suggestions,
-                            onPick = { suggestion ->
-                                // An empty prompt is a local action, not a message: today that
-                                // is the browser panel, the one suggestion that needs no agent.
-                                if (suggestion.prompt.isEmpty()) ui.pages.push(EvPage.Browser)
-                                else chat.send(suggestion.prompt)
-                            },
-                            onResume = { id ->
-                                keyboard?.hide()
-                                chat.select(id)
-                            },
-                            modifier = Modifier.align(Alignment.Center),
-                        )
-                    } else {
-                        EvMessageList(
-                            sessionId = activeSession.id,
-                            messages = activeSession.messages,
-                            listState = listState,
-                            liveRounds = chat.liveRounds,
-                            replying = replying,
-                            awaitingModel = chat.awaitingModel,
-                            finalizing = chat.finalizing,
-                            workExpansion = workExpansion,
-                            onRegenerate = { chat.regenerate(it) },
-                            onDelete = { chat.delete(it) },
-                        )
-                    }
-
-                    // The capsule's detail card (spec §5.2): overlays the conversation instead of
-                    // pushing it, springs down from the top bar, and any outside tap dismisses it.
-                    // Token spend lives here now - no longer a permanent top-bar resident.
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = ui.modelCardOpen,
-                        modifier = Modifier.align(Alignment.TopCenter),
-                        enter = expandVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
-                            fadeIn(EvMotionTokens.fadeFast()),
-                        exit = shrinkVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
-                            fadeOut(EvMotionTokens.fadeFast()),
-                    ) {
-                        EvModelDetailCard(
-                            modelName = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model,
-                            lastTokens = chat.lastTurnTokens,
-                            onSwitchModel = {
-                                ui.modelCardOpen = false
-                                openSettings(SettingsChild.Models)
-                            },
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    }
-                }
-
-                EvComposerArea(
-                    draft = ui.draft,
-                    onDraftChange = { ui.draft = it },
-                    onSend = { chat.send(ui.draft) },
-                    // Placeholder rotates per conversation, not per recomposition (spec §7.3).
-                    placeholder = ComposerPlaceholders[
-                        Math.floorMod(activeSession.id.hashCode(), ComposerPlaceholders.size)
-                    ],
-                    busy = replying,
-                    onStop = { chat.stopReply() },
-                    plusActive = ui.plusPanelOpen,
-                    // Opening the panel trades the keyboard for it - they never share the screen.
-                    onPlus = {
-                        if (!ui.plusPanelOpen) keyboard?.hide()
-                        ui.plusPanelOpen = !ui.plusPanelOpen
-                    },
-                    onFocusChange = { focused -> if (focused) ui.plusPanelOpen = false },
-                    onOpenBrowser = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Browser) },
-                    onOpenTools = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Tools) },
-                    onOpenCharacters = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Characters) },
-                    onOpenSkills = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Skills) },
-                )
-            }
+            EvChatColumn(
+                modifier = modifier,
+                isRoot = isRoot,
+                pageTitle = pageTitle,
+                onHost = onHost,
+                directory = directory,
+                activeSession = activeSession,
+                sessions = sessions,
+                chat = chat,
+                ui = ui,
+                listState = listState,
+                workExpansion = workExpansion,
+                approvalPending = approvalGate.pending.isNotEmpty(),
+                // Placeholder rotates per conversation, not per recomposition (spec §7.3).
+                placeholder = ComposerPlaceholders[
+                    Math.floorMod(activeSession.id.hashCode(), ComposerPlaceholders.size)
+                ],
+                suggestions = Suggestions,
+                onOpenSettings = { openSettings() },
+                onOpenSettingsSection = { section -> openSettings(section) },
+            )
         }
     }
 
