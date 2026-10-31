@@ -292,3 +292,60 @@ Gradle 里的 `prepareCompilerPayload` 会自动带上 `--plugin-api`（取当�
 - [ ] jar 与同名 json **成对**推进 `/sdcard/EV/mods`
 - [ ] 新哈希已在 `ev.unsigned.xml` 里批准，且启动过两次
 - [ ] 设备上验证过（日志或工具返回），并在汇报里写清"未实测"的部分
+
+---
+
+## 11. 无障碍与通知：两项需要用户手动授权的系统能力
+
+这两项不在运行时权限里，只能由用户在系统设置里开启。它们的授权状态**会在 force-stop 后丢失**
+（ColorOS 行为），所以每次重装或强停应用都要重新授权。
+
+### 11.1 通知使用权（`notify_list`）
+
+```sh
+settings get secure enabled_notification_listeners      # 看是否已授权
+```
+
+没授权时 `notify_list` 返回 `granted=false`。授权后**需要重启一次进程**才会绑定；
+如果重装 APK 后仍读不到，用下面两条强制重绑（同一组件先 disallow 再 allow）：
+
+```sh
+cmd notification disallow_listener ev.buan/ev.buan.EvNotificationListener
+cmd notification allow_listener    ev.buan/ev.buan.EvNotificationListener
+```
+
+### 11.2 无障碍（`screen_*`）
+
+```sh
+settings get secure enabled_accessibility_services       # 看是否已授权
+```
+
+开启（把 EV 追加到已有列表，不要覆盖别人的）：
+
+```sh
+CUR=$(settings get secure enabled_accessibility_services)
+settings put secure enabled_accessibility_services "$CUR:ev.buan/ev.buan.EvAccessibilityService"
+settings put secure accessibility_enabled 1
+```
+
+验证绑定成功（要看 **Bound services**，不是 Enabled services）：
+
+```sh
+dumpsys accessibility | sed -n '/Bound services/,/Enabled services/p' | grep 'EV 屏幕操作'
+```
+
+> 容易误判：`Bound services` 里显示的是服务的 **label**（"EV 屏幕操作"），不是包名。
+> 用包名 grep 会以为没连上。
+
+### 11.3 顺序很关键
+
+`force-stop` 会移除无障碍授权，所以**不能**先授权再启动：
+
+```
+am force-stop ev.buan
+am start -W -n ev.buan/ev.buan.MainActivity   # 先让进程起来
+settings put secure enabled_accessibility_services "...ev.buan/ev.buan.EvAccessibilityService"
+```
+
+而且无障碍服务由系统异步绑定，可能晚于插件 `apply()`。依赖它的自检代码要轮询等待
+（实测 0–3 秒），不能假设"应用起来了无障碍就绪了"。
