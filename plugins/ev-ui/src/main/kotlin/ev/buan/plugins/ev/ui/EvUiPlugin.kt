@@ -106,21 +106,6 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
- * Second-level pages reachable from the settings root.
- *
- * They keep the settings page open underneath: back returns to the root, while the drawer's own
- * entries (工具/记忆/角色/Skills) still open the same screens straight from the chat.
- */
-private enum class SettingsChild {
-    Models,
-    Tools,
-    Memory,
-    Characters,
-    Skills,
-    Themes,
-}
-
-/**
  * Chat page, shipped as a jar plugin. The shell follows Ev's home and drawer; conversation state
  * lives here, while the actual agent is whichever plugin publishes [AgentService].
  *
@@ -308,13 +293,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         // Lives above the drawer so the group stays open the next time the drawer slides in:
         // re-collapsing on every open would punish anyone who actually uses those rows.
         var drawerMoreExpanded by remember { mutableStateOf(false) }
-        var showSettings by remember { mutableStateOf(false) }
-        var settingsChild by remember { mutableStateOf<SettingsChild?>(null) }
-        var showTools by remember { mutableStateOf(false) }
-        var showBrowser by remember { mutableStateOf(false) }
-        var showMemory by remember { mutableStateOf(false) }
-        var showCharacters by remember { mutableStateOf(false) }
-        var showSkills by remember { mutableStateOf(false) }
+        // Every full-screen surface lives on one stack instead of its own boolean: the render path
+        // and the back handler both read it, so a new page cannot end up half-wired.
+        val pages = remember { EvNavigator() }
         var searching by remember { mutableStateOf(false) }
         var searchQuery by remember { mutableStateOf("") }
         // The composer's `+` panel and the top bar's model detail card: both are L1 surfaces that
@@ -329,19 +310,12 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         // host activities: the system back button has to return to the conversation instead of leaving
         // the chat (or the app). The browser panel installs its own handler: it must walk the page
         // history first.
-        BackHandler(
-            enabled = showSettings || showTools || showMemory || showCharacters || showSkills,
-        ) {
+        BackHandler(enabled = pages.isOpen) {
             keyboard?.hide()
-            when {
-                // Settings walks its own stack first: a second-level page returns to the root.
-                settingsChild != null -> settingsChild = null
-                showSettings -> showSettings = false
-                showTools -> showTools = false
-                showMemory -> showMemory = false
-                showCharacters -> showCharacters = false
-                showSkills -> showSkills = false
-            }
+            // One pop, always: a second-level settings page returns to the settings root, and the
+            // root returns to the conversation. The browser installs its own handler deeper in the
+            // tree, so back walks page history before it ever reaches this one.
+            pages.pop()
         }
 
         val activeSession = sessions.firstOrNull { it.id == activeSessionId } ?: sessions.first()
@@ -364,6 +338,20 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         /** Same contract for the skills library. */
         fun persistSkills() {
             skillStore?.save(skills.toList())
+        }
+
+        /**
+         * Opens settings, optionally straight onto one of its sections.
+         *
+         * The root is always pushed first, so back from a section lands on settings rather than the
+         * conversation - the drawer's 模型服务 row and the model card's 切换 both rely on that.
+         * Without the host appearance service the page cannot render, so the push is skipped and
+         * the tap does nothing instead of opening an empty surface.
+         */
+        fun openSettings(section: SettingsChild? = null) {
+            if (appearance == null) return
+            pages.push(EvPage.Settings)
+            if (section != null) pages.push(EvPage.SettingsSection(section))
         }
 
         /** Replaces the library contents in place, so both surfaces see the new list, then persists. */
@@ -605,44 +593,68 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         }
 
         val appearanceService = appearance
-        val child = settingsChild
-        if (showSettings && appearanceService != null) {
-            if (child != null) {
-                // A second-level settings page: back returns to the settings root, not to the chat,
-                // and the system back button walks the same path (see the BackHandler above).
-                when (child) {
+        // One dispatch for every full-screen surface. Adding a page is one branch here plus one push
+        // at the call site; the back handler above needs no change, and cannot fall out of sync.
+        when (val page = pages.current) {
+            // Conversation.
+            null -> Unit
+
+            EvPage.Settings -> {
+                // Without the host appearance service the settings page cannot render, so the
+                // conversation stays visible rather than showing an empty surface.
+                if (appearanceService != null) {
+                    EvSettingsScreen(
+                        appearance = appearanceService,
+                        onBack = { pages.pop() },
+                        onOpenPlugins = { navigation?.openPluginManager() },
+                        onOpenHostSettings = { navigation?.openSettings() },
+                        onOpenThemes = { pages.push(EvPage.SettingsSection(SettingsChild.Themes)) },
+                        onOpenModels = { pages.push(EvPage.SettingsSection(SettingsChild.Models)) },
+                        onOpenTools = { pages.push(EvPage.SettingsSection(SettingsChild.Tools)) },
+                        onOpenMemory = { pages.push(EvPage.SettingsSection(SettingsChild.Memory)) },
+                        onOpenCharacters = { pages.push(EvPage.SettingsSection(SettingsChild.Characters)) },
+                        onOpenSkills = { pages.push(EvPage.SettingsSection(SettingsChild.Skills)) },
+                        modifier = modifier,
+                    )
+                    return
+                }
+            }
+
+            is EvPage.SettingsSection -> {
+                // A second-level settings page keeps the root underneath: back returns to it.
+                when (page.section) {
                     SettingsChild.Themes -> EvThemePickerScreen(
-                        currentId = appearanceService.current.themeId,
+                        currentId = appearanceService?.current?.themeId ?: return,
                         // The host owns the appearance state: selecting a theme persists it and
                         // recomposes the whole app, this page only asks for the change.
-                        onSelect = { id -> appearanceService.update { it.copy(themeId = id) } },
-                        onBack = { settingsChild = null },
+                        onSelect = { id -> appearanceService?.update { it.copy(themeId = id) } },
+                        onBack = { pages.pop() },
                         modifier = modifier,
                     )
 
                     SettingsChild.Models -> EvModelProvidersScreen(
                         service = { directory?.lookup(ModelProviderService.Key) },
-                        onBack = { settingsChild = null },
+                        onBack = { pages.pop() },
                         modifier = modifier,
                     )
 
                     SettingsChild.Tools -> EvToolsScreen(
                         registry = { directory?.lookup(ToolRegistry.Key) },
-                        onBack = { settingsChild = null },
+                        onBack = { pages.pop() },
                         modifier = modifier,
                     )
 
                     SettingsChild.Memory -> EvMemoryScreen(
                         sessionId = activeSession.id,
                         memory = { directory?.lookup(MemoryService.Key) },
-                        onBack = { settingsChild = null },
+                        onBack = { pages.pop() },
                         modifier = modifier,
                     )
 
                     SettingsChild.Characters -> EvCharactersScreen(
                         characters = characters,
                         selectedId = activeSession.characterId,
-                        onBack = { settingsChild = null },
+                        onBack = { pages.pop() },
                         onSelect = { characterId ->
                             mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
                         },
@@ -654,7 +666,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     SettingsChild.Skills -> EvSkillsScreen(
                         skills = skills,
                         selectedId = activeSession.skillId,
-                        onBack = { settingsChild = null },
+                        onBack = { pages.pop() },
                         onSelect = { skillId ->
                             mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
                         },
@@ -665,86 +677,68 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 }
                 return
             }
-            // Settings replaces the conversation rather than covering it: the chat keeps its state
-            // (draft, scroll position, active session) because everything is remembered above this
-            // branch, and the BackHandler installed above turns system back into "close".
-            EvSettingsScreen(
-                appearance = appearanceService,
-                onBack = { showSettings = false },
-                onOpenPlugins = { navigation?.openPluginManager() },
-                onOpenHostSettings = { navigation?.openSettings() },
-                onOpenThemes = { settingsChild = SettingsChild.Themes },
-                onOpenModels = { settingsChild = SettingsChild.Models },
-                onOpenTools = { settingsChild = SettingsChild.Tools },
-                onOpenMemory = { settingsChild = SettingsChild.Memory },
-                onOpenCharacters = { settingsChild = SettingsChild.Characters },
-                onOpenSkills = { settingsChild = SettingsChild.Skills },
-                modifier = modifier,
-            )
-            return
-        }
 
-        if (showTools) {
-            // Looked up per read, never cached: the tools plugin may be enabled or disabled while
-            // this page is open, and the panel has a refresh action for exactly that.
-            EvToolsScreen(
-                registry = { directory?.lookup(ToolRegistry.Key) },
-                onBack = { showTools = false },
-                modifier = modifier,
-            )
-            return
-        }
+            EvPage.Tools -> {
+                // Looked up per read, never cached: the tools plugin may be enabled or disabled while
+                // this page is open, and the panel has a refresh action for exactly that.
+                EvToolsScreen(
+                    registry = { directory?.lookup(ToolRegistry.Key) },
+                    onBack = { pages.pop() },
+                    modifier = modifier,
+                )
+                return
+            }
 
-        if (showBrowser) {
-            EvBrowserScreen(onBack = { showBrowser = false }, modifier = modifier)
-            return
-        }
+            EvPage.Browser -> {
+                EvBrowserScreen(onBack = { pages.pop() }, modifier = modifier)
+                return
+            }
 
-        if (showMemory) {
-            // The memory plugin may be enabled, disabled or reconfigured while the page is open: the
-            // service is looked up on every read, and the panel has a refresh action for exactly that.
-            EvMemoryScreen(
-                sessionId = activeSession.id,
-                memory = { directory?.lookup(MemoryService.Key) },
-                onBack = { showMemory = false },
-                modifier = modifier,
-            )
-            return
-        }
+            EvPage.Memory -> {
+                // The memory plugin may be enabled, disabled or reconfigured while the page is open:
+                // the service is looked up on every read, and the panel has a refresh action.
+                EvMemoryScreen(
+                    sessionId = activeSession.id,
+                    memory = { directory?.lookup(MemoryService.Key) },
+                    onBack = { pages.pop() },
+                    modifier = modifier,
+                )
+                return
+            }
 
-        if (showCharacters) {
-            EvCharactersScreen(
-                characters = characters,
-                selectedId = activeSession.characterId,
-                onBack = { showCharacters = false },
-                // Selecting stores the id on the session, so one conversation can talk to one role
-                // while another talks to none. `mutate` persists sessions.json by itself.
-                onSelect = { characterId ->
-                    mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
-                },
-                onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
-                onDelete = { characterId -> deleteCharacter(characterId) },
-                modifier = modifier,
-            )
-            return
-        }
+            EvPage.Characters -> {
+                EvCharactersScreen(
+                    characters = characters,
+                    selectedId = activeSession.characterId,
+                    onBack = { pages.pop() },
+                    // Selecting stores the id on the session, so one conversation can talk to one
+                    // role while another talks to none. `mutate` persists sessions.json by itself.
+                    onSelect = { characterId ->
+                        mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
+                    },
+                    onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
+                    onDelete = { characterId -> deleteCharacter(characterId) },
+                    modifier = modifier,
+                )
+                return
+            }
 
-        if (showSkills) {
-            EvSkillsScreen(
-                skills = skills,
-                selectedId = activeSession.skillId,
-                onBack = { showSkills = false },
-                // Same per-session semantics as characters: the id lives on the conversation.
-                onSelect = { skillId ->
-                    mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
-                },
-                onSave = { saved -> replaceSkills(skills.upsert(saved)) },
-                onDelete = { skillId -> deleteSkill(skillId) },
-                modifier = modifier,
-            )
-            return
+            EvPage.Skills -> {
+                EvSkillsScreen(
+                    skills = skills,
+                    selectedId = activeSession.skillId,
+                    onBack = { pages.pop() },
+                    // Same per-session semantics as characters: the id lives on the conversation.
+                    onSelect = { skillId ->
+                        mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
+                    },
+                    onSave = { saved -> replaceSkills(skills.upsert(saved)) },
+                    onDelete = { skillId -> deleteSkill(skillId) },
+                    modifier = modifier,
+                )
+                return
+            }
         }
-
         EvDrawerScaffold(
             open = drawerOpen,
             onClose = { drawerOpen = false },
@@ -791,48 +785,46 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         // Settings -> 模型服务; host plugin management is only reached from there.
                         keyboard?.hide()
                         drawerOpen = false
-                        settingsChild = SettingsChild.Models
-                        showSettings = true
+                        openSettings(SettingsChild.Models)
                     },
                     onTools = {
                         // The read-only panel for whatever agent-tools publishes; the settings page's
                         // own "工具" row keeps pointing at the plugin manager for enabling it.
                         keyboard?.hide()
                         drawerOpen = false
-                        showTools = true
+                        pages.push(EvPage.Tools)
                     },
                     onBrowser = {
                         keyboard?.hide()
                         drawerOpen = false
-                        showBrowser = true
+                        pages.push(EvPage.Browser)
                     },
                     onMemory = {
                         // The active conversation is what the panel reads and can clear; clearing it
                         // leaves the chat bubbles above untouched.
                         keyboard?.hide()
                         drawerOpen = false
-                        showMemory = true
+                        pages.push(EvPage.Memory)
                     },
                     onCharacters = {
                         // Roles are per session: the panel edits the selected conversation's choice.
                         keyboard?.hide()
                         drawerOpen = false
-                        showCharacters = true
+                        pages.push(EvPage.Characters)
                     },
                     onSkills = {
                         // Skills are per session too; nothing is executed, the text only reaches the
                         // model inside this conversation's system prompt.
                         keyboard?.hide()
                         drawerOpen = false
-                        showSkills = true
+                        pages.push(EvPage.Skills)
                     },
                     onSettings = {
                         // Ev's own settings page, inside this plugin: the host page stays reachable
                         // from the drawer's "宿主设置" row on the settings screen itself.
                         keyboard?.hide()
                         drawerOpen = false
-                        settingsChild = null
-                        showSettings = true
+                        openSettings()
                     },
                     onSearch = {
                         searching = !searching
@@ -855,7 +847,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     // Live lookup per composition (same cheap map read the drawer's status line
                     // uses): the capsule mirrors whatever provider the contract resolves as current.
                     val currentModel = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model
-                    HomeTopBar(
+                    EvHomeTopBar(
                         // An empty conversation has no identity yet - the hero below already says
                         // what this page is, so the top bar stays quiet instead of repeating it.
                         title = activeSession.takeIf { it.messages.isNotEmpty() }?.displayTitle(),
@@ -873,12 +865,11 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         onNewChat = { newChat() },
                         onMore = {
                             keyboard?.hide()
-                            settingsChild = null
-                            showSettings = true
+                            openSettings()
                         },
                     )
                 } else {
-                    PageTopBar(onHost)
+                    EvPageTopBar(pageTitle, onHost)
                 }
 
                 Box(
@@ -889,43 +880,27 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         })
                     },
                 ) {
+                    // What the agent can do right now, and where the person left off.
+                    val capabilityLine = run {
+                        val tools = directory?.lookup(ToolRegistry.Key)?.specs()?.size
+                        val memory = directory?.lookup(MemoryService.Key) != null
+                        listOfNotNull(
+                            tools?.let { "$it 个工具" },
+                            if (memory) "记忆已启用" else "记忆未启用",
+                        ).joinToString(" · ")
+                    }
                     if (activeSession.messages.isEmpty()) {
-                        // What the agent can do right now, and where the person left off. Both were
-                        // two taps deep in the drawer while 235dp under the cards said nothing.
-                        val capabilityLine = run {
-                            val tools = directory?.lookup(ToolRegistry.Key)?.specs()?.size
-                            val memory = directory?.lookup(MemoryService.Key) != null
-                            listOfNotNull(
-                                tools?.let { "$it 个工具" },
-                                if (memory) "记忆已启用" else "记忆未启用",
-                            ).joinToString(" · ")
-                        }
-                        val recents = run {
-                            val zone = ZoneId.systemDefault()
-                            sessions
-                                .filter { it.id != activeSession.id && it.messages.isNotEmpty() }
-                                .sortedByDescending { it.updatedAt }
-                                .take(3)
-                                .map { session ->
-                                    EvSessionSummary(
-                                        id = session.id,
-                                        title = session.displayTitle(),
-                                        selected = false,
-                                        timeLabel = HISTORY_TIME.format(
-                                            Instant.ofEpochMilli(session.updatedAt).atZone(zone),
-                                        ),
-                                    )
-                                }
-                        }
-                        EvHomeHero(
+                        EvChatEmptyState(
+                            sessions = sessions,
+                            activeSessionId = activeSession.id,
+                            capabilityLine = capabilityLine,
                             suggestions = Suggestions,
                             onPick = { suggestion ->
-                                // An empty prompt is a local action, not a message: today that is
-                                // the browser panel, the one suggestion that needs no agent at all.
-                                if (suggestion.prompt.isEmpty()) showBrowser = true else send(suggestion.prompt)
+                                // An empty prompt is a local action, not a message: today that
+                                // is the browser panel, the one suggestion that needs no agent.
+                                if (suggestion.prompt.isEmpty()) pages.push(EvPage.Browser)
+                                else send(suggestion.prompt)
                             },
-                            status = capabilityLine,
-                            recents = recents,
                             onResume = { id ->
                                 keyboard?.hide()
                                 activeSessionId = id
@@ -933,112 +908,18 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                             modifier = Modifier.align(Alignment.Center),
                         )
                     } else {
-                        // Messages present when the session opened render still; only arrivals
-                        // after this snapshot play the entrance spring (spec §6.3).
-                        val seenIds = remember(activeSession.id) {
-                            activeSession.messages.mapTo(hashSetOf()) { it.id }
-                        }
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = EvChatDefaults.PagePadding,
-                                end = EvChatDefaults.PagePadding,
-                                top = 8.dp,
-                                // The composer is laid out beside the list, not over it, so this is
-                                // only breathing room - no reserved composer height.
-                                bottom = 16.dp,
-                            ),
-                        ) {
-                            // Top-aligned, oldest first: a short conversation grows down from under
-                            // the top bar instead of floating above the composer (spec §3.4).
-                            val ordered = activeSession.messages
-                            itemsIndexed(ordered, key = { _, it -> it.id }) { index, message ->
-                                // Variable rhythm instead of a uniform gap (spec §3.1): same-side
-                                // neighbours sit 4dp apart, a side switch opens 12dp.
-                                val previous = ordered.getOrNull(index - 1)
-                                val next = ordered.getOrNull(index + 1)
-                                val gap = when {
-                                    index == 0 -> 0.dp
-                                    previous?.fromUser == message.fromUser -> EvChatDefaults.SameSideGap
-                                    else -> EvChatDefaults.SwitchSideGap
-                                }
-                                EvMessageEntry(
-                                    animate = message.id !in seenIds,
-                                    modifier = Modifier.padding(top = gap),
-                                ) {
-                                  Column {
-                                    // One block for the whole turn: the summary line plus a
-                                    // timeline, rebuilt from the events that were stored with it.
-                                    val doneSteps = workStepsOfEvents(message.events)
-                                    if (doneSteps.isNotEmpty()) {
-                                        val workKey = message.id
-                                        val workOpen = workExpansion[workKey] == true
-                                        EvWorkProcess(
-                                            steps = doneSteps,
-                                            expanded = workOpen,
-                                            onToggle = { workExpansion[workKey] = !workOpen },
-                                            label = workLabel(doneSteps, active = false),
-                                            active = false,
-                                        )
-                                        // The collapsed row is 10dp of padding tall; without this
-                                        // the answer underneath starts flush against it and the two
-                                        // read as one mashed block.
-                                        Spacer(Modifier.height(10.dp))
-                                    }
-                                    EvChatBubble(
-                                        text = message.text,
-                                        fromUser = message.fromUser,
-                                        // The timeline above owns the tool work now; the bubble
-                                        // no longer repeats it.
-                                        events = emptyList(),
-                                        lastInCluster = message.fromUser && next?.fromUser != true,
-                                        streaming = replying && index == ordered.lastIndex && !message.fromUser,
-                                        onRegenerate = if (message.fromUser) null else {
-                                            { regenerate(message.id) }
-                                        },
-                                        onDelete = if (message.fromUser) null else {
-                                            { delete(message.id) }
-                                        },
-                                    )
-                                    message.stopNote?.let { note ->
-                                        Text(
-                                            text = note,
-                                            style = EvThemeTokens.type.caption.style(
-                                                EvThemeTokens.colors.textTertiary,
-                                            ),
-                                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
-                                        )
-                                    }
-                                  }
-                                }
-                            }
-                            // The in-flight turn shows the same block, expanded and saying what
-                            // it is doing right now instead of how much it did.
-                            val liveSteps = liveRounds.flatMap { it.steps }
-                            if (liveSteps.isNotEmpty()) {
-                                val workKey = "live"
-                                val workOpen = workExpansion[workKey] ?: true
-                                item(key = "live-work") {
-                                    EvWorkProcess(
-                                        steps = liveSteps,
-                                        expanded = workOpen,
-                                        onToggle = { workExpansion[workKey] = !workOpen },
-                                        label = workLabel(liveSteps, active = true),
-                                        active = true,
-                                        modifier = Modifier.padding(
-                                            start = EvChatDefaults.PagePadding,
-                                            end = EvChatDefaults.PagePadding,
-                                        ),
-                                    )
-                                }
-                            }
-                            // Dots mean one thing only: the model is thinking. While a tool runs
-                            // there is real progress on screen, so they disappear.
-                            if (replying && awaitingModel) {
-                                item { EvTypingIndicator(label = if (finalizing) "正在总结…" else null) }
-                            }
-                        }
+                        EvMessageList(
+                            sessionId = activeSession.id,
+                            messages = activeSession.messages,
+                            listState = listState,
+                            liveRounds = liveRounds,
+                            replying = replying,
+                            awaitingModel = awaitingModel,
+                            finalizing = finalizing,
+                            workExpansion = workExpansion,
+                            onRegenerate = { regenerate(it) },
+                            onDelete = { delete(it) },
+                        )
                     }
 
                     // The capsule's detail card (spec §5.2): overlays the conversation instead of
@@ -1052,53 +933,21 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         exit = shrinkVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
                             fadeOut(EvMotionTokens.fadeFast()),
                     ) {
-                        ModelDetailCard(
+                        EvModelDetailCard(
                             modelName = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model,
                             lastTokens = lastTurnTokens,
                             onSwitchModel = {
                                 modelCardOpen = false
-                                settingsChild = SettingsChild.Models
-                                showSettings = true
+                                openSettings(SettingsChild.Models)
                             },
                             modifier = Modifier.padding(top = 4.dp),
                         )
                     }
                 }
 
-                // The `+` panel grows upward out of the composer's own slot, so panel and composer
-                // share one vertical boundary while it springs open (spec §7.3).
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = plusPanelOpen,
-                    enter = expandVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
-                        fadeIn(EvMotionTokens.fadeFast()),
-                    exit = shrinkVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
-                        fadeOut(EvMotionTokens.fadeFast()),
-                ) {
-                    EvComposerPanel(
-                        actions = listOf(
-                            EvComposerAction(EvGlyphKind.Globe, "浏览器") {
-                                plusPanelOpen = false
-                                showBrowser = true
-                            },
-                            EvComposerAction(EvGlyphKind.Tool, "工具") {
-                                plusPanelOpen = false
-                                showTools = true
-                            },
-                            EvComposerAction(EvGlyphKind.Person, "角色") {
-                                plusPanelOpen = false
-                                showCharacters = true
-                            },
-                            EvComposerAction(EvGlyphKind.Sparkle, "Skills") {
-                                plusPanelOpen = false
-                                showSkills = true
-                            },
-                        ),
-                    )
-                }
-
-                EvComposer(
-                    value = draft,
-                    onValueChange = { draft = it },
+                EvComposerArea(
+                    draft = draft,
+                    onDraftChange = { draft = it },
                     onSend = { send(draft) },
                     // Placeholder rotates per conversation, not per recomposition (spec §7.3).
                     placeholder = ComposerPlaceholders[
@@ -1107,210 +956,18 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     busy = replying,
                     onStop = { stopReply() },
                     plusActive = plusPanelOpen,
+                    // Opening the panel trades the keyboard for it - they never share the screen.
                     onPlus = {
-                        // Opening the panel trades the keyboard for it - they never share the screen.
                         if (!plusPanelOpen) keyboard?.hide()
                         plusPanelOpen = !plusPanelOpen
                     },
                     onFocusChange = { focused -> if (focused) plusPanelOpen = false },
-                    modifier = Modifier.imePadding(),
+                    onOpenBrowser = { plusPanelOpen = false; pages.push(EvPage.Browser) },
+                    onOpenTools = { plusPanelOpen = false; pages.push(EvPage.Tools) },
+                    onOpenCharacters = { plusPanelOpen = false; pages.push(EvPage.Characters) },
+                    onOpenSkills = { plusPanelOpen = false; pages.push(EvPage.Skills) },
                 )
             }
-        }
-    }
-
-    /**
-     * The detail card under the model capsule: what model is live, what the last turn cost, and
-     * the one-tap way into model switching. Reading the directory again here is deliberate - the
-     * card always shows the state of this very moment, not a snapshot from when it was opened.
-     */
-    @Composable
-    private fun ModelDetailCard(
-        modelName: String?,
-        lastTokens: Int?,
-        onSwitchModel: () -> Unit,
-        modifier: Modifier = Modifier,
-    ) {
-        val tokens = EvThemeTokens.colors
-        Column(
-            modifier
-                .widthIn(min = 220.dp, max = 280.dp)
-                .clip(EvThemeTokens.radii.largeShape)
-                .background(tokens.surface2)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            Text(
-                text = "当前模型",
-                style = EvThemeTokens.type.micro.style(tokens.textTertiary),
-            )
-            Text(
-                text = modelName ?: "未接模型",
-                style = EvThemeTokens.type.title.style(if (modelName != null) tokens.textPrimary else tokens.textTertiary),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-            Text(
-                text = "上轮消耗 ${lastTokens?.let { "$it tok" } ?: "—"}",
-                style = EvThemeTokens.type.caption.style(tokens.textSecondary),
-                modifier = Modifier.padding(top = 6.dp),
-            )
-            Box(
-                Modifier
-                    .padding(vertical = 10.dp)
-                    .fillMaxWidth()
-                    .height(0.5.dp)
-                    .background(tokens.dividerGhost),
-            )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(EvThemeTokens.radii.small))
-                    .clickable(onClickLabel = "切换模型", onClick = onSwitchModel)
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                EvGlyph(EvGlyphKind.Atom, color = tokens.accent, modifier = Modifier.size(16.dp))
-                Text(
-                    text = "切换模型",
-                    style = EvThemeTokens.type.label.style(tokens.accent),
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-        }
-    }
-
-    /**
-     * The three-segment top bar (spec §5.2): drawer entry on the left, the context capsule in the
-     * middle, and one capsule of actions on the right. The capsule reads the current model live;
-     * tapping it opens the detail card, and the spend chip that used to sit here moved inside it.
-     */
-    @Composable
-    private fun HomeTopBar(
-        title: String?,
-        modelName: String?,
-        approvalPending: Boolean,
-        onMenu: () -> Unit,
-        onCapsule: () -> Unit,
-        onNewChat: () -> Unit,
-        onMore: () -> Unit,
-    ) {
-        val tokens = EvThemeTokens.colors
-        Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(start = 16.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(40.dp).clip(CircleShape).clickable(onClickLabel = "菜单", onClick = onMenu),
-                contentAlignment = Alignment.Center,
-            ) {
-                EvGlyph(EvGlyphKind.Menu, color = tokens.textPrimary, modifier = Modifier.size(20.dp))
-                // An approval waiting on the human is the one thing worth a badge here.
-                if (approvalPending) {
-                    Box(
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 6.dp, end = 6.dp)
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(tokens.accent),
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            // The left half used to be two symmetric weights around the model capsule, which bought
-            // 71dp of dead space on either side. That space now says where you are: the conversation
-            // you are in. Identity outranks status, so the model drops to a quiet line beside it.
-            if (title != null) {
-                Text(
-                    // ~24 display units: enough for a real title, small enough that the model status
-                    // and the action pill keep their own breathing room on a 425dp bar.
-                    text = title.ellipsize(24),
-                    style = EvThemeTokens.type.label.style(tokens.textPrimary),
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            if (modelName != null) {
-                Row(
-                    Modifier
-                        .clip(EvThemeTokens.radii.smallShape)
-                        .clickable(onClickLabel = "模型状态", onClick = onCapsule)
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        Modifier.size(6.dp).clip(CircleShape).background(tokens.success),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = modelName,
-                        style = EvThemeTokens.type.micro.style(tokens.textSecondary),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 84.dp),
-                    )
-                }
-            } else {
-                Text(
-                    text = "未接模型",
-                    style = EvThemeTokens.type.micro.style(tokens.textTertiary),
-                    modifier = Modifier
-                        .clip(EvThemeTokens.radii.smallShape)
-                        .clickable(onClickLabel = "模型状态", onClick = onCapsule)
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
-                )
-            }
-            if (title == null) Spacer(Modifier.weight(1f))
-            Spacer(Modifier.width(10.dp))
-            Row(
-                Modifier
-                    .clip(CircleShape),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier.size(32.dp).clip(CircleShape).clickable(onClickLabel = "新会话", onClick = onNewChat),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // Both glyphs are secondary now: this pill holds two *conveniences*, not the
-                    // screen's primary action, and at surface2 it was the heaviest thing on an
-                    // otherwise empty page.
-                    EvGlyph(EvGlyphKind.Chat, color = tokens.textSecondary, modifier = Modifier.size(16.dp))
-                }
-                Box(
-                    Modifier.size(32.dp).clip(CircleShape).clickable(onClickLabel = "更多", onClick = onMore),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    EvGlyph(EvGlyphKind.More, color = tokens.textSecondary, modifier = Modifier.size(16.dp))
-                }
-            }
-        }
-    }
-
-    /** Opened as a normal page: the management entry becomes a back arrow. */
-    @Composable
-    private fun PageTopBar(onBack: () -> Unit) {
-        val tokens = EvThemeTokens.colors
-        Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(start = 4.dp, end = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(44.dp).clickable(onClickLabel = "返回") { onBack() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = EvIcons.ArrowBack,
-                    contentDescription = "返回",
-                    tint = tokens.textPrimary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Text(
-                text = pageTitle,
-                style = EvThemeTokens.type.title.style(tokens.textPrimary),
-            )
         }
     }
 
@@ -1336,61 +993,3 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
 }
 
 /** Clock time on a history row; the group label above it already says which day it was. */
-private val HISTORY_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
-/**
- * What a conversation is called: the first line of its first user turn.
- *
- * Older sessions stored a hard-cut 18-character title ("…再跑一次 l"), which is both ugly and
- * identical across every conversation that opened with the same sentence. Deriving the label from
- * the message repairs the existing history instead of only fixing sessions created from now on.
- */
-private fun ChatSession.displayTitle(): String =
-    messages.firstOrNull { it.fromUser }
-        ?.text
-        ?.lineSequence()
-        ?.firstOrNull()
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
-        ?: title
-
-private fun historyGroups(
-    sessions: List<ChatSession>,
-    selectedId: String,
-    query: String,
-): List<EvHistoryGroup> {
-    val zone = ZoneId.systemDefault()
-    val today = LocalDate.now(zone)
-    val visible = if (query.isBlank()) {
-        sessions
-    } else {
-        sessions.filter { it.title.contains(query, ignoreCase = true) }
-    }
-    return visible
-        .sortedByDescending { it.updatedAt }
-        .groupBy { session ->
-            val date = Instant.ofEpochMilli(session.updatedAt).atZone(zone).toLocalDate()
-            when {
-                date == today -> "今天"
-                date == today.minusDays(1) -> "昨天"
-                else -> "${date.monthValue}月${date.dayOfMonth}日"
-            }
-        }
-        .map { (label, list) ->
-            EvHistoryGroup(
-                label = label,
-                sessions = list.map { session ->
-                    EvSessionSummary(
-                        id = session.id,
-                        title = session.displayTitle(),
-                        selected = session.id == selectedId,
-                        // The clock time is what separates three conversations that all start with
-                        // the same sentence; a bare title makes them look like duplicate rows.
-                        timeLabel = HISTORY_TIME.format(
-                            Instant.ofEpochMilli(session.updatedAt).atZone(zone),
-                        ),
-                    )
-                },
-            )
-        }
-}
