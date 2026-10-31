@@ -11,6 +11,7 @@
 |---|---|
 | [project-overview.md](project-overview.md) | 项目总览：是什么、仓库地图、铁律、当前状态、路线图 |
 | [architecture.md](architecture.md) | 四层架构总览：内核 / 宿主 / SDK / 插件，真实依赖图，职责边界 |
+| [build-on-device.md](build-on-device.md) | **在这台手机上编译 EV**：转译层、容器、离线构建、验产物、推设备与 12 条故障对照 |
 | [plugin-ui-composition.md](plugin-ui-composition.md) | 插件 UI 如何组合进宿主界面 |
 | [release-signing.md](release-signing.md) | 发布签名方案 |
 | [extension-points.md](extension-points.md) | 扩展点机制设计方案（**草案，未实施**）：声明式插件挂载 |
