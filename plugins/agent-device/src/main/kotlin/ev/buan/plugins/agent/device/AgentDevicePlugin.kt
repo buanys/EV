@@ -44,7 +44,9 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface {
         }
 
         val root = Environment.getExternalStorageDirectory() ?: File("/sdcard")
-        val tools = DeviceTools.all(DeviceFiles(root)) +
+        val files = DeviceFiles(root)
+        val tools = DeviceTools.all(files) +
+            WriteTools.all(files) +
             SystemTools.all { ctx.get(DeviceContextService.Key) }
         registry.register(PLUGIN_ID, tools)
         android.util.Log.i("EV", "agent-device: 注册 ${tools.size} 个工具（${tools.joinToString(",") { it.spec.name }}）")

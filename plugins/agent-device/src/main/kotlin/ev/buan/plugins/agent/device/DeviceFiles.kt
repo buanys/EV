@@ -82,6 +82,101 @@ internal class DeviceFiles(private val root: File) {
      * 相对路径按 [root] 解析，绝对路径直接用（但同样要过边界检查）——
      * agent 通常会写绝对路径，拒绝绝对路径只会让它反复试错。
      */
+
+    // ---------------------------------------------------------------- 写入
+
+    /**
+     * 写文本。`append = true` 时追加，否则覆盖。
+     *
+     * 覆盖是**显式**的：调用方必须自己确认（工具层默认拒绝覆盖已存在的文件），
+     * 因为 agent 猜错一次路径就会把用户的东西冲掉，而这个动作没有回收站。
+     */
+    fun writeText(path: String, text: String, append: Boolean): Result<Long> {
+        val file = resolve(path) ?: return Result.Fail(outside(path))
+        if (protectedPath(file) != null) return Result.Fail(protectedPath(file)!!)
+        if (file.isDirectory) return Result.Fail("是目录不是文件：${file.absolutePath}")
+
+        val bytes = text.toByteArray()
+        if (bytes.size > MAX_WRITE_BYTES) {
+            return Result.Fail(
+                "内容 ${bytes.size} 字节，超过单次写入上限 ${MAX_WRITE_BYTES} 字节。" +
+                    "拆成几次写（append=true 追加），或先用 run_shell 分块。",
+            )
+        }
+
+        val parent = file.parentFile ?: return Result.Fail("无法确定父目录：${file.absolutePath}")
+        if (!parent.isDirectory && !parent.mkdirs()) {
+            return Result.Fail("无法创建父目录：${parent.absolutePath}")
+        }
+
+        return runCatching {
+            if (append) {
+                file.appendBytes(bytes)
+            } else {
+                // 先写临时文件再 rename：读者要么看到旧内容，要么看到完整新内容，不会看到半截。
+                val staging = File(parent, ".${file.name}.writing")
+                staging.writeBytes(bytes)
+                if (!staging.renameTo(file)) {
+                    staging.delete()
+                    // 同一分区内的 rename 通常都能成功；失败说明目标被占用或跨挂载点，直接写。
+                    file.writeBytes(bytes)
+                }
+            }
+            Result.Ok(file.length())
+        }.getOrElse { Result.Fail("写入失败：${it.message ?: it.javaClass.simpleName}") }
+    }
+
+    /** 路径存在与否（越界一律 false）。写工具用它判断"要不要显式覆盖"。 */
+    fun exists(path: String): Boolean = resolve(path)?.exists() == true
+
+    fun mkdir(path: String): Result<String> {
+        val file = resolve(path) ?: return Result.Fail(outside(path))
+        if (file.isDirectory) return Result.Ok(file.absolutePath)
+        if (file.exists()) return Result.Fail("同名文件已存在：${file.absolutePath}")
+        if (!file.mkdirs()) return Result.Fail("创建目录失败：${file.absolutePath}")
+        return Result.Ok(file.absolutePath)
+    }
+
+    fun move(from: String, to: String): Result<String> {
+        val source = resolve(from) ?: return Result.Fail(outside(from))
+        val target = resolve(to) ?: return Result.Fail(outside(to))
+        if (!source.exists()) return Result.Fail("源不存在：${source.absolutePath}")
+        protectedPath(source)?.let { return Result.Fail(it) }
+        protectedPath(target)?.let { return Result.Fail(it) }
+        if (target.exists()) return Result.Fail("目标已存在：${target.absolutePath}（先确认要不要覆盖）")
+        target.parentFile?.mkdirs()
+        return runCatching {
+            if (source.renameTo(target)) Result.Ok(target.absolutePath)
+            else Result.Fail("移动失败：源与目标可能不在同一分区，请用 run_shell 的 mv")
+        }.getOrElse { Result.Fail("移动失败：${it.message ?: it.javaClass.simpleName}") }
+    }
+
+    fun delete(path: String): Result<String> {
+        val file = resolve(path) ?: return Result.Fail(outside(path))
+        if (!file.exists()) return Result.Fail("不存在：${file.absolutePath}")
+        if (file.canonicalFile == root.canonicalFile) return Result.Fail("拒绝删除共享存储根目录")
+        protectedPath(file)?.let { return Result.Fail(it) }
+        return runCatching {
+            val ok = if (file.isDirectory) file.deleteRecursively() else file.delete()
+            if (ok) Result.Ok(file.absolutePath) else Result.Fail("删除失败：${file.absolutePath}")
+        }.getOrElse { Result.Fail("删除失败：${it.message ?: it.javaClass.simpleName}") }
+    }
+
+    /**
+     * 共享存储里由系统托管的子树，一律不写不删。
+     *
+     * `Android/data` 与 `Android/obb` 归 PackageManager 管，应用绕过去写要么失败、要么留下
+     * 一个卸载时清不掉的残骸。宁可明确拒绝，也不让 agent 在这里"试出一半成功"。
+     */
+    private fun protectedPath(file: File): String? {
+        val base = runCatching { root.canonicalFile }.getOrNull() ?: return null
+        val android = File(base, "Android")
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        return if (canonical == android || canonical.path.startsWith(android.path + "/")) {
+            "拒绝写入 ${canonical.absolutePath}：共享存储的 Android/ 子树由系统管理"
+        } else null
+    }
+
     private fun resolve(path: String): File? {
         val raw = if (path.startsWith("/")) File(path) else File(root, path)
         val canonical = runCatching { raw.canonicalFile }.getOrNull() ?: return null
@@ -96,5 +191,8 @@ internal class DeviceFiles(private val root: File) {
     companion object {
         /** 单次读取上限：够读代码和配置，又不至于把宿主的堆撑爆。 */
         const val MAX_READ_BYTES = 256 * 1024
+
+        /** 单次写入上限：文本文件够用；更大的东西应该走 run_shell 分块，而不是塞进一次工具调用。 */
+        const val MAX_WRITE_BYTES = 1024 * 1024
     }
 }

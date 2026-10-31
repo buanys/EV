@@ -30,6 +30,7 @@ internal object SystemTools {
         ClipReadTool(service),
         ClipWriteTool(service),
         NotifyTool(service),
+        NotifyListTool(service),
     )
 
     private fun missingService(): String =
@@ -222,6 +223,64 @@ internal object SystemTools {
                 NotifyOutcome.NoPermission -> error("没有通知权限：请在系统设置里给 EV 打开通知")
                 is NotifyOutcome.Failed -> error("发通知失败：${outcome.reason}")
             }
+        }
+    }
+
+
+    // ---------------------------------------------------------------- 通知读取
+
+    private class NotifyListTool(private val service: () -> DeviceContextService?) : Tool {
+        override val spec = ToolSpec(
+            name = "notify_list",
+            description = "读最近收到的系统通知（应用、标题、正文、时间）。需要用户先开「通知使用权」；" +
+                "没开时返回 granted=false 并说明怎么开——这不是「没有通知」，别混为一谈。",
+            parametersJson = """
+                {"type":"object","properties":{
+                  "limit":{"type":"integer","description":"最多返回多少条，默认 20，上限 50"},
+                  "include_ongoing":{"type":"boolean","description":"是否包含常驻通知（音乐、下载进度、前台服务），默认 false"}
+                },"additionalProperties":false}
+            """.trimIndent(),
+        )
+
+        override suspend fun invoke(argumentsJson: String): String {
+            val service = service() ?: return error(missingService())
+            val args = runCatching { JSONObject(argumentsJson) }.getOrNull() ?: JSONObject()
+            val limit = args.optInt("limit", 20).coerceIn(1, 50)
+            val includeOngoing = args.optBoolean("include_ongoing", false)
+
+            if (!service.canReadNotifications()) {
+                return JSONObject()
+                    .put("ok", false)
+                    .put("granted", false)
+                    .put("error", "没有通知读取授权：在 设置 → 通知 → 通知使用权 里打开 EV（普通权限授权不算）")
+                    .put("opened", service.openNotificationAccess())
+                    .toString()
+            }
+
+            val entries = service.notifications(limit * 2) // 多取一点，过滤常驻后再截断
+                .filter { includeOngoing || !it.ongoing }
+                .take(limit)
+            return JSONObject()
+                .put("ok", true)
+                .put("granted", true)
+                .put("count", entries.size)
+                .put(
+                    "notifications",
+                    JSONArray().apply {
+                        entries.forEach {
+                            put(
+                                JSONObject()
+                                    .put("app", it.appLabel)
+                                    .put("package", it.packageName)
+                                    .put("title", it.title)
+                                    .put("text", it.text.take(300))
+                                    .put("posted_at", it.postedAt)
+                                    .put("ongoing", it.ongoing),
+                            )
+                        }
+                    },
+                )
+                .toString()
         }
     }
 

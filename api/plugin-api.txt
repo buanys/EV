@@ -128,9 +128,22 @@ public interface org.cordis.api.DeviceContextService {
     descriptor: (Ljava/lang/String;)Z
   public abstract org.cordis.api.NotifyOutcome notify(java.lang.String, java.lang.String);
     descriptor: (Ljava/lang/String;Ljava/lang/String;)Lorg/cordis/api/NotifyOutcome;
+  public default java.util.List<org.cordis.api.NotificationEntry> notifications(int);
+    descriptor: (I)Ljava/util/List;
+  public default boolean canReadNotifications();
+    descriptor: ()Z
+  public default boolean openNotificationAccess();
+    descriptor: ()Z
 public final class org.cordis.api.DeviceContextService$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.DeviceContextService> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.DeviceContextService$DefaultImpls {
+  public static java.util.List<org.cordis.api.NotificationEntry> notifications(org.cordis.api.DeviceContextService, int);
+    descriptor: (Lorg/cordis/api/DeviceContextService;I)Ljava/util/List;
+  public static boolean canReadNotifications(org.cordis.api.DeviceContextService);
+    descriptor: (Lorg/cordis/api/DeviceContextService;)Z
+  public static boolean openNotificationAccess(org.cordis.api.DeviceContextService);
+    descriptor: (Lorg/cordis/api/DeviceContextService;)Z
 public final class org.cordis.api.DeviceStatus {
   public static final int $stable;
     descriptor: I
@@ -312,6 +325,49 @@ public final class org.cordis.api.LaunchOutcome$NoSuchApp implements org.cordis.
     descriptor: ()Ljava/lang/String;
   public final org.cordis.api.LaunchOutcome$NoSuchApp copy(java.lang.String);
     descriptor: (Ljava/lang/String;)Lorg/cordis/api/LaunchOutcome$NoSuchApp;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.NotificationEntry {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.NotificationEntry(java.lang.String, java.lang.String, java.lang.String, java.lang.String, long, boolean, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZLjava/lang/String;)V
+  public org.cordis.api.NotificationEntry(java.lang.String, java.lang.String, java.lang.String, java.lang.String, long, boolean, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.lang.String getPackageName();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getAppLabel();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getTitle();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getText();
+    descriptor: ()Ljava/lang/String;
+  public final long getPostedAt();
+    descriptor: ()J
+  public final boolean getOngoing();
+    descriptor: ()Z
+  public final java.lang.String getKey();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component1();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component4();
+    descriptor: ()Ljava/lang/String;
+  public final long component5();
+    descriptor: ()J
+  public final boolean component6();
+    descriptor: ()Z
+  public final java.lang.String component7();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.NotificationEntry copy(java.lang.String, java.lang.String, java.lang.String, java.lang.String, long, boolean, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZLjava/lang/String;)Lorg/cordis/api/NotificationEntry;
   public java.lang.String toString();
     descriptor: ()Ljava/lang/String;
   public int hashCode();

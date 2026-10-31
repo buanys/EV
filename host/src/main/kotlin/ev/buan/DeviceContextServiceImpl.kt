@@ -19,11 +19,13 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.provider.Settings
 import org.cordis.api.AppEntry
 import org.cordis.api.ClipRead
 import org.cordis.api.DeviceContextService
 import org.cordis.api.DeviceStatus
 import org.cordis.api.LaunchOutcome
+import org.cordis.api.NotificationEntry
 import org.cordis.api.NotifyOutcome
 
 /**
@@ -162,6 +164,23 @@ internal class DeviceContextServiceImpl(private val context: AndroidContext) : D
             NotifyOutcome.Posted
         }.getOrElse { NotifyOutcome.Failed(it.message ?: it::class.java.simpleName) }
     }
+
+
+    // ---------------------------------------------------------------- 通知
+
+    override fun notifications(limit: Int): List<NotificationEntry> =
+        // 没连上就是空的：这里不编造，工具层会把 canReadNotifications 一并告诉模型。
+        EvNotificationListener.latest(limit)
+
+    override fun canReadNotifications(): Boolean = EvNotificationListener.hasAccess(context)
+
+    override fun openNotificationAccess(): Boolean = runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        true
+    }.getOrDefault(false)
 
     // ---------------------------------------------------------------- readers
 

@@ -53,6 +53,24 @@ interface DeviceContextService {
      */
     fun notify(title: String, body: String): NotifyOutcome
 
+
+    // ---------------------------------------------------------------- 通知
+
+    /**
+     * 最近收到的通知，最新在前。
+     *
+     * 需要用户手动开启「通知使用权」（系统设置里的一项单独授权，不是运行时权限）：
+     * 没开启时返回空列表，但 [canReadNotifications] 会明确说"没开"，两者必须分开看——
+     * "用户没给你看"和"最近没有通知"对模型意味着完全不同的事。
+     */
+    fun notifications(limit: Int = 20): List<NotificationEntry> = emptyList()
+
+    /** 是否已获得通知读取授权（用户开过「通知使用权」且服务已连上）。 */
+    fun canReadNotifications(): Boolean = false
+
+    /** 打开系统的「通知使用权」设置页，方便用户就地授权。 */
+    fun openNotificationAccess(): Boolean = false
+
     companion object {
         val Key = ServiceKey<DeviceContextService>("host/device-context")
     }
@@ -122,3 +140,18 @@ sealed interface NotifyOutcome {
 
     data class Failed(val reason: String) : NotifyOutcome
 }
+
+/** 一条通知的快照。 */
+data class NotificationEntry(
+    val packageName: String,
+    /** 发通知的应用名，取不到时回落为包名。 */
+    val appLabel: String,
+    val title: String,
+    val text: String,
+    /** 发出时间（毫秒时间戳）。 */
+    val postedAt: Long,
+    /** 常驻通知（音乐播放、下载进度、前台服务）。 */
+    val ongoing: Boolean = false,
+    /** 系统内唯一键，用于去重与撤回。 */
+    val key: String = "",
+)
