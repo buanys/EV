@@ -49,6 +49,8 @@ data class EvThemeSpec(
     val spacing: EvSpacingTokens = DefaultEvSpacingTokens,
     val radii: EvRadiusTokens = DefaultEvRadiusTokens,
     val glass: EvGlassSpec = EvGlassSpec(),
+    /** Spring physics and fade timing. A theme may move slower, tighter or livelier. */
+    val motion: EvMotionSpec = EvMotionSpec.Default,
 ) {
     companion object {
         /** The built-in theme. Its values are exactly the ones the tokens used before this split. */

@@ -2,6 +2,7 @@ package ev.buan.plugins.theme
 
 import androidx.compose.ui.unit.dp
 import ev.buan.ui.EvGlassSpec
+import ev.buan.ui.EvMotionSpec
 import ev.buan.ui.EvRadiusTokens
 import ev.buan.ui.EvThemeSpec
 import org.cordis.Context
@@ -59,6 +60,14 @@ class DefaultThemePlugin : Plugin<Unit> {
                 name = "圆润",
                 description = "更大的圆角，卡片更柔和",
                 radii = EvRadiusTokens(small = 12.dp, medium = 20.dp, large = 28.dp),
+                // Softer and slower: the whole point of a round theme is that nothing snaps.
+                motion = EvMotionSpec(
+                    gentleDamping = 0.9f,
+                    gentleStiffness = 180f,
+                    snappyDamping = 0.85f,
+                    snappyStiffness = 380f,
+                    fadeMillis = 220,
+                ),
                 glass = EvGlassSpec(
                     blurRadius = 32.dp,
                     tintAlpha = 0.5f,
@@ -71,6 +80,14 @@ class DefaultThemePlugin : Plugin<Unit> {
                 name = "方正",
                 description = "小圆角，界面更利落",
                 radii = EvRadiusTokens(small = 4.dp, medium = 6.dp, large = 8.dp),
+                // Tighter and faster: squared-off shapes read as more mechanical, so the motion is.
+                motion = EvMotionSpec(
+                    gentleDamping = 0.75f,
+                    gentleStiffness = 420f,
+                    snappyDamping = 0.7f,
+                    snappyStiffness = 900f,
+                    fadeMillis = 110,
+                ),
             ),
         )
     }

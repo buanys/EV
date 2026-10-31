@@ -29,6 +29,9 @@ fun EvTheme(
     val theme = remember(spec, appearance.themeId) {
         spec ?: EvThemeRegistry.resolve(appearance.themeId)
     }
+    // Set before MiuixTheme and the content compose, so every child - and every coroutine a child
+    // starts later - reads this theme's spring physics rather than the previous theme's.
+    EvMotionState.current = theme.motion
     val systemDark = isSystemInDarkTheme()
     val isDark = when (appearance.themeMode) {
         EvThemeMode.SYSTEM -> systemDark

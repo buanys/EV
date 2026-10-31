@@ -190,20 +190,68 @@ val DefaultEvRadiusTokens = EvRadiusTokens()
  * The global motion language (spec §6). Every position/size change uses one of these springs;
  * components never invent their own physics. Reduced-motion degrades everything to a snap.
  */
+/**
+ * How the app moves, as data, so a theme can retune it without touching a component.
+ *
+ * Springs are the app's only position/size animation, and they are read from places that are not
+ * composables (drawer settle, gesture flings), which is why the active spec lives in
+ * [EvMotionState] rather than in a composition local.
+ */
+data class EvMotionSpec(
+    /** Large-surface movement: drawers, panels. */
+    val gentleDamping: Float = 0.8f,
+    val gentleStiffness: Float = 300f,
+    /** Component-level movement: buttons, capsules, bubble entrance. */
+    val snappyDamping: Float = 0.75f,
+    val snappyStiffness: Float = 600f,
+    /** Emphasis moments with a slight overshoot: send, success feedback. */
+    val bouncyDamping: Float = 0.6f,
+    val bouncyStiffness: Float = 400f,
+    /** Pure-alpha transitions; the one place a linear tween is allowed. */
+    val fadeMillis: Int = 150,
+) {
+    companion object {
+        val Default: EvMotionSpec = EvMotionSpec()
+    }
+}
+
+/**
+ * The motion spec of the theme currently on screen.
+ *
+ * [EvTheme] writes it while composing, before any child does, so composables and coroutine-based
+ * callers see the same values. It is deliberately app-wide rather than a composition local: the
+ * drawer and gesture code animate from lambdas that outlive a composition and cannot read one.
+ *
+ * Single-process, single-window assumption: two activities composing different themes would race,
+ * and the last composition would win. The host applies one appearance to every activity, so this
+ * holds; it is stated here because it is a real constraint, not an oversight.
+ */
+object EvMotionState {
+    @Volatile
+    var current: EvMotionSpec = EvMotionSpec.Default
+}
+
 object EvMotionTokens {
     const val FADE_FAST_MILLIS = 150
 
     /** Large-surface movement: drawers, panels. */
-    fun <T> gentle(): SpringSpec<T> = spring(dampingRatio = 0.8f, stiffness = 300f)
+    fun <T> gentle(): SpringSpec<T> = with(EvMotionState.current) {
+        spring(dampingRatio = gentleDamping, stiffness = gentleStiffness)
+    }
 
     /** Component-level movement: buttons, capsules, bubble entrance. */
-    fun <T> snappy(): SpringSpec<T> = spring(dampingRatio = 0.75f, stiffness = 600f)
+    fun <T> snappy(): SpringSpec<T> = with(EvMotionState.current) {
+        spring(dampingRatio = snappyDamping, stiffness = snappyStiffness)
+    }
 
     /** Emphasis moments with a slight overshoot: send, success feedback. */
-    fun <T> bouncy(): SpringSpec<T> = spring(dampingRatio = 0.6f, stiffness = 400f)
+    fun <T> bouncy(): SpringSpec<T> = with(EvMotionState.current) {
+        spring(dampingRatio = bouncyDamping, stiffness = bouncyStiffness)
+    }
 
     /** Pure alpha transitions — the only place a linear tween is allowed. */
-    fun fadeFast(): TweenSpec<Float> = tween(FADE_FAST_MILLIS, easing = LinearEasing)
+    fun fadeFast(): TweenSpec<Float> =
+        tween(EvMotionState.current.fadeMillis, easing = LinearEasing)
 
     /**
      * Honors the reduced-motion preference: any animated spec degrades to an instant switch.

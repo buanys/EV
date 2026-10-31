@@ -88,6 +88,41 @@ class EvTokensTest {
     }
 
     @Test
+    fun `主题可以改写弹簧参数`() {
+        val previous = EvMotionState.current
+        try {
+            EvMotionState.current = EvMotionSpec(gentleDamping = 0.9f, gentleStiffness = 180f)
+
+            val gentle = EvMotionTokens.gentle<Float>()
+
+            assertEquals(0.9f, gentle.dampingRatio)
+            assertEquals(180f, gentle.stiffness)
+        } finally {
+            EvMotionState.current = previous
+        }
+    }
+
+    @Test
+    fun `主题可以改写淡入时长`() {
+        val previous = EvMotionState.current
+        try {
+            EvMotionState.current = EvMotionSpec(fadeMillis = 220)
+
+            assertEquals(220, EvMotionTokens.fadeFast().durationMillis)
+        } finally {
+            EvMotionState.current = previous
+        }
+    }
+
+    @Test
+    fun `默认动效与规范一致`() {
+        val spec = EvMotionSpec.Default
+        assertEquals(0.8f, spec.gentleDamping)
+        assertEquals(300f, spec.gentleStiffness)
+        assertEquals(EvMotionTokens.FADE_FAST_MILLIS, spec.fadeMillis)
+    }
+
+    @Test
     fun `fadeFast 为 150ms 线性`() {
         assertEquals(EvMotionTokens.FADE_FAST_MILLIS, EvMotionTokens.fadeFast().durationMillis)
         assertEquals(150, EvMotionTokens.FADE_FAST_MILLIS)
