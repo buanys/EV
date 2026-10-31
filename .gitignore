@@ -27,3 +27,6 @@ kcode/
 
 # forge 载荷（约 26 MB 的编译器 dex + jar），由 scripts/forge-payload.sh 生成，不入库
 plugins/forge-compiler/payload/
+
+# 本地的第三方库分析笔记（koog 等），属于个人参考材料，不入库
+koog-analysis.md
