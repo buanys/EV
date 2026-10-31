@@ -8,6 +8,8 @@ import org.cordis.Plugin
 import org.cordis.api.AgentSurface
 import org.cordis.api.PluginStorage
 import org.cordis.api.ServiceDirectory
+import org.cordis.api.UserDataStorage
+import org.cordis.api.migrateToUserData
 import org.cordis.dependencies
 
 /**
@@ -19,13 +21,17 @@ import org.cordis.dependencies
 class AgentMemoryPlugin : Plugin<Unit>, AgentSurface {
     override val name = "agent-memory"
     override val title = "agent 记忆"
-    override val body = "会话记忆按 JSON 存在本插件存储区，发布为 MemoryService。"
+    override val body = "会话记忆按 JSON 存在宿主的用户数据区，发布为 MemoryService。"
 
-    override val inject: Dependencies = dependencies(ServiceDirectory.Key, PluginStorage.Key)
+    override val inject: Dependencies =
+        dependencies(ServiceDirectory.Key, PluginStorage.Key, UserDataStorage.Key)
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
-        val storage = ctx.require(PluginStorage.Key)
+        // Memory is the user's data, not the plugin's: it survives disabling, reinstalling and
+        // re-approval. The plugin area is read only once, to migrate what was stored there before.
+        val storage = ctx.require(UserDataStorage.Key)
+        migrateToUserData(ctx.get(PluginStorage.Key), storage)
         val memory = StorageMemoryService(storage)
         directory.publish(MemoryService.Key, memory)
         // Disabling the plugin retracts the capability in the same step that disposes it, so a

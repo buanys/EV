@@ -12,6 +12,7 @@ import ev.buan.ui.EvSettingsRow
 import ev.buan.ui.EvSettingsSection
 import ev.buan.ui.EvSettingsTrailing
 import ev.buan.ui.EvThemeMode
+import ev.buan.ui.EvThemeRegistry
 import ev.buan.ui.MAX_INTERFACE_SCALE
 import ev.buan.ui.MIN_INTERFACE_SCALE
 import ev.buan.ui.normalizeInterfaceScale
@@ -42,6 +43,7 @@ fun EvSettingsScreen(
     onOpenMemory: () -> Unit,
     onOpenCharacters: () -> Unit,
     onOpenSkills: () -> Unit,
+    onOpenThemes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val current = appearance.current
@@ -56,6 +58,13 @@ fun EvSettingsScreen(
         item { EvSettingsSection("外观") }
         item {
             EvSettingsGroup {
+                EvSettingsRow(
+                    title = "主题",
+                    glyph = EvGlyphKind.Theme,
+                    summary = EvThemeRegistry.resolve(current.themeId).name,
+                    onClick = onOpenThemes,
+                )
+                EvSettingsDivider()
                 EvSettingsRow(
                     title = "主题与显示",
                     glyph = EvGlyphKind.Theme,

@@ -53,6 +53,7 @@ import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.ev.ui.ui.EvBrowserScreen
 import ev.buan.plugins.ev.ui.ui.EvCharactersScreen
+import ev.buan.plugins.ev.ui.ui.EvThemePickerScreen
 import ev.buan.plugins.ev.ui.ui.EvDrawerContent
 import ev.buan.plugins.ev.ui.ui.ellipsize
 import ev.buan.plugins.ev.ui.ui.EvHistoryGroup
@@ -92,6 +93,8 @@ import org.cordis.api.AgentSurface
 import org.cordis.api.AppearanceService
 import org.cordis.api.HostNavigation
 import org.cordis.api.PluginStorage
+import org.cordis.api.UserDataStorage
+import org.cordis.api.migrateToUserData
 import org.cordis.api.ServiceDirectory
 import org.cordis.dependencies
 import top.yukonga.miuix.kmp.basic.Text
@@ -114,6 +117,7 @@ private enum class SettingsChild {
     Memory,
     Characters,
     Skills,
+    Themes,
 }
 
 /**
@@ -140,7 +144,15 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
     override val pageTitle = "聊天"
 
     override val inject: Dependencies =
-        dependencies(HostNavigation.Key, ServiceDirectory.Key, PluginStorage.Key, AppearanceService.Key)
+        // PluginStorage stays declared only so the old copy can be migrated; the live data is in
+        // UserDataStorage, which the host keeps when this plugin is disabled, reinstalled or unapproved.
+        dependencies(
+            HostNavigation.Key,
+            ServiceDirectory.Key,
+            PluginStorage.Key,
+            UserDataStorage.Key,
+            AppearanceService.Key,
+        )
 
     private var navigation: HostNavigation? = null
     private var directory: ServiceDirectory? = null
@@ -225,7 +237,8 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         navigation = ctx.require(HostNavigation.Key)
         directory = ctx.require(ServiceDirectory.Key)
         appearance = ctx.require(AppearanceService.Key)
-        val storage = ctx.require(PluginStorage.Key)
+        val storage = ctx.require(UserDataStorage.Key)
+        migrateToUserData(ctx.get(PluginStorage.Key), storage)
         val store = ChatSessionStore(storage)
         sessionStore = store
         val charactersStore = CharacterStore(storage)
@@ -598,6 +611,15 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 // A second-level settings page: back returns to the settings root, not to the chat,
                 // and the system back button walks the same path (see the BackHandler above).
                 when (child) {
+                    SettingsChild.Themes -> EvThemePickerScreen(
+                        currentId = appearanceService.current.themeId,
+                        // The host owns the appearance state: selecting a theme persists it and
+                        // recomposes the whole app, this page only asks for the change.
+                        onSelect = { id -> appearanceService.update { it.copy(themeId = id) } },
+                        onBack = { settingsChild = null },
+                        modifier = modifier,
+                    )
+
                     SettingsChild.Models -> EvModelProvidersScreen(
                         service = { directory?.lookup(ModelProviderService.Key) },
                         onBack = { settingsChild = null },
@@ -651,6 +673,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 onBack = { showSettings = false },
                 onOpenPlugins = { navigation?.openPluginManager() },
                 onOpenHostSettings = { navigation?.openSettings() },
+                onOpenThemes = { settingsChild = SettingsChild.Themes },
                 onOpenModels = { settingsChild = SettingsChild.Models },
                 onOpenTools = { settingsChild = SettingsChild.Tools },
                 onOpenMemory = { settingsChild = SettingsChild.Memory },

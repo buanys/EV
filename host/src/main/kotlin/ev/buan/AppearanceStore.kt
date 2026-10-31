@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import ev.buan.ui.DEFAULT_INTERFACE_SCALE
+import ev.buan.ui.DEFAULT_THEME_ID
 import ev.buan.ui.EvAccentColor
 import ev.buan.ui.EvAppearance
 import ev.buan.ui.EvPaletteStyle
@@ -41,6 +42,7 @@ class AppearanceStore(private val context: Context) {
                 blurEnabled = json.optBoolean("blurEnabled", true),
                 interfaceScale = json.optDouble("interfaceScale", DEFAULT_INTERFACE_SCALE.toDouble()).toFloat(),
                 reducedMotionEnabled = json.optBoolean("reducedMotionEnabled", false),
+                themeId = json.optString("themeId", DEFAULT_THEME_ID).ifBlank { DEFAULT_THEME_ID },
             )
         }.getOrDefault(EvAppearance())
     }
@@ -55,6 +57,7 @@ class AppearanceStore(private val context: Context) {
             .put("blurEnabled", appearance.blurEnabled)
             .put("interfaceScale", appearance.interfaceScale.toDouble())
             .put("reducedMotionEnabled", appearance.reducedMotionEnabled)
+            .put("themeId", appearance.themeId)
         preferences.edit().putString(KEY, json.toString()).apply()
     }
 

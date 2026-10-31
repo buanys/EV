@@ -22,8 +22,13 @@ import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
 @Composable
 fun EvTheme(
     appearance: EvAppearance = EvAppearance(),
+    /** Explicit theme for previews and tests. Null means: resolve [EvAppearance.themeId]. */
+    spec: EvThemeSpec? = null,
     content: @Composable () -> Unit,
 ) {
+    val theme = remember(spec, appearance.themeId) {
+        spec ?: EvThemeRegistry.resolve(appearance.themeId)
+    }
     val systemDark = isSystemInDarkTheme()
     val isDark = when (appearance.themeMode) {
         EvThemeMode.SYSTEM -> systemDark
@@ -63,11 +68,11 @@ fun EvTheme(
     // while chat bubbles, status capsules and motion read these tokens. Monet supplies the accent;
     // without it the brand accent from the spec applies.
     val accent = if (appearance.monetEnabled) themed.primary else EvAccentDefault
-    val colorTokens = remember(isDark, appearance.pureBlackEnabled, accent) {
+    val colorTokens = remember(isDark, appearance.pureBlackEnabled, accent, theme) {
         if (isDark) {
-            evDarkColorTokens(accent = accent, pureBlack = appearance.pureBlackEnabled)
+            theme.darkColors(accent, appearance.pureBlackEnabled)
         } else {
-            evLightColorTokens(accent = accent)
+            theme.lightColors(accent)
         }
     }
 
@@ -89,9 +94,10 @@ fun EvTheme(
             LocalPlatformDensity provides platformDensity,
             LocalDensity provides scaledDensity,
             LocalEvColorTokens provides colorTokens,
-            LocalEvTypeTokens provides DefaultEvTypeTokens,
-            LocalEvSpacingTokens provides DefaultEvSpacingTokens,
-            LocalEvRadiusTokens provides DefaultEvRadiusTokens,
+            LocalEvTypeTokens provides theme.type,
+            LocalEvSpacingTokens provides theme.spacing,
+            LocalEvRadiusTokens provides theme.radii,
+            LocalEvGlassSpec provides theme.glass,
         ) {
             content()
         }

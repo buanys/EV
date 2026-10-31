@@ -241,6 +241,10 @@ object EvThemeTokens {
     val radii: EvRadiusTokens
         @Composable @ReadOnlyComposable get() = LocalEvRadiusTokens.current
 
+    /** Liquid-glass parameters from the active [EvThemeSpec]. */
+    val glass: EvGlassSpec
+        @Composable @ReadOnlyComposable get() = LocalEvGlassSpec.current
+
     /** Whether animated specs must degrade to instant switches (spec §6.4 / §9). */
     val reducedMotion: Boolean
         @Composable @ReadOnlyComposable get() = LocalEvAppearance.current.reducedMotionEnabled

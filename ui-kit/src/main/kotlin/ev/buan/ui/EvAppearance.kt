@@ -27,6 +27,8 @@ data class EvAppearance(
      * system "remove animations" accessibility setting; the user toggle overrides it.
      */
     val reducedMotionEnabled: Boolean = false,
+    /** Which [EvThemeSpec] from [EvThemeRegistry] is applied. Unknown ids resolve to the default. */
+    val themeId: String = DEFAULT_THEME_ID,
 ) {
     fun normalized(): EvAppearance = copy(interfaceScale = normalizeInterfaceScale(interfaceScale))
 }

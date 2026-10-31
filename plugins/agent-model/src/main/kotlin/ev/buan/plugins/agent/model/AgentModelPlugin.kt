@@ -11,6 +11,8 @@ import org.cordis.api.HostPermission
 import org.cordis.api.PermissionService
 import org.cordis.api.PluginStorage
 import org.cordis.api.ServiceDirectory
+import org.cordis.api.UserDataStorage
+import org.cordis.api.migrateToUserData
 import org.cordis.dependencies
 
 /**
@@ -23,23 +25,27 @@ import org.cordis.dependencies
  * Both are directory entries rather than Cordis services: a disabled plugin must read as "no model
  * connected", not as a dependency that leaves consumers waiting.
  *
- * Configuration lives in this plugin's [PluginStorage] area (`config/providers.json`, with the old
- * `config/model.json` migrated on first read). Capabilities used: `NETWORK` for HTTP calls and
- * `PLUGIN_STORAGE` for the document - both declared in the container metadata, so activation is
- * gated until the user grants them (ADR-0003).
+ * Configuration (keys included) lives in the user's [UserDataStorage] (`config/providers.json`). The
+ * old copy in this plugin's [PluginStorage] area is migrated once. Capabilities used: `NETWORK` for
+ * HTTP calls and `PLUGIN_STORAGE` for the document - both declared in the container metadata, so
+ * activation is gated until the user grants them (ADR-0003).
  */
 class AgentModelPlugin : Plugin<Unit>, AgentSurface {
     override val name = "agent-model"
     override val title = "模型服务"
-    override val body = "OpenAI 兼容的多提供商模型层；提供商、模型与选中项存储在本插件存储区。"
+    override val body = "OpenAI 兼容的多提供商模型层；提供商、模型与选中项存储在宿主的用户数据区，不随插件卸载或重装丢失。"
 
     override val inject: Dependencies =
-        dependencies(ServiceDirectory.Key, PluginStorage.Key, PermissionService.Key)
+        dependencies(ServiceDirectory.Key, PluginStorage.Key, UserDataStorage.Key, PermissionService.Key)
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
         val permissions = ctx.require(PermissionService.Key)
-        val repository = ProviderStore(ctx.require(PluginStorage.Key))
+        // Keys and provider settings are the user's data: they live in the host-owned user-data area,
+        // so disabling, reinstalling or re-approving this plugin never makes the user type them again.
+        val userData = ctx.require(UserDataStorage.Key)
+        migrateToUserData(ctx.get(PluginStorage.Key), userData)
+        val repository = ProviderStore(userData)
         val network = NetworkGate { permissions.require(HostPermission.NETWORK) }
         val transport = OkHttpProviderTransport()
         val modelService = AgentModelService(repository, network, transport)
