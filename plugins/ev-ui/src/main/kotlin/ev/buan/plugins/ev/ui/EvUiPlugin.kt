@@ -386,6 +386,10 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         }
 
         val appearanceService = appearance
+        // Themes come from a theme plugin through the host catalog. The built-in registry is only
+        // the fallback for "no theme plugin installed", which is the shipped state.
+        val themeCatalog = directory?.lookup(org.cordis.api.ThemeCatalogService.Key)
+        val availableThemes = themeCatalog?.available() ?: ev.buan.ui.EvThemeRegistry.all()
         // One dispatch for every full-screen surface. Adding a page is one branch here plus one push
         // at the call site; the back handler above needs no change, and cannot fall out of sync.
         when (val page = pages.current) {
@@ -402,6 +406,8 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         onOpenPlugins = { navigation?.openPluginManager() },
                         onOpenHostSettings = { navigation?.openSettings() },
                         onOpenThemes = { pages.push(EvPage.SettingsSection(SettingsChild.Themes)) },
+                        themeName = availableThemes.firstOrNull { it.id == appearanceService.current.themeId }?.name
+                            ?: availableThemes.first().name,
                         onOpenModels = { pages.push(EvPage.SettingsSection(SettingsChild.Models)) },
                         onOpenTools = { pages.push(EvPage.SettingsSection(SettingsChild.Tools)) },
                         onOpenMemory = { pages.push(EvPage.SettingsSection(SettingsChild.Memory)) },
@@ -417,6 +423,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 // A second-level settings page keeps the root underneath: back returns to it.
                 when (page.section) {
                     SettingsChild.Themes -> EvThemePickerScreen(
+                        themes = availableThemes,
                         currentId = appearanceService?.current?.themeId ?: return,
                         // The host owns the appearance state: selecting a theme persists it and
                         // recomposes the whole app, this page only asks for the change.

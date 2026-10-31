@@ -75,7 +75,10 @@ class PluginsActivity : ComponentActivity() {
         enableEdgeToEdge()
         val runtime = (application as EvApplication).runtime
         setContent {
-            EvTheme(appearance = runtime.appearance.value) { HostRoot(this, runtime) }
+            EvTheme(
+                appearance = runtime.appearance.value,
+                spec = runtime.themeSpec(runtime.appearance.value.themeId),
+            ) { HostRoot(this, runtime) }
         }
     }
 

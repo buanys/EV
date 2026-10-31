@@ -47,7 +47,10 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         val runtime = (application as EvApplication).runtime
         setContent {
-            EvTheme(appearance = runtime.appearance.value) {
+            EvTheme(
+                appearance = runtime.appearance.value,
+                spec = runtime.themeSpec(runtime.appearance.value.themeId),
+            ) {
                 Column(
                     Modifier.fillMaxSize()
                         .background(MiuixTheme.colorScheme.background)

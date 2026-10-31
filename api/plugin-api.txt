@@ -704,6 +704,24 @@ public interface org.cordis.api.ServiceDirectory {
 public final class org.cordis.api.ServiceDirectory$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.ServiceDirectory> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public interface org.cordis.api.ThemeCatalogService {
+  public static final org.cordis.api.ThemeCatalogService$Companion Companion;
+    descriptor: Lorg/cordis/api/ThemeCatalogService$Companion;
+  public abstract java.util.List<ev.buan.ui.EvThemeSpec> available();
+    descriptor: ()Ljava/util/List;
+  public abstract ev.buan.ui.EvThemeSpec resolve(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lev/buan/ui/EvThemeSpec;
+public final class org.cordis.api.ThemeCatalogService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.ThemeCatalogService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
+public interface org.cordis.api.ThemeService {
+  public static final org.cordis.api.ThemeService$Companion Companion;
+    descriptor: Lorg/cordis/api/ThemeService$Companion;
+  public abstract java.util.List<ev.buan.ui.EvThemeSpec> themes();
+    descriptor: ()Ljava/util/List;
+public final class org.cordis.api.ThemeService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.ThemeService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
 public interface org.cordis.api.UserDataStorage extends org.cordis.api.PluginStorage {
   public static final org.cordis.api.UserDataStorage$Companion Companion;
     descriptor: Lorg/cordis/api/UserDataStorage$Companion;

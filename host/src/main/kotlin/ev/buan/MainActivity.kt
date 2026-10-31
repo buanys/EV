@@ -64,7 +64,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val runtime = (application as EvApplication).runtime
         setContent {
-            EvTheme(appearance = runtime.appearance.value) { HomeShell(this, runtime) }
+            EvTheme(
+                appearance = runtime.appearance.value,
+                spec = runtime.themeSpec(runtime.appearance.value.themeId),
+            ) { HomeShell(this, runtime) }
         }
     }
 }

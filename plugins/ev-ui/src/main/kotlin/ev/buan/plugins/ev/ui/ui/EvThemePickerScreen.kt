@@ -9,7 +9,6 @@ import ev.buan.ui.EvSettingsGroup
 import ev.buan.ui.EvSettingsRow
 import ev.buan.ui.EvSettingsSection
 import ev.buan.ui.EvSettingsTrailing
-import ev.buan.ui.EvThemeRegistry
 
 /**
  * Theme picker: lists every theme the registry offers and applies the tapped one.
@@ -19,12 +18,13 @@ import ev.buan.ui.EvThemeRegistry
  */
 @Composable
 fun EvThemePickerScreen(
+    /** Every selectable theme, already merged by the host catalog. */
+    themes: List<ev.buan.ui.EvThemeSpec>,
     currentId: String,
     onSelect: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val themes = EvThemeRegistry.all()
     EvPage(
         title = "主题",
         modifier = modifier,

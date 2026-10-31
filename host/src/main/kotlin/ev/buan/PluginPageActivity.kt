@@ -48,7 +48,11 @@ class PluginPageActivity : ComponentActivity() {
         val ui = runtime.uiFor(pluginId)
 
         setContent {
-            EvTheme(appearance = runtime?.appearance?.value ?: ev.buan.ui.EvAppearance()) {
+            EvTheme(
+                appearance = runtime?.appearance?.value ?: ev.buan.ui.EvAppearance(),
+                spec = runtime?.themeSpec(runtime.appearance?.value?.themeId ?: ev.buan.ui.DEFAULT_THEME_ID)
+                    ?: ev.buan.ui.EvThemeSpec.Default,
+            ) {
                 if (page != null) {
                     // The page owns its chrome; the host only supplies the surface.
                     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {

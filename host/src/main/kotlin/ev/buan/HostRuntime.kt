@@ -176,6 +176,9 @@ class HostRuntime(private val context: AndroidContext) {
     private var appearanceHandle: org.cordis.EffectHandle? = null
     private var navigationHandle: org.cordis.EffectHandle? = null
     private var directoryHandle: org.cordis.EffectHandle? = null
+
+    /** The host directory, kept so the theme catalog can be resolved outside composition setup. */
+    private var serviceDirectory: ServiceDirectoryImpl? = null
     private var pageReaderHandle: org.cordis.EffectHandle? = null
     private var installHandle: org.cordis.EffectHandle? = null
     private var restartHandle: org.cordis.EffectHandle? = null
@@ -267,7 +270,12 @@ class HostRuntime(private val context: AndroidContext) {
             // Concurrent by design: consumers read from the thread they run on (frontend's Compose
             // thread, agent-brain's IO dispatcher) while activation publishes and retracts on its own
             // coroutine. See [ServiceDirectoryImpl] for why a plain map was not enough.
-            directoryHandle = cordis.provide(ServiceDirectory.Key, ServiceDirectoryImpl())
+            val directory = ServiceDirectoryImpl()
+            // The catalog is host-owned: the UI asks it, never a plugin directly, so disabling the
+            // theme plugin degrades to the built-in look instead of leaving the app unthemed.
+            directory.publish(org.cordis.api.ThemeCatalogService.Key, HostThemeCatalog(directory))
+            serviceDirectory = directory
+            directoryHandle = cordis.provide(ServiceDirectory.Key, directory)
                 .also { runCatching { it.awaitReady() } }
         }
         if (installHandle == null) {
@@ -340,6 +348,15 @@ class HostRuntime(private val context: AndroidContext) {
      * Takes effect on the next launch: sync runs before the loader, so a hot reload would have to
      * re-run the whole install pass.
      */
+    /**
+     * The theme for [id], from whatever theme plugin is active. Falls back to the built-in default
+     * when no theme plugin is installed, which is the shipped state: themes are opt-in.
+     */
+    fun themeSpec(id: String): ev.buan.ui.EvThemeSpec =
+        serviceDirectory
+            ?.let { directory -> runCatching { directory.lookup(org.cordis.api.ThemeCatalogService.Key)?.resolve(id) }.getOrNull() }
+            ?: ev.buan.ui.EvThemeSpec.Default
+
     fun updateAppearance(transform: ev.buan.ui.EvAppearance.() -> ev.buan.ui.EvAppearance) =
         appearanceStore.update { current -> current.transform() }
 

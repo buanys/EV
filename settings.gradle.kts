@@ -52,6 +52,9 @@ include(":plugins:agent-web")
 include(":plugins:agent-shell")
 include(":plugins:forge")
 include(":plugins:forge-compiler")
+// 主题插件：全局视觉定义的唯一来源。默认不随仓库打包，装到 mods 即生效；
+// 不喜欢它的人只换这一个插件，布局插件 ev-ui 不用动。
+include(":plugins:theme-default")
 
 // 实验插件（hello, probe, coldapi, ping-api, ping-impl, ping-ui）已于 2026-10-25 删除：
 // 它们不参与构建，唯一的作用是每次 ui-kit 契约变更后还要跟着重编一遍。

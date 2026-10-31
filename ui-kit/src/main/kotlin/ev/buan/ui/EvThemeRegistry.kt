@@ -14,22 +14,13 @@ const val DEFAULT_THEME_ID = "ev-default"
  * that disappears never leaves the app without a look.
  */
 object EvThemeRegistry {
-    private val builtIn: List<EvThemeSpec> = listOf(
-        EvThemeSpec.Default,
-        EvThemeSpec(
-            id = "ev-soft",
-            name = "圆润",
-            description = "更大的圆角，卡片更柔和",
-            radii = EvRadiusTokens(small = 12.dp, medium = 20.dp, large = 28.dp),
-            glass = EvGlassSpec(blurRadius = 32.dp, tintAlpha = 0.5f, highlightAlpha = 0.25f, borderAlpha = 0.16f),
-        ),
-        EvThemeSpec(
-            id = "ev-square",
-            name = "方正",
-            description = "小圆角，界面更利落",
-            radii = EvRadiusTokens(small = 4.dp, medium = 6.dp, large = 8.dp),
-        ),
-    )
+    /**
+     * The one look compiled into the app.
+     *
+     * Theme *definitions* belong to a theme plugin; this is the fallback that keeps the app
+     * drawable when none is installed (the shipped state) and the last resort if one misbehaves.
+     */
+    private val builtIn: List<EvThemeSpec> = listOf(EvThemeSpec.Default)
 
     private val external = CopyOnWriteArrayList<EvThemeSpec>()
 
