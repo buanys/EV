@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  无障碍能力声明。刻意只要"能读界面 + 能执行手势"这两项：
+  canRetrieveWindowContent 决定能不能 dump 节点树，canPerformGestures 决定能不能点按滑动。
+  不申请 flagRequestFilterKeyEvents（读按键）和 flagRequestTouchExplorationMode（接管触摸），
+  那两项对 agent 没有用处，只会扩大权限面。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/ev_accessibility_description"
+    android:notificationTimeout="100" />

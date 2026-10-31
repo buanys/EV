@@ -16,11 +16,12 @@ import org.json.JSONObject
  */
 internal object DeviceTools {
 
-    fun all(files: DeviceFiles): List<Tool> = listOf(
+    fun all(files: DeviceFiles, search: DeviceSearch): List<Tool> = listOf(
         DeviceTool(LIST_SPEC) { args -> list(files, args) },
         DeviceTool(READ_SPEC) { args -> read(files, args) },
-    )
+        DeviceTool(FIND_SPEC) { args -> find(search, args) },
 
+    )
     private val LIST_SPEC = ToolSpec(
         name = "device_list",
         description = "列出手机上某个目录的内容（共享存储，如 /sdcard/Download）。只读。",
@@ -86,6 +87,37 @@ internal object DeviceTools {
                 .toString()
         }
     }
+
+    private fun find(search: DeviceSearch, args: JSONObject): String {
+        val query = args.optString("query", "").trim()
+        val kind = args.optString("kind", "both").lowercase().let {
+            if (it in setOf("name", "content", "both")) it else "both"
+        }
+        val limit = args.optInt("limit", 50).coerceIn(1, 200)
+        val maxDepth = args.optInt("max_depth", 4).coerceIn(0, 8)
+        val includeHidden = args.optBoolean("include_hidden", false)
+
+        if (query.isEmpty() && kind == "content") {
+            return error("按内容搜索必须给 query")
+        }
+        return search.toJson(search.search(query, kind, limit, maxDepth, includeHidden), query, kind)
+    }
+
+    private val FIND_SPEC = ToolSpec(
+        name = "device_find",
+        description = "在共享存储里按文件名或文件内容搜索。比逐层 device_list 快得多，" +
+            "找「上次那个笔记」「包含某句话的文件」用它。" +
+            "content 搜索只读前 256 KB 且跳过二进制；结果太多会明确说「没搜完」和原因。",
+        parametersJson = """
+            {"type":"object","properties":{
+              "query":{"type":"string","description":"要找的字符串；留空则列出（配合 kind=name 相当于带过滤的 find）"},
+              "kind":{"type":"string","enum":["name","content","both"],"description":"搜文件名、文件内容还是两者，默认 both"},
+              "limit":{"type":"integer","description":"最多返回多少条，默认 50，上限 200"},
+              "max_depth":{"type":"integer","description":"目录深度上限，默认 4，最大 8"},
+              "include_hidden":{"type":"boolean","description":"是否包含 . 开头的隐藏项，默认 false"}
+            },"required":["query"],"additionalProperties":false}
+        """.trimIndent(),
+    )
 
     private fun error(message: String): String = JSONObject().put("error", message).toString()
 

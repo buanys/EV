@@ -25,6 +25,7 @@ internal object SystemTools {
 
     fun all(service: () -> DeviceContextService?): List<Tool> = listOf(
         AppListTool(service),
+        AppCurrentTool(service),
         AppLaunchTool(service),
         DeviceStatusTool(service),
         ClipReadTool(service),
@@ -284,6 +285,37 @@ internal object SystemTools {
         }
     }
 
+
+    // ---------------------------------------------------------------- 前台应用
+
+    private class AppCurrentTool(private val service: () -> DeviceContextService?) : Tool {
+        override val spec = ToolSpec(
+            name = "app_current",
+            description = "读此刻在前台的应用（名称 + 包名）。用 app_launch 打开应用后，用它确认真的到了目的地。" +
+                "注意：没有无障碍授权时，系统可能不允许第三方读前台应用，这时会如实返回 unknown。",
+            parametersJson = """{"type":"object","properties":{},"additionalProperties":false}""",
+        )
+
+        override suspend fun invoke(argumentsJson: String): String {
+            val service = service() ?: return error(missingService())
+            val app = service.currentApp()
+            return if (app == null) {
+                JSONObject()
+                    .put("ok", true)
+                    .put("known", false)
+                    .put("note", "读不到前台应用：Android 限制第三方应用读取；开启无障碍授权后可准确获取")
+                    .toString()
+            } else {
+                JSONObject()
+                    .put("ok", true)
+                    .put("known", true)
+                    .put("label", app.label)
+                    .put("package", app.packageName)
+                    .put("system", app.system)
+                    .toString()
+            }
+        }
+    }
     private fun error(message: String): String = JSONObject().put("ok", false).put("error", message).toString()
 
     private const val MAX_CLIP_CHARS = 8_000

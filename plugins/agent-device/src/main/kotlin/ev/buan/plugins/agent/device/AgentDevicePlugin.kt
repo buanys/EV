@@ -8,6 +8,7 @@ import org.cordis.EffectScope
 import org.cordis.Plugin
 import org.cordis.api.AgentSurface
 import org.cordis.api.DeviceContextService
+import org.cordis.api.ScreenService
 import org.cordis.api.ServiceDirectory
 import org.cordis.dependencies
 import java.io.File
@@ -30,7 +31,11 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface {
 
     // DeviceContextService 声明在 inject 里，才允许用 ctx.get 做**可选**查询：
     // 宿主版本旧时它是 null，插件照常起，只是那几个工具如实回答"未启用"。
-    override val inject: Dependencies = dependencies(ServiceDirectory.Key, DeviceContextService.Key)
+    override val inject: Dependencies = dependencies(
+        ServiceDirectory.Key,
+        DeviceContextService.Key,
+        ScreenService.Key,
+    )
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
@@ -45,9 +50,10 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface {
 
         val root = Environment.getExternalStorageDirectory() ?: File("/sdcard")
         val files = DeviceFiles(root)
-        val tools = DeviceTools.all(files) +
+        val tools = DeviceTools.all(files, DeviceSearch(files, root)) +
             WriteTools.all(files) +
-            SystemTools.all { ctx.get(DeviceContextService.Key) }
+            SystemTools.all { ctx.get(DeviceContextService.Key) } +
+            ScreenTools.all { ctx.get(ScreenService.Key) }
         registry.register(PLUGIN_ID, tools)
         android.util.Log.i("EV", "agent-device: 注册 ${tools.size} 个工具（${tools.joinToString(",") { it.spec.name }}）")
         effect.collect {

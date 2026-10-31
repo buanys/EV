@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ev_accessibility_description">允许 EV 的 agent 读取屏幕上的文字并点按、滑动、输入。仅在你主动要求它操作手机时使用。</string>
+</resources>

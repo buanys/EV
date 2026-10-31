@@ -23,6 +23,20 @@ object PluginStorageLayout {
     fun cacheRoot(cacheDir: File, pluginId: String): File =
         File(File(cacheDir, ROOT_DIRECTORY), directoryName(pluginId))
 
+    /** Directory under filesDir that holds the user's own data, one subdirectory per plugin. */
+    const val USER_DATA_DIRECTORY: String = "userdata"
+
+    /**
+     * The user's data for one plugin: `files/userdata/<dir>`. Deliberately outside [ROOT_DIRECTORY]:
+     * [pruneUnknown] only walks `plugins/`, so uninstalling or unapproving a plugin never touches it.
+     */
+    fun userDataRoot(filesDir: File, pluginId: String): File =
+        File(File(filesDir, USER_DATA_DIRECTORY), directoryName(pluginId))
+
+    /** Scratch area for the user's data: `cache/userdata/<dir>`. */
+    fun userDataCacheRoot(cacheDir: File, pluginId: String): File =
+        File(File(cacheDir, USER_DATA_DIRECTORY), directoryName(pluginId))
+
     /** Maps an arbitrary plugin id to one safe directory name. */
     fun directoryName(pluginId: String): String {
         require(pluginId.isNotEmpty()) { "插件 id 不能为空" }

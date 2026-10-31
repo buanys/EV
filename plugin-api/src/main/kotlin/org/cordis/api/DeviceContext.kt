@@ -31,6 +31,15 @@ interface DeviceContextService {
      */
     fun launch(packageName: String): LaunchOutcome
 
+
+    /**
+     * 此刻在前台的那个应用；读不到时 null。
+     *
+     * 来源是 `ActivityManager` 的进程信息，Android 5.0+ 之后第三方应用通常只拿得到自己，
+     * 所以 null 是常态而不是错误——调用方应当把它当作"不确定"，而不是"没有前台应用"。
+     * 想要准确值需要无障碍授权（见 [ScreenService]），那条路径能拿到窗口切换事件的包名。
+     */
+    fun currentApp(): AppEntry? = null
     /** 电量、存储、内存、网络、屏幕、机型与系统版本——一次读全，省一轮工具调用。 */
     fun status(): DeviceStatus
 

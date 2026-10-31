@@ -87,6 +87,40 @@ internal class DeviceContextServiceImpl(private val context: AndroidContext) : D
         }
     }
 
+    override fun currentApp(): AppEntry? {
+        // 优先无障碍：它拿的是 TYPE_WINDOW_STATE_CHANGED 事件里的包名，最准。
+        EvAccessibilityService.currentPackage()?.let { packageName ->
+            return appEntry(packageName)
+        }
+        // 退路：ActivityManager 的进程重要性。Android 5.0+ 之后第三方应用通常只看得见自己，
+        // 所以这里经常返回 null——那是"不确定"，不是"没有前台应用"。
+        return runCatching {
+            val manager = context.getSystemService(android.app.ActivityManager::class.java)
+                ?: return@runCatching null
+            val processes = manager.runningAppProcesses ?: return@runCatching null
+            val foreground = processes.firstOrNull {
+                it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+            } ?: return@runCatching null
+            appEntry(foreground.processName.substringBefore(':'))
+        }.getOrNull()
+    }
+
+    private fun appEntry(packageName: String): AppEntry? {
+        if (packageName.isBlank()) return null
+        // "自己"也要如实回答：模型需要知道"现在前台是 EV"，否则会以为读不到就是不支持。
+        if (packageName == context.packageName) return AppEntry(packageName, "EV（本应用）", false)
+        val manager = context.packageManager
+        val label = runCatching {
+            manager.getApplicationInfo(packageName, 0).loadLabel(manager)?.toString().orEmpty()
+        }.getOrNull()
+        val system = runCatching {
+            (manager.getApplicationInfo(packageName, 0).flags and
+                android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+        }.getOrDefault(false)
+        // 包可能已经卸载了（事件是旧的），这时给个只有包名的条目也比 null 有用。
+        return AppEntry(packageName, label?.ifBlank { packageName } ?: packageName, system)
+    }
+
     override fun status(): DeviceStatus {
         val battery = battery()
         val storage = storage()

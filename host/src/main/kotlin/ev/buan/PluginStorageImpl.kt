@@ -8,6 +8,7 @@ import org.cordis.api.HostPermission
 import org.cordis.api.PermissionService
 import org.cordis.api.PluginStorage
 import org.cordis.api.PluginStorageQuotaExceededException
+import org.cordis.api.UserDataStorage
 
 /**
  * One plugin's [PluginStorage] binding.
@@ -118,3 +119,37 @@ private fun filesFor(context: Context, pluginId: String): PluginStorageFiles = P
     PluginStorageLayout.dataRoot(context.filesDir, pluginId),
     PluginStorageLayout.cacheRoot(context.cacheDir, pluginId),
 )
+
+/**
+ * The user's data binding for one plugin: the same implementation as [PluginStorageImpl] (same path
+ * rules, quota and PLUGIN_STORAGE gate), rooted in `files/userdata/<id>` instead of the plugin area.
+ */
+class UserDataStorageImpl internal constructor(
+    private val inner: PluginStorageImpl,
+) : UserDataStorage, PluginStorage by inner {
+
+    constructor(context: Context, pluginId: String, permissions: PermissionService) : this(
+        PluginStorageImpl(
+            pluginId,
+            PluginStorageFiles(
+                PluginStorageLayout.userDataRoot(context.filesDir, pluginId),
+                PluginStorageLayout.userDataCacheRoot(context.cacheDir, pluginId),
+            ),
+            permissions,
+        ),
+    )
+}
+
+/**
+ * Same declaration gate as [providePluginStorageIfDeclared]: a plugin that did not declare
+ * PLUGIN_STORAGE gets no user-data binding either. Returns whether a binding was installed.
+ */
+internal suspend fun provideUserDataIfDeclared(
+    pluginContext: org.cordis.Context,
+    requested: Set<HostPermission>,
+    storage: () -> UserDataStorage,
+): Boolean {
+    if (HostPermission.PLUGIN_STORAGE !in requested) return false
+    pluginContext.provide(UserDataStorage.Key, storage()).awaitReady()
+    return true
+}

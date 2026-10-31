@@ -81,6 +81,22 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- 无障碍：agent 的"眼睛和手"。用户必须在 设置 → 无障碍 里手动开启，
+             开启后本服务能读到任何界面的文字、能在任何应用里点按输入。
+             权限如此之大，所以服务本身不做任何决定——是否允许调用由宿主的审批门把关。 -->
+        <service
+            android:name=".EvAccessibilityService"
+            android:exported="true"
+            android:label="EV 屏幕操作"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ev_accessibility" />
+        </service>
     </application>
 
 </manifest>

@@ -19,11 +19,13 @@ import org.cordis.api.HostPackages
 import org.cordis.api.HostPermission
 import org.cordis.api.PermissionService
 import org.cordis.api.PluginStorage
+import org.cordis.api.UserDataStorage
 import org.cordis.api.ServiceDirectory
 import org.cordis.loader.AndroidModuleDescriptor
 import org.cordis.loader.AndroidModuleLoader
 import org.cordis.api.PLUGIN_API_VERSION
 import org.cordis.api.DeviceContextService
+import org.cordis.api.ScreenService
 import org.cordis.api.HostRestart
 import org.cordis.api.PluginInstallRequest
 import org.cordis.api.PluginInstallResult
@@ -178,6 +180,7 @@ class HostRuntime(private val context: AndroidContext) {
     private var installHandle: org.cordis.EffectHandle? = null
     private var restartHandle: org.cordis.EffectHandle? = null
     private var deviceContextHandle: org.cordis.EffectHandle? = null
+    private var screenHandle: org.cordis.EffectHandle? = null
 
     /** Start-pass bookkeeping; the public answer is [hasStarted]. */
     private val lifecycle = HostLifecycle()
@@ -272,6 +275,8 @@ class HostRuntime(private val context: AndroidContext) {
             installHandle = cordis.provide(PluginInstallService.Key, InstallService())
                 .also { runCatching { it.awaitReady() } }
             deviceContextHandle = cordis.provide(DeviceContextService.Key, DeviceContextServiceImpl(context))
+                .also { runCatching { it.awaitReady() } }
+            screenHandle = cordis.provide(ScreenService.Key, ScreenServiceImpl(context))
                 .also { runCatching { it.awaitReady() } }
             restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context))
                 .also { runCatching { it.awaitReady() } }
@@ -676,6 +681,7 @@ class HostRuntime(private val context: AndroidContext) {
             val pluginContext = scope.ctx
                 .isolate(PermissionService.Key)
                 .isolate(PluginStorage.Key)
+                .isolate(UserDataStorage.Key)
                 .isolate(BackgroundService.Key)
             val permissionService = PermissionServiceImpl(plugin.id, permissions)
             pluginContext.provide(PermissionService.Key, permissionService)
@@ -688,6 +694,13 @@ class HostRuntime(private val context: AndroidContext) {
                 pluginContext,
                 plugin.requestedPermissions,
                 storage = { PluginStorageImpl(context, plugin.id, permissionService) },
+            )
+            // The user's own data (conversations, keys, memories) lives in the host's tree, not in the
+            // plugin area: same gate, but nothing in the plugin lifecycle deletes it.
+            provideUserDataIfDeclared(
+                pluginContext,
+                plugin.requestedPermissions,
+                storage = { UserDataStorageImpl(context, plugin.id, permissionService) },
             )
             // Background execution is host-mediated too: the plugin takes references, the host owns
             // the process-wide foreground service and the notification the user can see.
@@ -742,7 +755,9 @@ class HostRuntime(private val context: AndroidContext) {
             File(context.cacheDir, PluginStorageLayout.ROOT_DIRECTORY),
             RENAMED_PLUGIN_IDS,
         )
-        val installedIds = installed.keys
+        // A plugin waiting for unsigned approval is still on disk, just not loaded yet. Its data must
+        // survive until the user uninstalls it; only a plugin that is truly gone may be pruned.
+        val installedIds = installed.keys + pendingUnsigned.map { it.id }
         PluginStorageLayout.pruneUnknown(
             File(context.filesDir, PluginStorageLayout.ROOT_DIRECTORY),
             installedIds,

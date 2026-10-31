@@ -112,9 +112,14 @@ internal class BrowseTools(
             return error("只支持 http/https，收到：$url")
         }
         val maxChars = args.optInt("max_chars", DEFAULT_MAX_CHARS).coerceIn(500, 60_000)
+        val saveTo = args.optString("save_to", "").trim()
+        val saveOverwrite = args.optBoolean("save_overwrite", false)
+
+        // 要落盘时先把上限抬高：只返回前 12000 字再写盘，等于把文章截断后存了个残本。
+        val fetchChars = if (saveTo.isNotEmpty()) maxOf(maxChars, SAVE_MAX_CHARS) else maxChars
 
         val static = try {
-            PageFetch.fetch(client, url, maxChars)
+            PageFetch.fetch(client, url, fetchChars)
         } catch (t: Throwable) {
             // 不用 runCatching{}.getOrElse{return}：lambda 里的 return 会让整条表达式的
             // 类型推断退化成 Nothing，后面所有字段访问都变成 "Unresolved reference"。
@@ -123,7 +128,10 @@ internal class BrowseTools(
 
         // 静态抓到了正文：直接用，不起浏览器。
         if (!static.looksEmpty) {
-            return payload(url, static.title, static.text, "http", static.truncated, null)
+            return payload(
+                url, static.title, static.text, "http", static.truncated, null,
+                save(url, static.title, static.text, saveTo, saveOverwrite),
+            )
         }
 
         // 空壳（SPA / 靠 JS 渲染）：只有这一种情况才付渲染的代价。
@@ -131,6 +139,7 @@ internal class BrowseTools(
             ?: return payload(
                 url, static.title, static.text, "http", static.truncated,
                 "这一页几乎全是脚本，静态抓取拿不到正文；宿主没有提供离屏浏览器，无法渲染",
+                save(url, static.title, static.text, saveTo, saveOverwrite),
             )
 
         val rendered = reader.render(url)
@@ -138,9 +147,10 @@ internal class BrowseTools(
             return payload(
                 url, static.title, static.text, "http", static.truncated,
                 rendered.error ?: "离屏浏览器渲染完成但页面没有可见文本",
+                save(url, static.title, static.text, saveTo, saveOverwrite),
             )
         }
-        val text = if (rendered.text.length > maxChars) rendered.text.take(maxChars) else rendered.text
+        val text = if (rendered.text.length > fetchChars) rendered.text.take(fetchChars) else rendered.text
         return payload(
             url,
             rendered.title.ifEmpty { static.title },
@@ -148,6 +158,42 @@ internal class BrowseTools(
             "browser",
             rendered.truncated || text.length < rendered.text.length,
             null,
+            save(url, rendered.title.ifEmpty { static.title }, text, saveTo, saveOverwrite),
+        )
+    }
+
+    /**
+     * 落盘（可选）。
+     *
+     * 存的是**标题 + 来源 URL + 正文**，不是裸正文：过两天回头看这个文件时，
+     * 没有出处的笔记等于没有价值。
+     */
+    private fun save(
+        url: String,
+        title: String,
+        text: String,
+        saveTo: String,
+        overwrite: Boolean,
+    ): JSONObject? {
+        if (saveTo.isEmpty()) return null
+
+        val document = buildString {
+            append("# ").append(title.ifBlank { url }).append("\n\n")
+            append("> 来源：").append(url).append('\n')
+            append("> 抓取时间：").append(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())).append('\n')
+            append("> 由 EV agent 抓取\n\n")
+            append("---\n\n")
+            append(text)
+        }
+
+        // kotlin.Result 的 Success/Failure 是 internal，不能拿来 when 分支；用 fold 更直白。
+        return SharedSink.write(document, saveTo, overwrite).fold(
+            onSuccess = { saved ->
+                JSONObject().put("saved", saved.path).put("saved_bytes", saved.bytes)
+            },
+            onFailure = { error ->
+                JSONObject().put("error", error.message ?: "落盘失败")
+            },
         )
     }
 
@@ -158,6 +204,7 @@ internal class BrowseTools(
         via: String,
         truncated: Boolean,
         warning: String?,
+        saved: JSONObject? = null,
     ): String = JSONObject().apply {
         put("url", url)
         put("title", title)
@@ -168,6 +215,14 @@ internal class BrowseTools(
         put("truncated", truncated)
         put("text", text)
         if (warning != null) put("warning", warning)
+        if (saved != null) {
+            if (saved.has("saved")) {
+                put("saved", saved.getString("saved"))
+                put("saved_bytes", saved.getLong("saved_bytes"))
+            } else {
+                put("save_error", saved.optString("error"))
+            }
+        }
     }.toString()
 
     private fun error(message: String) = JSONObject().put("error", message).toString()
@@ -187,6 +242,9 @@ internal class BrowseTools(
     private companion object {
         const val DEFAULT_MAX_CHARS = 12_000
 
+        /** 要落盘时的抓取上限：存一半的文章比不存更糟。 */
+        const val SAVE_MAX_CHARS = 60_000
+
         val SEARCH_SPEC = ToolSpec(
             name = "web_search",
             description = "联网搜索网页。返回标题、真实链接和摘要；要读全文再用 web_fetch 打开链接。",
@@ -200,11 +258,15 @@ internal class BrowseTools(
 
         val FETCH_SPEC = ToolSpec(
             name = "web_fetch",
-            description = "打开一个网页并返回正文文本。自动处理需要 JS 渲染的页面。",
+            description = "打开一个网页并返回正文文本。自动处理需要 JS 渲染的页面。" +
+                "给了 save_to 就同时把正文（标题 + 来源 + 时间 + 正文）写进共享存储，" +
+                "适合把资料存下来以后再读——不要先抓一次再把正文塞进 device_write。",
             parametersJson = """
                 {"type":"object","properties":{
                   "url":{"type":"string","description":"要读取的 http/https 地址"},
-                  "max_chars":{"type":"integer","description":"正文上限，默认 12000，最大 60000"}
+                  "max_chars":{"type":"integer","description":"返回正文上限，默认 12000，最大 60000"},
+                  "save_to":{"type":"string","description":"落盘路径，如 Download/ev/note.md；相对路径按共享存储根解析"},
+                  "save_overwrite":{"type":"boolean","description":"允许覆盖已存在的文件，默认 false"}
                 },"required":["url"],"additionalProperties":false}
             """.trimIndent(),
         )
