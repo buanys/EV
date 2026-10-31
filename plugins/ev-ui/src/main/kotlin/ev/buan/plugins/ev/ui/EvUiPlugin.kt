@@ -44,8 +44,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ev.buan.plugins.agent.api.AgentService
-import ev.buan.plugins.agent.api.AgentProgress
-import ev.buan.plugins.agent.api.AgentReply
 import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelProviderService
@@ -80,10 +78,7 @@ import ev.buan.ui.EvIcons
 import ev.buan.ui.EvMotionTokens
 import ev.buan.ui.EvThemeTokens
 import top.yukonga.miuix.kmp.basic.Icon
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collect
 import org.cordis.Context
 import org.cordis.Dependencies
 import org.cordis.EffectScope
@@ -184,20 +179,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
      * must not both send into one conversation, and the typing row has to be visible in whichever
      * surface the user is looking at.
      */
-    private var replyingSessionId by mutableStateOf<String?>(null)
-
-    /** Live rounds of the in-flight turn; empty when nothing is running. */
-    private var liveRounds by mutableStateOf<List<RoundTrace>>(emptyList())
-
-    /**
-     * Three dots mean exactly one thing: the model is thinking. While a tool runs there is real
-     * progress to show, so the dots disappear instead of animating over work that has an answer.
-     */
-    private var awaitingModel by mutableStateOf(false)
-
-    /** True during the wrap-up summary call, so the dots can say what they are waiting for. */
-    private var finalizing by mutableStateOf(false)
-
     /**
      * Manual expand state per work process, keyed by message id (or "live" while running).
      *
@@ -206,17 +187,11 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
      */
     private val workExpansion = mutableStateMapOf<String, Boolean>()
 
-    /** The job behind each in-flight turn, so the composer's stop button can cancel exactly one. */
-    private val replyJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
-
     /**
      * The approval gate this UI publishes for the brain's dangerous tools. Plugin-scoped like
      * [sessions]: both surfaces show the same prompt, and one tap answers the one waiting call.
      */
     private val approvalGate = ApprovalGate()
-
-    /** Last completed turn's token spend, shown in the model capsule's detail card. */
-    private var lastTurnTokens by mutableStateOf<Int?>(null)
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         navigation = ctx.require(HostNavigation.Key)
@@ -287,7 +262,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
     @Composable
     private fun ChatSurface(modifier: Modifier, onHost: () -> Unit, isRoot: Boolean) {
         val store = sessionStore
-        var activeSessionId by remember { mutableStateOf(sessions.first().id) }
         var draft by remember { mutableStateOf("") }
         var drawerOpen by remember { mutableStateOf(false) }
         // Lives above the drawer so the group stays open the next time the drawer slides in:
@@ -304,6 +278,19 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         var modelCardOpen by remember { mutableStateOf(false) }
         val listState = rememberLazyListState()
         val scope = rememberCoroutineScope()
+        // Turn and conversation state lives in the controller; this surface only reads it.
+        val chat = remember {
+            ChatSessionController(
+                sessions = sessions,
+                store = sessionStore,
+                directory = directory,
+                characters = characters,
+                skills = skills,
+                scope = scope,
+                newSession = { newSession() },
+                unconnectedPrefix = UNCONNECTED_PREFIX,
+            )
+        }
         val keyboard = LocalSoftwareKeyboardController.current
 
         // The settings, tools, memory, characters and skills panels are sheets inside this page, not
@@ -318,18 +305,14 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             pages.pop()
         }
 
-        val activeSession = sessions.firstOrNull { it.id == activeSessionId } ?: sessions.first()
-        val replying = replyingSessionId == activeSession.id
+        val activeSession = chat.activeSession
+        val replying = chat.isReplying
 
         /**
          * Writes the whole document after an edit. Synchronous because the file is small and a
          * snapshot must reflect the edit that the user just saw; [ChatSessionStore] swallows and
          * logs its own failures, so a full disk cannot take the page down with it.
          */
-        fun persist() {
-            store?.save(sessions.toList())
-        }
-
         /** Same contract for the character library: whole-file snapshot, failures logged not thrown. */
         fun persistCharacters() {
             characterStore?.save(characters.toList())
@@ -380,7 +363,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             sessions.clearingCharacter(characterId).forEachIndexed { index, session ->
                 sessions[index] = session
             }
-            persist()
+            chat.persist()
         }
 
         /** Removes a skill and drops every session's reference to it, for the same reasons. */
@@ -390,197 +373,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             sessions.clearingSkill(skillId).forEachIndexed { index, session ->
                 sessions[index] = session
             }
-            persist()
-        }
-
-        fun mutate(id: String, transform: (ChatSession) -> ChatSession) {
-            val index = sessions.indexOfFirst { it.id == id }
-            if (index >= 0) {
-                sessions[index] = transform(sessions[index])
-                // Every conversation edit - send, reply, delete, regenerate - ends up here.
-                persist()
-            }
-        }
-
-        fun append(sessionId: String, message: ChatMessage) {
-            mutate(sessionId) { session ->
-                session.copy(
-                    messages = session.messages + message,
-                    updatedAt = System.currentTimeMillis(),
-                )
-            }
-        }
-
-        /**
-         * Runs one agent turn for [prompt] and appends the assistant bubble.
-         *
-         * Shared by send and regenerate: a regenerated reply is a normal turn, the only difference
-         * is that its user bubble already exists. The agent is looked up on every turn, never
-         * cached: the brain may be installed, enabled or disabled after this page was opened.
-         *
-         * The turn carries the session's character as `systemPrompt` when one is selected. The
-         * prompt is *not* added to the bubble text and the brain does not store it, so a role changes
-         * what the model sees without touching the transcript or the memory file.
-         */
-        fun requestReply(sessionId: String, prompt: String) {
-            if (replyingSessionId == sessionId) return
-            replyingSessionId = sessionId
-            liveRounds = emptyList()
-            awaitingModel = true
-            finalizing = false
-            val job = scope.launch {
-                try {
-                    val agent = directory?.lookup(AgentService.Key)
-                    if (agent == null) {
-                        delay(420)
-                        append(sessionId, assistantMessage(UNCONNECTED_PREFIX + prompt))
-                    } else {
-                        var finished: AgentReply? = null
-                        var rounds = emptyList<RoundTrace>()
-                        agent.sendStreaming(
-                            sessionId = sessionId,
-                            text = prompt,
-                            systemPrompt = sessionSystemPrompt(
-                                characters = characters,
-                                skills = skills,
-                                session = sessions.firstOrNull { it.id == sessionId },
-                            ),
-                        ).collect { progress ->
-                            when (progress) {
-                                is AgentProgress.RoundStarted -> {
-                                    awaitingModel = false
-                                    rounds = reduce(rounds, progress)
-                                    liveRounds = rounds
-                                }
-
-                                is AgentProgress.ToolStarted,
-                                is AgentProgress.ToolAwaitingApproval,
-                                is AgentProgress.ToolFinished,
-                                -> {
-                                    awaitingModel = false
-                                    rounds = reduce(rounds, progress)
-                                    liveRounds = rounds
-                                }
-
-                                is AgentProgress.RoundFinished -> {
-                                    // The next thing that happens is another model call.
-                                    awaitingModel = true
-                                    rounds = reduce(rounds, progress)
-                                    liveRounds = rounds
-                                }
-
-                                is AgentProgress.Finalizing -> {
-                                    awaitingModel = true
-                                    finalizing = true
-                                    rounds = reduce(rounds, progress)
-                                    liveRounds = rounds
-                                }
-
-                                is AgentProgress.Done -> finished = progress.reply
-                            }
-                        }
-                        val reply = finished ?: error("智能体没有返回最终结果")
-                        val answer = reply.message.content.ifBlank { "（模型没有返回文本）" }
-                        lastTurnTokens = reply.usage?.totalTokens
-                        val message = assistantMessage(
-                            answer,
-                            // Events stay: they are the only record of the tool work that
-                            // survives a reload, and the timeline is rebuilt from them.
-                            events = reply.events,
-                            stopNote = stopNoteOf(reply.stop),
-                            traces = rounds.map { it.toSummary() },
-                        )
-                        append(sessionId, message)
-                        // Hand over from the live blocks to the stored summary immediately, so
-                        // the same round is never rendered twice.
-                        liveRounds = emptyList()
-                    }
-                } catch (cancel: CancellationException) {
-                    // The stop button lands here: close the spinners first, otherwise they would
-                    // keep turning forever because no ToolFinished will ever arrive.
-                    liveRounds = cancelOutstanding(liveRounds)
-                    append(sessionId, assistantMessage("（已停止）"))
-                    throw cancel
-                } catch (error: Throwable) {
-                    append(
-                        sessionId,
-                        assistantMessage("（对话失败）${error.message ?: error::class.simpleName}"),
-                    )
-                } finally {
-                    if (replyingSessionId == sessionId) replyingSessionId = null
-                    liveRounds = emptyList()
-                    awaitingModel = false
-                    finalizing = false
-                    replyJobs.remove(sessionId)
-                }
-            }
-            replyJobs[sessionId] = job
-        }
-
-        /** Cancels the in-flight turn of the active session; the brain unwinds as a cancellation. */
-        fun stopReply() {
-            val target = sessions.firstOrNull { it.id == activeSessionId } ?: return
-            replyJobs[target.id]?.cancel()
-        }
-
-        /** One fresh conversation, selected immediately - shared by the drawer and the top bar. */
-        fun newChat() {
-            val fresh = newSession()
-            sessions += fresh
-            persist()
-            activeSessionId = fresh.id
-            keyboard?.hide()
-            drawerOpen = false
-            searching = false
-            searchQuery = ""
-        }
-
-        fun send(text: String) {
-            val body = text.trim()
-            if (body.isEmpty()) return
-            val target = sessions.firstOrNull { it.id == activeSessionId } ?: return
-            if (replyingSessionId == target.id) return
-            mutate(target.id) { session ->
-                session.copy(
-                    messages = session.messages + userMessage(body),
-                    title = if (session.messages.none { it.fromUser }) body else session.title,
-                    updatedAt = System.currentTimeMillis(),
-                )
-            }
-            draft = ""
-            requestReply(target.id, body)
-        }
-
-        /**
-         * Drops exactly one bubble. The agent's own memory keeps whatever that turn appended: the
-         * contract has no per-message delete, so this is a view-level edit.
-         *
-         * No-op while this session is replying - deleting a message under an in-flight turn would
-         * interleave a reply with a conversation it was not generated from.
-         */
-        fun delete(messageId: String) {
-            val target = sessions.firstOrNull { it.id == activeSessionId } ?: return
-            if (replyingSessionId == target.id) return
-            mutate(target.id) { session ->
-                session.copy(
-                    messages = withoutMessage(session.messages, messageId),
-                    updatedAt = System.currentTimeMillis(),
-                )
-            }
-        }
-
-        /**
-         * Asks the same question again: the history is cut back to its user bubble (kept, not
-         * re-appended) and a fresh reply is requested for it.
-         */
-        fun regenerate(messageId: String) {
-            val target = sessions.firstOrNull { it.id == activeSessionId } ?: return
-            if (replyingSessionId == target.id) return
-            val plan = regenerationOf(target.messages, messageId) ?: return
-            mutate(target.id) { session ->
-                session.copy(messages = plan.messages, updatedAt = System.currentTimeMillis())
-            }
-            requestReply(target.id, plan.prompt)
+            chat.persist()
         }
 
         LaunchedEffect(activeSession.id, activeSession.messages.lastOrNull()?.id, replying) {
@@ -627,7 +420,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         currentId = appearanceService?.current?.themeId ?: return,
                         // The host owns the appearance state: selecting a theme persists it and
                         // recomposes the whole app, this page only asks for the change.
-                        onSelect = { id -> appearanceService?.update { it.copy(themeId = id) } },
+                        onSelect = { id -> appearanceService.update { it.copy(themeId = id) } },
                         onBack = { pages.pop() },
                         modifier = modifier,
                     )
@@ -656,7 +449,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         selectedId = activeSession.characterId,
                         onBack = { pages.pop() },
                         onSelect = { characterId ->
-                            mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
+                            chat.mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
                         },
                         onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
                         onDelete = { characterId -> deleteCharacter(characterId) },
@@ -668,7 +461,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                         selectedId = activeSession.skillId,
                         onBack = { pages.pop() },
                         onSelect = { skillId ->
-                            mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
+                            chat.mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
                         },
                         onSave = { saved -> replaceSkills(skills.upsert(saved)) },
                         onDelete = { skillId -> deleteSkill(skillId) },
@@ -714,7 +507,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     // Selecting stores the id on the session, so one conversation can talk to one
                     // role while another talks to none. `mutate` persists sessions.json by itself.
                     onSelect = { characterId ->
-                        mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
+                        chat.mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
                     },
                     onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
                     onDelete = { characterId -> deleteCharacter(characterId) },
@@ -730,7 +523,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     onBack = { pages.pop() },
                     // Same per-session semantics as characters: the id lives on the conversation.
                     onSelect = { skillId ->
-                        mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
+                        chat.mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
                     },
                     onSave = { saved -> replaceSkills(skills.upsert(saved)) },
                     onDelete = { skillId -> deleteSkill(skillId) },
@@ -758,7 +551,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     query = searchQuery,
                     onQueryChange = { searchQuery = it },
                     onSelectSession = { id ->
-                        activeSessionId = id
+                        chat.select(id)
                         searching = false
                         searchQuery = ""
                         keyboard?.hide()
@@ -767,13 +560,13 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     onDeleteSession = { id ->
                         val index = sessions.indexOfFirst { it.id == id }
                         if (index >= 0) {
-                            val wasActive = sessions[index].id == activeSessionId
+                            val wasActive = sessions[index].id == chat.activeSessionId
                             sessions.removeAt(index)
                             // 全删光之后必须补一个空会话：界面上总得有一个可写的地方，
                             // 否则下一次发送没有目标会话。
                             if (sessions.isEmpty()) sessions += newSession()
-                            if (wasActive) activeSessionId = sessions.first().id
-                            persist()
+                            if (wasActive) chat.select(sessions.first().id)
+                            chat.persist()
                         }
                     },
                     onPlugins = {
@@ -862,7 +655,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                             keyboard?.hide()
                             modelCardOpen = !modelCardOpen
                         },
-                        onNewChat = { newChat() },
+                        onNewChat = { chat.newChat(); keyboard?.hide(); drawerOpen = false; searching = false; searchQuery = "" },
                         onMore = {
                             keyboard?.hide()
                             openSettings()
@@ -899,11 +692,11 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                 // An empty prompt is a local action, not a message: today that
                                 // is the browser panel, the one suggestion that needs no agent.
                                 if (suggestion.prompt.isEmpty()) pages.push(EvPage.Browser)
-                                else send(suggestion.prompt)
+                                else chat.send(suggestion.prompt)
                             },
                             onResume = { id ->
                                 keyboard?.hide()
-                                activeSessionId = id
+                                chat.select(id)
                             },
                             modifier = Modifier.align(Alignment.Center),
                         )
@@ -912,13 +705,13 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                             sessionId = activeSession.id,
                             messages = activeSession.messages,
                             listState = listState,
-                            liveRounds = liveRounds,
+                            liveRounds = chat.liveRounds,
                             replying = replying,
-                            awaitingModel = awaitingModel,
-                            finalizing = finalizing,
+                            awaitingModel = chat.awaitingModel,
+                            finalizing = chat.finalizing,
                             workExpansion = workExpansion,
-                            onRegenerate = { regenerate(it) },
-                            onDelete = { delete(it) },
+                            onRegenerate = { chat.regenerate(it) },
+                            onDelete = { chat.delete(it) },
                         )
                     }
 
@@ -935,7 +728,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     ) {
                         EvModelDetailCard(
                             modelName = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model,
-                            lastTokens = lastTurnTokens,
+                            lastTokens = chat.lastTurnTokens,
                             onSwitchModel = {
                                 modelCardOpen = false
                                 openSettings(SettingsChild.Models)
@@ -948,13 +741,13 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 EvComposerArea(
                     draft = draft,
                     onDraftChange = { draft = it },
-                    onSend = { send(draft) },
+                    onSend = { chat.send(draft) },
                     // Placeholder rotates per conversation, not per recomposition (spec §7.3).
                     placeholder = ComposerPlaceholders[
                         Math.floorMod(activeSession.id.hashCode(), ComposerPlaceholders.size)
                     ],
                     busy = replying,
-                    onStop = { stopReply() },
+                    onStop = { chat.stopReply() },
                     plusActive = plusPanelOpen,
                     // Opening the panel trades the keyboard for it - they never share the screen.
                     onPlus = {
