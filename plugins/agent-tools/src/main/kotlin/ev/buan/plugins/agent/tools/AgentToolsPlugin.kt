@@ -54,12 +54,12 @@ class AgentToolsPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
         id = "ev.buan.plugins.agent.tools",
         name = "文件工具",
         version = "0.1.0",
-        description = "读写、列目录、搜索文件。模型改代码用的就是这组工具。",
+        description = "读写、列目录、删除文件。模型改代码用的就是这组工具。",
         capabilities = listOf(
-            org.cordis.api.PluginCapability("read_file", org.cordis.api.PluginCapability.Kind.TOOL, "读取文件"),
-            org.cordis.api.PluginCapability("write_file", org.cordis.api.PluginCapability.Kind.TOOL, "写入文件"),
-            org.cordis.api.PluginCapability("list_dir", org.cordis.api.PluginCapability.Kind.TOOL, "列目录"),
-            org.cordis.api.PluginCapability("search", org.cordis.api.PluginCapability.Kind.TOOL, "搜索内容"),
+            org.cordis.api.PluginCapability("file_read", org.cordis.api.PluginCapability.Kind.TOOL, "读文件", "按行读取，带行号。"),
+            org.cordis.api.PluginCapability("file_list", org.cordis.api.PluginCapability.Kind.TOOL, "列目录", "列出目录内容与大小。"),
+            org.cordis.api.PluginCapability("file_write", org.cordis.api.PluginCapability.Kind.TOOL, "写文件", "整文件写入，走原子替换。"),
+            org.cordis.api.PluginCapability("file_delete", org.cordis.api.PluginCapability.Kind.TOOL, "删除文件", "删除文件或目录。"),
         ),
     )
 

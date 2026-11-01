@@ -29,10 +29,9 @@ class AgentLogPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvi
         id = "ev.buan.plugins.agent.log",
         name = "审计日志",
         version = "0.1.0",
-        description = "记录谁在什么时候做了什么：工具调用、审批决定、插件启停。",
+        description = "把事件流写进自己的存储：截断、隔离与缺口都会被记录，重启后可恢复。",
         capabilities = listOf(
-            org.cordis.api.PluginCapability("agent/log", org.cordis.api.PluginCapability.Kind.SERVICE, "写入审计事件"),
-            org.cordis.api.PluginCapability("audit", org.cordis.api.PluginCapability.Kind.BACKGROUND, "保留审计记录", "按容量滚动，供事后追查。"),
+            org.cordis.api.PluginCapability("event-log", org.cordis.api.PluginCapability.Kind.BACKGROUND, "事件日志", "按容量滚动写入，损坏的行进隔离区并补一条 sys.gap。"),
         ),
     )
 

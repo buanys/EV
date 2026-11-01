@@ -30,9 +30,11 @@ class AgentForgePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
         id = "ev.buan.plugins.forge",
         name = "插件工坊",
         version = "0.1.0",
-        description = "在设备上编译并安装插件：源码到 dex 到容器，全在本机完成。",
+        description = "在设备上把源码编译成插件并安装，全在本机完成。",
         capabilities = listOf(
-            org.cordis.api.PluginCapability("forge", org.cordis.api.PluginCapability.Kind.TOOL, "编译插件", "把一份源码编译成可安装的容器。"),
+            org.cordis.api.PluginCapability("forge", org.cordis.api.PluginCapability.Kind.TOOL, "编译并安装", "一步完成编译到安装。"),
+            org.cordis.api.PluginCapability("forge_build", org.cordis.api.PluginCapability.Kind.TOOL, "只编译", "产出 dex，不安装。"),
+            org.cordis.api.PluginCapability("forge_install", org.cordis.api.PluginCapability.Kind.TOOL, "安装产物", "安装已编译的插件容器。"),
         ),
     )
 

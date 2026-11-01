@@ -26,11 +26,11 @@ class AgentWebPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvi
      */
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.web",
-        name = "网页抓取",
+        name = "网页控制台",
         version = "0.1.0",
-        description = "HTTP 抓取与正文提取，不渲染 JS。",
+        description = "在本机起一个带 token 的网页控制台，可以用浏览器连上同一个 agent。",
         capabilities = listOf(
-            org.cordis.api.PluginCapability("fetch", org.cordis.api.PluginCapability.Kind.TOOL, "抓取 URL", "返回状态码、正文与内容类型。"),
+            org.cordis.api.PluginCapability("web-console", org.cordis.api.PluginCapability.Kind.BACKGROUND, "网页控制台", "本机端口 + token；禁用插件即关闭端口。"),
         ),
         permissions = listOf("android.permission.INTERNET"),
     )

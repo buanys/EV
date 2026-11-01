@@ -28,10 +28,10 @@ class AgentBrowsePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
         id = "ev.buan.plugins.agent.browse",
         name = "浏览器",
         version = "0.1.0",
-        description = "让模型开网页、读页面、点东西。界面里的浏览器面板也用它。",
+        description = "网页抓取与搜索，供模型查资料；界面里的浏览器面板是独立的一页。",
         capabilities = listOf(
-            org.cordis.api.PluginCapability("browser", org.cordis.api.PluginCapability.Kind.UI, "内置浏览器面板"),
-            org.cordis.api.PluginCapability("browse_page", org.cordis.api.PluginCapability.Kind.TOOL, "抓取网页内容", "取正文文本，供模型阅读。"),
+            org.cordis.api.PluginCapability("web_fetch", org.cordis.api.PluginCapability.Kind.TOOL, "抓取网页", "取正文文本，供模型阅读。"),
+            org.cordis.api.PluginCapability("web_search", org.cordis.api.PluginCapability.Kind.TOOL, "搜索", "按关键词搜索并返回结果列表。"),
         ),
         permissions = listOf("android.permission.INTERNET"),
     )
