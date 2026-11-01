@@ -147,6 +147,9 @@ fun EvDrawerScaffold(
             )
             Column(
                 Modifier
+                    // Without this the panel sits at the Box start and a Start/End drawer would look
+                    // identical; the edge IS the alignment, the offset only animates it in.
+                    .align(if (fromEnd) Alignment.CenterEnd else Alignment.CenterStart)
                     .fillMaxHeight()
                     .width(drawerWidth)
                     .offset {
