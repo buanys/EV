@@ -22,7 +22,7 @@ import org.cordis.dependencies
  * gate before any command runs. Root is never a default capability: with the UI disabled the
  * calls fail closed, and this plugin holds no approval logic of its own.
  */
-class AgentShellPlugin : Plugin<Unit>, AgentSurface {
+class AgentShellPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
     override val name = "agent-shell"
     override val title = "agent Shell"
     override val body = "run_shell：经 su 执行 root 命令。高危工具，每次执行都需人工审批；授权记录见插件管理页。"
@@ -48,4 +48,33 @@ class AgentShellPlugin : Plugin<Unit>, AgentSurface {
     private companion object {
         const val PLUGIN_ID = "ev.buan.plugins.agent.shell"
     }
+
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.shell",
+        name = "Shell",
+        version = "0.1.0",
+        description = "给模型一个 shell：run_shell 是危险工具，每次调用都要人工批准。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability(
+                id = "run_shell",
+                kind = org.cordis.api.PluginCapability.Kind.TOOL,
+                title = "执行 shell 命令",
+                description = "在设备上跑一条命令，返回 stdout / stderr / 退出码。默认走审批门。",
+            ),
+        ),
+        permissions = listOf("android.permission.INTERNET"),
+        settings = listOf(
+            org.cordis.api.PluginSetting(
+                key = "timeout",
+                title = "默认超时",
+                kind = org.cordis.api.PluginSetting.Kind.TEXT,
+                description = "单条命令的最长运行时间。",
+                value = "30 秒",
+            ),
+        ),
+    )
+
 }

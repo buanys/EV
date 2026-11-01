@@ -335,6 +335,9 @@ public final class org.cordis.api.LaunchOutcome$NoSuchApp implements org.cordis.
     descriptor: ()I
   public boolean equals(java.lang.Object);
     descriptor: (Ljava/lang/Object;)Z
+public interface org.cordis.api.ManifestProvider {
+  public abstract org.cordis.api.PluginManifest getManifest();
+    descriptor: ()Lorg/cordis/api/PluginManifest;
 public final class org.cordis.api.NotificationEntry {
   public static final int $stable;
     descriptor: I
@@ -441,6 +444,62 @@ public interface org.cordis.api.PermissionService {
 public final class org.cordis.api.PermissionService$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.PermissionService> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.PluginCapability {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.PluginCapability(java.lang.String, org.cordis.api.PluginCapability$Kind, java.lang.String, java.lang.String);
+    descriptor: (Ljava/lang/String;Lorg/cordis/api/PluginCapability$Kind;Ljava/lang/String;Ljava/lang/String;)V
+  public org.cordis.api.PluginCapability(java.lang.String, org.cordis.api.PluginCapability$Kind, java.lang.String, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;Lorg/cordis/api/PluginCapability$Kind;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.lang.String getId();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.PluginCapability$Kind getKind();
+    descriptor: ()Lorg/cordis/api/PluginCapability$Kind;
+  public final java.lang.String getTitle();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getDescription();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component1();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.PluginCapability$Kind component2();
+    descriptor: ()Lorg/cordis/api/PluginCapability$Kind;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component4();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.PluginCapability copy(java.lang.String, org.cordis.api.PluginCapability$Kind, java.lang.String, java.lang.String);
+    descriptor: (Ljava/lang/String;Lorg/cordis/api/PluginCapability$Kind;Ljava/lang/String;Ljava/lang/String;)Lorg/cordis/api/PluginCapability;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.PluginCapability$Kind extends java.lang.Enum<org.cordis.api.PluginCapability$Kind> {
+  public static final org.cordis.api.PluginCapability$Kind SERVICE;
+    descriptor: Lorg/cordis/api/PluginCapability$Kind;
+  public static final org.cordis.api.PluginCapability$Kind TOOL;
+    descriptor: Lorg/cordis/api/PluginCapability$Kind;
+  public static final org.cordis.api.PluginCapability$Kind UI;
+    descriptor: Lorg/cordis/api/PluginCapability$Kind;
+  public static final org.cordis.api.PluginCapability$Kind BACKGROUND;
+    descriptor: Lorg/cordis/api/PluginCapability$Kind;
+  public static org.cordis.api.PluginCapability$Kind[] values();
+    descriptor: ()[Lorg/cordis/api/PluginCapability$Kind;
+  public static org.cordis.api.PluginCapability$Kind valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/PluginCapability$Kind;
+  public static kotlin.enums.EnumEntries<org.cordis.api.PluginCapability$Kind> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
+public interface org.cordis.api.PluginCatalogService {
+  public static final org.cordis.api.PluginCatalogService$Companion Companion;
+    descriptor: Lorg/cordis/api/PluginCatalogService$Companion;
+  public abstract java.util.List<org.cordis.api.PluginManifest> manifests();
+    descriptor: ()Ljava/util/List;
+  public abstract org.cordis.api.PluginManifest manifestOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/PluginManifest;
+public final class org.cordis.api.PluginCatalogService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.PluginCatalogService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
 public final class org.cordis.api.PluginInstallRequest {
   public static final int $stable;
     descriptor: I
@@ -519,6 +578,109 @@ public final class org.cordis.api.PluginInstallStatus extends java.lang.Enum<org
   public static org.cordis.api.PluginInstallStatus valueOf(java.lang.String);
     descriptor: (Ljava/lang/String;)Lorg/cordis/api/PluginInstallStatus;
   public static kotlin.enums.EnumEntries<org.cordis.api.PluginInstallStatus> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
+public final class org.cordis.api.PluginManifest {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.PluginManifest(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.util.List<org.cordis.api.PluginCapability>, java.util.List<org.cordis.api.PluginSetting>, java.util.List<java.lang.String>);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;)V
+  public org.cordis.api.PluginManifest(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.util.List, java.util.List, java.util.List, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.lang.String getId();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getName();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getVersion();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getDescription();
+    descriptor: ()Ljava/lang/String;
+  public final java.util.List<org.cordis.api.PluginCapability> getCapabilities();
+    descriptor: ()Ljava/util/List;
+  public final java.util.List<org.cordis.api.PluginSetting> getSettings();
+    descriptor: ()Ljava/util/List;
+  public final java.util.List<java.lang.String> getPermissions();
+    descriptor: ()Ljava/util/List;
+  public final java.lang.String getNotes();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component1();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component4();
+    descriptor: ()Ljava/lang/String;
+  public final java.util.List<org.cordis.api.PluginCapability> component5();
+    descriptor: ()Ljava/util/List;
+  public final java.util.List<org.cordis.api.PluginSetting> component6();
+    descriptor: ()Ljava/util/List;
+  public final java.util.List<java.lang.String> component7();
+    descriptor: ()Ljava/util/List;
+  public final org.cordis.api.PluginManifest copy(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.util.List<org.cordis.api.PluginCapability>, java.util.List<org.cordis.api.PluginSetting>, java.util.List<java.lang.String>);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;)Lorg/cordis/api/PluginManifest;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.PluginSetting {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.PluginSetting(java.lang.String, java.lang.String, org.cordis.api.PluginSetting$Kind, java.lang.String, java.lang.String, java.util.List<java.lang.String>, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Lorg/cordis/api/PluginSetting$Kind;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)V
+  public org.cordis.api.PluginSetting(java.lang.String, java.lang.String, org.cordis.api.PluginSetting$Kind, java.lang.String, java.lang.String, java.util.List, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Lorg/cordis/api/PluginSetting$Kind;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.lang.String getKey();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getTitle();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.PluginSetting$Kind getKind();
+    descriptor: ()Lorg/cordis/api/PluginSetting$Kind;
+  public final java.lang.String getDescription();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getValue();
+    descriptor: ()Ljava/lang/String;
+  public final java.util.List<java.lang.String> getOptions();
+    descriptor: ()Ljava/util/List;
+  public final java.lang.String getActionLabel();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component1();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.PluginSetting$Kind component3();
+    descriptor: ()Lorg/cordis/api/PluginSetting$Kind;
+  public final java.lang.String component4();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component5();
+    descriptor: ()Ljava/lang/String;
+  public final java.util.List<java.lang.String> component6();
+    descriptor: ()Ljava/util/List;
+  public final java.lang.String component7();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.PluginSetting copy(java.lang.String, java.lang.String, org.cordis.api.PluginSetting$Kind, java.lang.String, java.lang.String, java.util.List<java.lang.String>, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Lorg/cordis/api/PluginSetting$Kind;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Lorg/cordis/api/PluginSetting;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.PluginSetting$Kind extends java.lang.Enum<org.cordis.api.PluginSetting$Kind> {
+  public static final org.cordis.api.PluginSetting$Kind BOOLEAN;
+    descriptor: Lorg/cordis/api/PluginSetting$Kind;
+  public static final org.cordis.api.PluginSetting$Kind TEXT;
+    descriptor: Lorg/cordis/api/PluginSetting$Kind;
+  public static final org.cordis.api.PluginSetting$Kind SELECT;
+    descriptor: Lorg/cordis/api/PluginSetting$Kind;
+  public static final org.cordis.api.PluginSetting$Kind ACTION;
+    descriptor: Lorg/cordis/api/PluginSetting$Kind;
+  public static org.cordis.api.PluginSetting$Kind[] values();
+    descriptor: ()[Lorg/cordis/api/PluginSetting$Kind;
+  public static org.cordis.api.PluginSetting$Kind valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/PluginSetting$Kind;
+  public static kotlin.enums.EnumEntries<org.cordis.api.PluginSetting$Kind> getEntries();
     descriptor: ()Lkotlin/enums/EnumEntries;
 public interface org.cordis.api.PluginStorage {
   public static final org.cordis.api.PluginStorage$Companion Companion;

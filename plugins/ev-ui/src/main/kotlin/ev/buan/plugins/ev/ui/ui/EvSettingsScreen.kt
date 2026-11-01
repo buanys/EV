@@ -36,6 +36,7 @@ fun EvSettingsScreen(
     appearance: AppearanceService,
     onBack: () -> Unit,
     onOpenPlugins: () -> Unit,
+    onOpenPluginCatalog: () -> Unit,
     onOpenHostSettings: () -> Unit,
     onOpenModels: () -> Unit,
     onOpenTools: () -> Unit,
@@ -123,6 +124,13 @@ fun EvSettingsScreen(
         item { EvSettingsSection("插件") }
         item {
             EvSettingsGroup {
+                EvSettingsRow(
+                    title = "插件能力",
+                    glyph = EvGlyphKind.Info,
+                    summary = "每个插件声明自己能做什么",
+                    onClick = onOpenPluginCatalog,
+                )
+                EvSettingsDivider()
                 EvSettingsRow(
                     title = "已安装的插件",
                     glyph = EvGlyphKind.Grid,

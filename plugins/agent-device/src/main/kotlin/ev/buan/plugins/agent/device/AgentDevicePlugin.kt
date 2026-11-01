@@ -24,7 +24,7 @@ import java.io.File
  * [Environment] 的静态方法就能给出共享存储根，`isExternalStorageManager()` 还能判断权限是否真的给了。
  * 权限没给时工具照注册，调用会返回一条明确的原因：让 agent 知道"是没授权"，而不是"文件不存在"。
  */
-class AgentDevicePlugin : Plugin<Unit>, AgentSurface {
+class AgentDevicePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
     override val name = "agent-device"
     override val title = "设备文件"
     override val body = "让 agent 读手机共享存储，并感知系统：应用列表与启动、设备状态、剪贴板、通知。"
@@ -77,4 +77,21 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface {
         const val AWAIT_ATTEMPTS = 30
         const val AWAIT_INTERVAL_MS = 100L
     }
+
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.device",
+        name = "设备能力",
+        version = "0.1.0",
+        description = "查看和操作这台手机：应用列表、启动应用、读屏、截屏。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("app_list", org.cordis.api.PluginCapability.Kind.TOOL, "列出应用"),
+            org.cordis.api.PluginCapability("app_launch", org.cordis.api.PluginCapability.Kind.TOOL, "启动应用"),
+            org.cordis.api.PluginCapability("screen", org.cordis.api.PluginCapability.Kind.TOOL, "读取屏幕"),
+        ),
+        permissions = listOf("android.permission.INTERNET"),
+    )
+
 }

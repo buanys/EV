@@ -170,6 +170,9 @@ class HostRuntime(private val context: AndroidContext) {
      * permission provider installed on it), so disposing it tears down both. See [activate].
      */
     private val active = linkedMapOf<String, Fiber<Unit>>()
+
+    /** Declarations plugins made about themselves; empty until each one activates. */
+    private val pluginManifests = ConcurrentHashMap<String, org.cordis.api.PluginManifest>()
     private val failures = linkedMapOf<String, String>()
     private var syncErrors: List<String> = emptyList()
     private var pendingUnsigned: List<PendingUnsigned> = emptyList()
@@ -274,6 +277,10 @@ class HostRuntime(private val context: AndroidContext) {
             // The catalog is host-owned: the UI asks it, never a plugin directly, so disabling the
             // theme plugin degrades to the built-in look instead of leaving the app unthemed.
             directory.publish(org.cordis.api.ThemeCatalogService.Key, HostThemeCatalog(directory))
+            directory.publish(
+                org.cordis.api.PluginCatalogService.Key,
+                HostPluginCatalog { pluginManifests.values },
+            )
             serviceDirectory = directory
             directoryHandle = cordis.provide(ServiceDirectory.Key, directory)
                 .also { runCatching { it.awaitReady() } }
@@ -687,6 +694,11 @@ class HostRuntime(private val context: AndroidContext) {
             modules.register(descriptor)
             val instance = modules.import(modules.moduleUrl(plugin.id), null) as? Plugin<Unit>
                 ?: error("入口 ${plugin.entryClass} 未实现 org.cordis.Plugin")
+            // A declaration is recorded before the plugin can fail later: the point of the manifest
+            // is to describe the container, and it stays true even if the plugin then throws.
+            (instance as? org.cordis.api.ManifestProvider)?.manifest?.let { declared ->
+                if (declared.id == plugin.id) pluginManifests[plugin.id] = declared
+            }
             // One host-owned Fiber per plugin, and the provider is installed on it. Providing from
             // `cordis.extend { isolate(...) }` installs the binding on the *root* Fiber's service
             // snapshot, and the kernel resolver then hands the last provided instance to any plugin

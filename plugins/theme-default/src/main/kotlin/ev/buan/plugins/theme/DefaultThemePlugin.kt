@@ -32,11 +32,29 @@ import org.cordis.dependencies
  *
  * No permissions and no storage: a theme is pure data, and this plugin never reads or writes files.
  */
-class DefaultThemePlugin : Plugin<Unit> {
+class DefaultThemePlugin : Plugin<Unit> , org.cordis.api.ManifestProvider {
 
     override val name = "theme-default"
 
     override val inject: Dependencies = dependencies(ServiceDirectory.Key)
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.theme.default",
+        name = "默认主题",
+        version = "0.1.0",
+        description = "自带三套全局主题：方正、柔和、方正-方图标。颜色、字号、间距、圆角、动效、图标都在里面。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability(
+                id = "host/theme-provider",
+                kind = org.cordis.api.PluginCapability.Kind.UI,
+                title = "提供全局主题",
+                description = "替换颜色、动效、图标，不改布局。",
+            ),
+        ),
+    )
+
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
@@ -134,4 +152,5 @@ private val SquareMore: ImageVector = evThemeGlyph("ThemeMoreSquare") {
     square(6.5f)
     square(12f)
     square(17.5f)
+
 }

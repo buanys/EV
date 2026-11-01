@@ -2,6 +2,19 @@ package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.LaunchedEffect
+import ev.buan.ui.EvGlyph
+import ev.buan.ui.EvGlyphKind
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -76,86 +89,117 @@ fun EvTerminalScreen(
         }
     }
 
-    EvPage(title = "终端", modifier = modifier, onBack = onBack) {
-        item {
-            Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+    val scroll = rememberScrollState()
+    // New output is what the person is waiting for, so the view follows it down automatically.
+    LaunchedEffect(output.size, running) {
+        scroll.animateScrollTo(scroll.maxValue)
+    }
+
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(EvThemeTokens.colors.surface0)
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .imePadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable(onClickLabel = "返回", onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                EvGlyph(
+                    EvGlyphKind.Chevron,
+                    color = tokens.textPrimary,
+                    // The chevron points forward; back is the same mark, mirrored.
+                    modifier = Modifier.size(20.dp).graphicsLayer(rotationZ = 180f),
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = "终端",
+                style = EvThemeTokens.type.title.style(tokens.textPrimary),
+            )
+        }
+        Text(
+            text = "直接执行命令。输出来自 run_shell，与 agent 用的是同一条通道。",
+            style = EvThemeTokens.type.caption.style(tokens.textTertiary),
+            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+        )
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
+                .background(tokens.surface1)
+                .verticalScroll(scroll)
+                .padding(14.dp),
+        ) {
+            if (output.isEmpty()) {
                 Text(
-                    text = "直接执行命令。输出来自 run_shell，与 agent 用的是同一条通道。",
+                    text = "输入命令后点执行。工作目录、权限与 agent 调用 run_shell 时一致。",
+                    style = EvThemeTokens.type.caption.style(tokens.textTertiary),
+                )
+            }
+            output.forEach { block ->
+                Text(
+                    text = block,
+                    style = TextStyle(
+                        color = tokens.textPrimary,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    ),
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+            }
+            if (running) {
+                Text(
+                    text = "运行中…",
                     style = EvThemeTokens.type.caption.style(tokens.textTertiary),
                 )
             }
         }
-        item {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .height(360.dp)
+
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
+            BasicTextField(
+                value = command,
+                onValueChange = { command = it },
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = tokens.textPrimary,
+                    fontSize = 13.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                ),
+                cursorBrush = SolidColor(tokens.accent),
+                modifier = Modifier
+                    .weight(1f)
                     .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
-                    .background(tokens.surface1)
-                    .verticalScroll(rememberScrollState())
-                    .padding(14.dp),
+                    .background(tokens.surface2)
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
+                    .background(if (running) tokens.surface2 else tokens.accent)
+                    .clickable(onClickLabel = "执行", onClick = { run() })
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                output.forEach { block ->
-                    Text(
-                        text = block,
-                        style = TextStyle(
-                            color = tokens.textPrimary,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        ),
-                        modifier = Modifier.padding(bottom = 10.dp),
-                    )
-                }
-                if (running) {
-                    Text(
-                        text = "运行中…",
-                        style = EvThemeTokens.type.caption.style(tokens.textTertiary),
-                    )
-                }
-            }
-        }
-        item {
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BasicTextField(
-                    value = command,
-                    onValueChange = { command = it },
-                    singleLine = true,
-                    textStyle = TextStyle(
-                        color = tokens.textPrimary,
-                        fontSize = 13.sp,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    ),
-                    cursorBrush = SolidColor(tokens.accent),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
-                        .background(tokens.surface2)
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                Text(
+                    text = if (running) "…" else "执行",
+                    style = EvThemeTokens.type.label.style(if (running) tokens.textTertiary else tokens.onAccent),
                 )
-                Spacer(Modifier.width(10.dp))
-                Row(
-                    Modifier
-                        .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
-                        .background(if (running) tokens.surface2 else tokens.accent)
-                        .clickable(onClickLabel = "执行", onClick = { run() })
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    Text(
-                        text = if (running) "…" else "执行",
-                        style = EvThemeTokens.type.label.style(if (running) tokens.textTertiary else tokens.onAccent),
-                    )
-                }
             }
         }
     }
 }
 
-/**
- * Shell output as text. The tool answers with a JSON object - exit code, timeout flag and the two
- * streams - so this flattens it instead of showing raw JSON with escaped newlines.
- */
 private fun renderShellResult(raw: String): String {
     val json = runCatching { JSONObject(raw) }.getOrNull() ?: return raw
     val stdout = json.optString("stdout")

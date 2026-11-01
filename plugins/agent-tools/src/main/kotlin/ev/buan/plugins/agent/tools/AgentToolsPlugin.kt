@@ -22,7 +22,7 @@ import org.cordis.dependencies
  * should declare a sidecar `dependencies` entry on this plugin, so the bus exists before they
  * activate and outlives them on shutdown.
  */
-class AgentToolsPlugin : Plugin<Unit>, AgentSurface {
+class AgentToolsPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
     override val name = "agent-tools"
     override val title = "agent 工具"
     override val body = "工具总线 + 受控文件工具（只读写本插件存储区），发布为 ToolRegistry。"
@@ -46,4 +46,21 @@ class AgentToolsPlugin : Plugin<Unit>, AgentSurface {
     private companion object {
         const val PLUGIN_ID = "ev.buan.plugins.agent.tools"
     }
+
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.tools",
+        name = "文件工具",
+        version = "0.1.0",
+        description = "读写、列目录、搜索文件。模型改代码用的就是这组工具。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("read_file", org.cordis.api.PluginCapability.Kind.TOOL, "读取文件"),
+            org.cordis.api.PluginCapability("write_file", org.cordis.api.PluginCapability.Kind.TOOL, "写入文件"),
+            org.cordis.api.PluginCapability("list_dir", org.cordis.api.PluginCapability.Kind.TOOL, "列目录"),
+            org.cordis.api.PluginCapability("search", org.cordis.api.PluginCapability.Kind.TOOL, "搜索内容"),
+        ),
+    )
+
 }

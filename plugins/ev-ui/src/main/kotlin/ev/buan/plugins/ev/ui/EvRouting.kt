@@ -28,6 +28,9 @@ internal sealed interface EvPage {
     data object Memory : EvPage
     data object Characters : EvPage
     data object Skills : EvPage
+
+    /** The capability catalog: what every installed plugin declared about itself. */
+    data object Plugins : EvPage
 }
 
 /** The second-level settings rows. Values are stable ids; labels live in the settings screen. */

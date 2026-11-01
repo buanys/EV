@@ -61,6 +61,7 @@ import ev.buan.plugins.ev.ui.ui.EvMemoryScreen
 import ev.buan.plugins.ev.ui.ui.EvModelProvidersScreen
 import ev.buan.plugins.ev.ui.ui.EvSessionSummary
 import ev.buan.plugins.ev.ui.ui.EvSettingsScreen
+import ev.buan.plugins.ev.ui.ui.EvPluginCatalogScreen
 import ev.buan.plugins.ev.ui.ui.EvSkillsScreen
 import ev.buan.plugins.ev.ui.ui.EvToolsScreen
 import ev.buan.plugins.ev.ui.ui.EvApprovalDialog
@@ -121,7 +122,7 @@ import java.util.UUID
  * Capability used: `PLUGIN_STORAGE`, declared in the container metadata. The host does not lend the
  * storage service until the user grants it (ADR-0003), so an ungranted install keeps no history.
  */
-class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
+class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.ManifestProvider {
     override val name = "ev-ui"
     override val title = "EV UI"
     override val body = "EV 风格的对话界面"
@@ -426,6 +427,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     appearance = appearanceService,
                     onBack = { ui.pages.pop() },
                     onOpenPlugins = { navigation?.openPluginManager() },
+                    onOpenPluginCatalog = { ui.pages.push(EvPage.Plugins) },
                     onOpenHostSettings = { navigation?.openSettings() },
                     onOpenThemes = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Themes)) },
                     themeName = availableThemes.firstOrNull { it.id == appearanceService.current.themeId }?.name
@@ -548,6 +550,17 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             )
         }
 
+        EvPage.Plugins -> {
+            // The catalog is host-owned: plugins declare, the host collects, this page renders.
+            EvPluginCatalogScreen(
+                manifests = directory?.lookup(org.cordis.api.PluginCatalogService.Key)
+                    ?.manifests()
+                    .orEmpty(),
+                onBack = { ui.pages.pop() },
+                modifier = modifier,
+            )
+        }
+
         EvPage.Skills -> {
             EvSkillsScreen(
                 skills = skills,
@@ -661,6 +674,21 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
             EvSuggestion("浏览网页", EvGlyphKind.World, ""),
         )
     }
+
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.ev.ui",
+        name = "EV 界面",
+        version = "0.1.0",
+        description = "主界面：对话、抽屉、快捷菜单、终端、设置页。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("home", org.cordis.api.PluginCapability.Kind.UI, "主界面"),
+            org.cordis.api.PluginCapability("page", org.cordis.api.PluginCapability.Kind.UI, "独立页面"),
+        ),
+    )
+
 }
 
 /** Clock time on a history row; the group label above it already says which day it was. */
