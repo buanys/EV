@@ -242,16 +242,34 @@ internal class Rootfs(private val storage: PluginStorage?) {
         target.mkdirs()
         val name = archive.name.lowercase()
         val flag = when {
+            // Android tar shells out to an xz binary for this flag, and there is none on the
+            // device: a .tar.xz has to be re-packed as .tar.gz before it can be installed here.
             name.endsWith(".tar.xz") || name.endsWith(".txz") -> "-xJf"
             name.endsWith(".tar.gz") || name.endsWith(".tgz") -> "-xzf"
             else -> "-xf"
         }
         val (_, err, code) = execRaw("tar $flag '${archive.absolutePath}' -C '${target.absolutePath}'", 900)
+        // Distribution tarballs usually wrap everything in one top-level directory; the root is
+        // where bin/ lives, so a single wrapper is flattened before we call it installed.
+        if (code == 0 && !isInstalled()) {
+            val children = target.listFiles().orEmpty()
+            if (children.size == 1 && children[0].isDirectory) {
+                val wrapper = children[0]
+                execRaw(
+                    "sh -c 'cd \"${target.absolutePath}\" && mv \"${wrapper.name}\"/* . 2>/dev/null; " +
+                        "mv \"${wrapper.name}\"/.[!.]* . 2>/dev/null; rmdir \"${wrapper.name}\" 2>/dev/null; true'",
+                    300,
+                )
+            }
+        }
         val ok = code == 0 && isInstalled()
         return mapOf(
             "installed" to ok,
             "path" to target.absolutePath,
-            "error" to if (code != 0) "解压失败（退出码 $code）：${err.take(400)}" else "",
+            "error" to if (code != 0) {
+                val hint = if (err.contains("xz")) "（Android 的 tar 不能解 xz，请改用 .tar.gz）" else ""
+                "解压失败（退出码 $code）$hint：${err.take(300)}"
+            } else "",
             "hint" to if (ok) "可以调用 linux_run 了。" else "没找到 /bin/bash：确认归档本身就是根文件系统。",
         )
     }
