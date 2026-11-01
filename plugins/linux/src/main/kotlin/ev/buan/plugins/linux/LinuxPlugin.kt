@@ -110,6 +110,18 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
             ),
         )
         android.util.Log.e("EVLINUX", "apply: tools registered")
+        // An archive dropped into the storage area is installed on first activation. Without this the
+        // only way in is the settings page, and on a device where the app has no outbound network
+        // that page cannot download anything - the archive is the realistic path.
+        if (!root.isInstalled()) {
+            val candidate = File(storage?.rootPath().orEmpty(), "rootfs.tar.gz")
+            if (candidate.isFile) {
+                android.util.Log.e("EVLINUX", "apply: auto-installing ${candidate.absolutePath}")
+                runCatching { root.installFromFile(candidate) }
+                    .onSuccess { android.util.Log.e("EVLINUX", "apply: auto-install done $it") }
+                    .onFailure { android.util.Log.e("EVLINUX", "apply: auto-install failed ${it.message}") }
+            }
+        }
         effect.collect { registry.unregister(PLUGIN_ID) }
     }
 
@@ -316,9 +328,18 @@ internal class Rootfs(private val storage: PluginStorage?) {
     }
 
     fun run(command: String, timeoutSeconds: Int): String {
+        // A chroot without /proc, /dev and /sys is not a usable Linux: apt cannot read /dev/null,
+        // compilers cannot see /sys, and every profile script that calls id fails. Mounting them is
+        // part of "the environment works", so it happens on the first command rather than in a
+        // separate step the user would have to know about. Idempotent: already-mounted is ignored.
+        ensureMounts()
         val quoted = command.replace("'", "'\\''")
+        // An explicit PATH: the login profile assumes one, and the inherited Android PATH points at
+        // toybox paths that do not exist inside Debian.
         val (out, err, code) = execRaw(
-            "chroot '${directory().absolutePath}' /bin/bash -lc '$quoted'",
+            "chroot '${directory().absolutePath}' /usr/bin/env -i " +
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin " +
+                "HOME=/root TERM=dumb LANG=C.UTF-8 /bin/bash -lc '$quoted'",
             timeoutSeconds,
         )
         return JSONObject()
@@ -326,6 +347,17 @@ internal class Rootfs(private val storage: PluginStorage?) {
             .put("stdout", out)
             .put("stderr", err)
             .toString()
+    }
+
+    /** Bind-mounts the kernel filesystems a Linux userland expects. Safe to call repeatedly. */
+    private fun ensureMounts() {
+        val root = directory()
+        execRaw(
+            "mount -t proc proc '${root.absolutePath}/proc' 2>/dev/null; " +
+                "mount --bind /dev '${root.absolutePath}/dev' 2>/dev/null; " +
+                "mount --bind /sys '${root.absolutePath}/sys' 2>/dev/null; true",
+            30,
+        )
     }
 
     private fun exec(command: String, timeoutSeconds: Int): Pair<String, String> {
