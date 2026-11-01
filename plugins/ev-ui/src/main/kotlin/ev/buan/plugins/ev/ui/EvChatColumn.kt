@@ -8,6 +8,17 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.shape.RoundedCornerShape
 import ev.buan.ui.evGlassLayer
 import ev.buan.ui.evGlassOver
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.layout.Spacer
+import ev.buan.ui.EvGlyphKind
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -60,9 +71,15 @@ internal fun EvChatColumn(
     onOpenSettings: () -> Unit,
     /** Opens the right-hand quick menu. */
     onOpenMore: () -> Unit,
+    /** Opens the model picker page; there is no in-place selection API yet. */
+    onPickModel: (String) -> Unit = {},
     onOpenSettingsSection: (SettingsChild) -> Unit,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
+    val availableModels = remember(directory) {
+        directory?.lookup(ModelService.Key)?.models?.map { it.model }?.distinct().orEmpty()
+    }
+    val currentModel = availableModels.firstOrNull()
     val replying = chat.isReplying
     // The transcript fills the screen and the bars float above it: a surface can only blur what is
     // behind it, and behind a bar in a Column there is nothing. The trade-off is that messages
@@ -82,7 +99,7 @@ internal fun EvChatColumn(
                 Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
                     detectTapGestures(onTap = {
                         keyboard?.hide()
-                        ui.modelCardOpen = false
+                        ui.modelSheetOpen = false
                     })
                 },
             ) {
@@ -130,64 +147,72 @@ internal fun EvChatColumn(
             }
         }
 
-        // 2) Top bar: the glass is its own layer so the bar's content never depends on the blur
-        // having captured a frame yet.
-        Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
-            Box(Modifier.matchParentSize().evGlassLayer(RectangleShape))
-            Column {
-                if (isRoot) {
-                    // Live lookup per composition: the capsule mirrors whatever provider the
-                    // contract resolves as current.
-                    val currentModel = directory?.lookup(ModelService.Key)?.models?.firstOrNull()?.model
-                    EvHomeTopBar(
-                        // An empty conversation has no identity yet - the hero below already says
-                        // what this page is, so the top bar stays quiet instead of repeating it.
-                        title = activeSession.takeIf { it.messages.isNotEmpty() }?.displayTitle(),
-                        modelName = currentModel,
-                        approvalPending = approvalPending,
-                        onMenu = {
-                            keyboard?.hide()
-                            ui.modelCardOpen = false
-                            ui.drawerOpen = true
+        // 2) Top: a progressive scrim and two loose controls. No bar.
+        //
+        // A bar has to be a solid thing, and a solid thing over a conversation is always either
+        // hiding content or pretending the content stops there. A gradient that grows as you
+        // scroll keeps the buttons readable while leaving the page feeling open-ended.
+        val scrolled by remember {
+            derivedStateOf {
+                listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+            }
+        }
+        val scrim by animateFloatAsState(
+            targetValue = if (scrolled) 1f else 0f,
+            animationSpec = EvMotionTokens.reducedAware(EvThemeTokens.reducedMotion) {
+                EvMotionTokens.fadeFast()
+            },
+            label = "topScrim",
+        )
+
+        if (isRoot) {
+            val scrimBase = EvThemeTokens.colors.surface0
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(128.dp)) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .drawBehind {
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    listOf(
+                                        scrimBase.copy(alpha = 0.55f + 0.45f * scrim),
+                                        scrimBase.copy(alpha = 0f),
+                                    ),
+                                ),
+                            )
                         },
-                        onCapsule = {
-                            keyboard?.hide()
-                            ui.modelCardOpen = !ui.modelCardOpen
-                        },
-                        onNewChat = {
-                            chat.newChat()
-                            keyboard?.hide()
-                            ui.drawerOpen = false
-                            ui.searching = false
-                            ui.searchQuery = ""
-                        },
-                        onMore = {
-                            keyboard?.hide()
-                            ui.modelCardOpen = false
-                            onOpenMore()
-                        },
-                    )
-                    // The capsule's detail card springs from under the bar it belongs to.
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = ui.modelCardOpen,
-                        enter = expandVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
-                            fadeIn(EvMotionTokens.fadeFast()),
-                        exit = shrinkVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
-                            fadeOut(EvMotionTokens.fadeFast()),
-                    ) {
-                        EvModelDetailCard(
-                            modelName = currentModel,
-                            lastTokens = chat.lastTurnTokens,
-                            onSwitchModel = {
-                                ui.modelCardOpen = false
-                                onOpenSettingsSection(SettingsChild.Models)
-                            },
-                            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 12.dp),
-                        )
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    EvFloatingTopButton(EvGlyphKind.Menu, "打开侧边栏") {
+                        keyboard?.hide()
+                        ui.modelSheetOpen = false
+                        ui.drawerOpen = true
                     }
-                } else {
-                    EvPageTopBar(pageTitle, onHost)
+                    Spacer(Modifier.weight(1f))
+                    EvFloatingTopButton(EvGlyphKind.Create, "新建对话") {
+                        chat.newChat()
+                        keyboard?.hide()
+                        ui.drawerOpen = false
+                        ui.searching = false
+                        ui.searchQuery = ""
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    EvFloatingTopButton(EvGlyphKind.More, "更多") {
+                        keyboard?.hide()
+                        ui.modelSheetOpen = false
+                        onOpenMore()
+                    }
                 }
+            }
+        } else {
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+                Box(Modifier.matchParentSize().evGlassLayer(RectangleShape))
+                EvPageTopBar(pageTitle, onHost)
             }
         }
 
@@ -200,6 +225,18 @@ internal fun EvChatColumn(
             )
             Column {
                 EvComposerArea(
+                    modelName = currentModel,
+                    models = availableModels,
+                    modelSheetOpen = ui.modelSheetOpen,
+                    onModelClick = {
+                        keyboard?.hide()
+                        ui.plusPanelOpen = false
+                        ui.modelSheetOpen = !ui.modelSheetOpen
+                    },
+                    onPickModel = { name ->
+                        ui.modelSheetOpen = false
+                        onPickModel(name)
+                    },
                     draft = ui.draft,
                     onDraftChange = { ui.draft = it },
                     onSend = { chat.send(ui.draft) },

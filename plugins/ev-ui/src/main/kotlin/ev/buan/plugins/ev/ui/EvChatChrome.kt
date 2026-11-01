@@ -1,5 +1,7 @@
 package ev.buan.plugins.ev.ui
 
+import ev.buan.ui.evHairline
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -222,5 +224,31 @@ internal fun EvPageTopBar(title: String, onBack: () -> Unit) {
             text = title,
             style = EvThemeTokens.type.title.style(tokens.textPrimary),
         )
+    }
+}
+
+/**
+ * A loose control on the top edge: no bar, just the button.
+ *
+ * The scrim behind it does the legibility work, so the button itself can stay quiet - a circle of
+ * low-alpha surface rather than an opaque chip, which would put back the bar we just removed.
+ */
+@Composable
+internal fun EvFloatingTopButton(
+    kind: EvGlyphKind,
+    label: String,
+    onClick: () -> Unit,
+) {
+    val tokens = EvThemeTokens.colors
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(tokens.surface2.copy(alpha = 0.72f))
+            .evHairline(EvThemeTokens.elevation.floatBorderAlpha, CircleShape)
+            .clickable(onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        EvGlyph(kind, color = tokens.textPrimary, modifier = Modifier.size(20.dp))
     }
 }

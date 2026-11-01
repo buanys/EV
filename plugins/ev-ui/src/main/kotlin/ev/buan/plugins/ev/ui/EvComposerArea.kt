@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.IntSize
 import ev.buan.plugins.ev.ui.ui.EvComposer
 import ev.buan.plugins.ev.ui.ui.EvComposerAction
 import ev.buan.plugins.ev.ui.ui.EvComposerPanel
+import ev.buan.plugins.ev.ui.ui.EvModelSheet
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvMotionTokens
 import ev.buan.ui.EvThemeTokens
@@ -37,6 +38,11 @@ internal fun EvComposerArea(
     onOpenTools: () -> Unit,
     onOpenCharacters: () -> Unit,
     onOpenSkills: () -> Unit,
+    modelName: String?,
+    models: List<String>,
+    modelSheetOpen: Boolean,
+    onModelClick: () -> Unit,
+    onPickModel: (String) -> Unit,
 ) {
     androidx.compose.animation.AnimatedVisibility(
         visible = plusActive,
@@ -55,6 +61,17 @@ internal fun EvComposerArea(
         )
     }
 
+    // Same boundary as the `+` panel: the sheet belongs to the composer, not to a dialog.
+    androidx.compose.animation.AnimatedVisibility(
+        visible = modelSheetOpen,
+        enter = expandVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
+            fadeIn(EvMotionTokens.fadeFast()),
+        exit = shrinkVertically(EvMotionTokens.reducedAware<IntSize>(EvThemeTokens.reducedMotion) { EvMotionTokens.gentle() }) +
+            fadeOut(EvMotionTokens.fadeFast()),
+    ) {
+        EvModelSheet(models = models, current = modelName, onPick = onPickModel)
+    }
+
     EvComposer(
         value = draft,
         onValueChange = onDraftChange,
@@ -65,6 +82,8 @@ internal fun EvComposerArea(
         plusActive = plusActive,
         onPlus = onPlus,
         onFocusChange = onFocusChange,
+        modelName = modelName,
+        onModelClick = onModelClick,
         modifier = Modifier.imePadding(),
     )
 }

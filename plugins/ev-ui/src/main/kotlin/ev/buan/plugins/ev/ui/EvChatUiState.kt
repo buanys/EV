@@ -35,7 +35,7 @@ internal class EvChatUiState {
     var moreMenuOpen by mutableStateOf(false)
 
     var plusPanelOpen by mutableStateOf(false)
-    var modelCardOpen by mutableStateOf(false)
+    var modelSheetOpen by mutableStateOf(false)
 
     /** Full-screen surfaces on top of the conversation; back is one pop. */
     val pages = EvNavigator()

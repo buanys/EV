@@ -296,8 +296,17 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         // host activities: the system back button has to return to the conversation instead of leaving
         // the chat (or the app). The browser panel installs its own handler: it must walk the page
         // history first.
-        BackHandler(enabled = ui.pages.isOpen || ui.moreMenuOpen) {
+        BackHandler(enabled = ui.pages.isOpen || ui.moreMenuOpen || ui.modelSheetOpen || ui.plusPanelOpen) {
             keyboard?.hide()
+            if (ui.modelSheetOpen) {
+                // The model sheet belongs to the composer: back closes it, it does not navigate.
+                ui.modelSheetOpen = false
+                return@BackHandler
+            }
+            if (ui.plusPanelOpen) {
+                ui.plusPanelOpen = false
+                return@BackHandler
+            }
             if (ui.moreMenuOpen) {
                 // The quick menu is a transient surface: back closes it before it pops a page.
                 ui.moreMenuOpen = false
@@ -621,6 +630,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                                 suggestions = Suggestions,
                                 onOpenSettings = { openSettings() },
                                 onOpenSettingsSection = { section -> openSettings(section) },
+                                onPickModel = { openSettings(SettingsChild.Models) },
                                 onOpenMore = { ui.moreMenuOpen = true },
                             )
                         },

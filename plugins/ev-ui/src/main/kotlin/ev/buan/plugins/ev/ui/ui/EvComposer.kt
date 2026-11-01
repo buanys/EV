@@ -14,6 +14,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -113,6 +116,9 @@ fun EvComposer(
     modifier: Modifier = Modifier,
     placeholder: String = "交给 EV 去完成",
     onMic: (() -> Unit)? = null,
+    /** Current model, shown as a chip left of the mic; null hides it. */
+    modelName: String? = null,
+    onModelClick: () -> Unit = {},
     busy: Boolean = false,
     onStop: () -> Unit = {},
     plusActive: Boolean = false,
@@ -215,6 +221,18 @@ fun EvComposer(
             onClick = onPlus,
             modifier = Modifier.align(Alignment.TopStart).offset(x = 2.dp, y = actionDrop),
         )
+        // The model lives next to the mic, not in the top bar: it is a property of what you are
+        // about to send, so it belongs where you send from. Hidden while the field is expanded,
+        // where the same strip of pixels is the text you are typing.
+        if (modelName != null && !active) {
+            ModelChip(
+                name = modelName,
+                onClick = onModelClick,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = -(actionSize + 6.dp), y = actionDrop),
+            )
+        }
         SendKey(
             value = value,
             busy = busy,
@@ -224,6 +242,25 @@ fun EvComposer(
             modifier = Modifier.align(Alignment.TopEnd).offset(x = (-2).dp, y = actionDrop),
         )
     }
+}
+
+/** The current model, as a small pill left of the mic. */
+@Composable
+private fun ModelChip(name: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val tokens = EvThemeTokens.colors
+    Text(
+        text = name,
+        style = EvThemeTokens.type.micro.style(tokens.textSecondary),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .height(EvComposerDefaults.ActionSize)
+            .clip(CircleShape)
+            .background(tokens.surface3)
+            .clickable(onClickLabel = "切换模型", onClick = onClick)
+            .padding(horizontal = 12.dp)
+            .wrapContentHeight(),
+    )
 }
 
 /** The `+` that opens the L1 panel; it rotates into a × while the panel is up. */
@@ -335,6 +372,59 @@ private fun SendKey(
                         .clip(RoundedCornerShape(3.dp))
                         .background(tokens.onAccent),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * The model picker, shaped like the `+` panel because it is the same kind of thing: a secondary
+ * sheet that grows out of the composer and disappears when you pick something.
+ */
+@Composable
+fun EvModelSheet(
+    models: List<String>,
+    current: String?,
+    onPick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = EvThemeTokens.colors
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = EvComposerDefaults.SidePadding)
+            .padding(bottom = 4.dp)
+            .clip(RoundedCornerShape(EvThemeTokens.radii.large))
+            .background(tokens.surface2)
+            .padding(vertical = 6.dp),
+    ) {
+        if (models.isEmpty()) {
+            Text(
+                text = "还没有可用的模型",
+                style = EvThemeTokens.type.caption.style(tokens.textTertiary),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+        }
+        models.forEach { name ->
+            val selected = name == current
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
+                    .clickable(onClickLabel = name) { onPick(name) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = name,
+                    style = EvThemeTokens.type.body.style(
+                        if (selected) tokens.textPrimary else tokens.textSecondary,
+                    ),
+                    modifier = Modifier.weight(1f),
+                )
+                if (selected) {
+                    EvGlyph(EvGlyphKind.Send, color = tokens.accent, modifier = Modifier.size(16.dp))
+                }
             }
         }
     }
