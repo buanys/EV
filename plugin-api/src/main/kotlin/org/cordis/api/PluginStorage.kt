@@ -29,6 +29,14 @@ interface PluginStorage {
     /** Writes [path] through a temporary file and a rename, so readers never see partial bytes. */
     fun atomicWrite(path: String, bytes: ByteArray)
 
+    /**
+     * Absolute path of this plugin storage root.
+     *
+     * Tools that shell out need a real path - chroot, tar, a compiler looking for its sysroot -
+     * and a path built by concatenation would drift from the host own accounting. Empty by
+     * default, so the addition stays source-compatible.
+     */
+    fun rootPath(): String = ""
     /** Deletes [path]; directories are removed recursively. True when something existed. */
     fun delete(path: String): Boolean
 

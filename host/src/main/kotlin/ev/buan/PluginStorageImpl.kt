@@ -40,6 +40,8 @@ class PluginStorageImpl(
     constructor(context: Context, pluginId: String, permissions: PermissionService) :
         this(pluginId, filesFor(context, pluginId), permissions)
 
+    override fun rootPath(): String = runCatching { files.root.absolutePath }.getOrDefault("")
+
     override fun read(path: String): ByteArray? {
         requireStorage()
         return files.read(path)

@@ -29,6 +29,9 @@ class PluginStorageFiles(
         require(quotaBytes > 0) { "quota must be positive" }
     }
 
+    /** Absolute root of this plugin data area; tools that shell out need a real path. */
+    val root: File get() = dataRoot
+
     /** File content, or null when the file does not exist. */
     fun read(path: String): ByteArray? {
         val file = PluginStoragePath.resolve(dataRoot, path)

@@ -1,0 +1,286 @@
+package ev.buan.plugins.linux
+
+import ev.buan.plugins.agent.api.Tool
+import ev.buan.plugins.agent.api.ToolRegistry
+import ev.buan.plugins.agent.api.ToolSpec
+import org.cordis.Context
+import org.cordis.Dependencies
+import org.cordis.EffectScope
+import org.cordis.Plugin
+import org.cordis.api.PluginCapability
+import org.cordis.api.PluginManifest
+import org.cordis.api.PluginSetting
+import org.cordis.api.PluginSettings
+import org.cordis.api.PluginStorage
+import org.cordis.api.ServiceDirectory
+import org.cordis.dependencies
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.TimeUnit
+
+/**
+ * A real Linux userspace for the agent, installed on demand.
+ *
+ * Why this exists: the agent's shell runs on Android's own userland, which has toybox and almost no
+ * toolchain - no compiler, no python, no package manager worth the name. Anything beyond "move a
+ * file" therefore means shipping a second environment. This plugin owns that environment: a Debian
+ * root filesystem under the app's private storage, entered with `chroot` through the same root shell
+ * the agent already uses.
+ *
+ * What it deliberately does not do: pick a rootfs for you. `linux_setup` takes a URL, so the app
+ * never silently downloads 300 MB and the mirror is the user's choice.
+ */
+class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSettings {
+
+    override val name = "linux"
+
+    override val inject: Dependencies = dependencies(ServiceDirectory.Key, PluginStorage.Key)
+
+    override val manifest: org.cordis.api.PluginManifest = PluginManifest(
+        id = "ev.buan.plugins.linux",
+        name = "Linux 环境",
+        version = "0.1.0",
+        description = "内置 Debian 根文件系统：apt、编译器和完整的用户态，与 Android 系统隔离。",
+        capabilities = listOf(
+            PluginCapability("linux_status", PluginCapability.Kind.TOOL, "查看环境状态", "是否已安装、占用空间、发行版版本。"),
+            PluginCapability("linux_setup", PluginCapability.Kind.TOOL, "安装根文件系统", "从给定 URL 下载并解压 Debian 根文件系统。"),
+            PluginCapability("linux_run", PluginCapability.Kind.TOOL, "在 Linux 里执行命令", "chroot 进入根文件系统跑一条命令。"),
+        ),
+        settings = listOf(
+            PluginSetting(
+                key = "url",
+                title = "根文件系统地址",
+                kind = PluginSetting.Kind.TEXT,
+                description = "Debian 13 arm64 rootfs 的 tar.xz 或 tar.gz 地址；留空则只用已安装的环境。",
+                value = "",
+            ),
+            PluginSetting(
+                key = "timeout",
+                title = "命令超时（秒）",
+                kind = PluginSetting.Kind.TEXT,
+                description = "单条命令最长运行时间，1 到 600 秒。",
+                value = "60",
+            ),
+        ),
+        permissions = listOf("ROOT_SHELL"),
+    )
+
+    private var storage: PluginStorage? = null
+    private var rootfsUrl: String = ""
+    private var timeoutSeconds: Int = 60
+
+    override fun read(key: String): String? = when (key) {
+        "url" -> rootfsUrl
+        "timeout" -> timeoutSeconds.toString()
+        else -> null
+    }
+
+    override fun write(key: String, value: String) {
+        when (key) {
+            "url" -> rootfsUrl = value.trim().also { persist(URL_FILE, it) }
+            "timeout" -> value.trim().toIntOrNull()?.coerceIn(1, 600)?.let {
+                timeoutSeconds = it
+                persist(TIMEOUT_FILE, it.toString())
+            }
+        }
+    }
+
+    override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
+        val directory = ctx.require(ServiceDirectory.Key)
+        storage = ctx.require(PluginStorage.Key)
+        rootfsUrl = storage?.read(URL_FILE)?.decodeToString()?.trim().orEmpty()
+        timeoutSeconds = storage?.read(TIMEOUT_FILE)?.decodeToString()?.trim()?.toIntOrNull() ?: 60
+
+        val registry = directory.lookup(ToolRegistry.Key) ?: return
+        val root = Rootfs(storage)
+        registry.register(
+            PLUGIN_ID,
+            listOf(
+                StatusTool(root),
+                SetupTool(root, urlOf = { rootfsUrl }, onUrl = { write("url", it) }),
+                RunTool(root, timeout = { timeoutSeconds }),
+            ),
+        )
+        effect.collect { registry.unregister(PLUGIN_ID) }
+    }
+
+    private fun persist(path: String, value: String) {
+        runCatching { storage?.atomicWrite(path, value.encodeToByteArray()) }
+    }
+
+    // ---- tools ---------------------------------------------------------------------------------
+
+    private class StatusTool(private val root: Rootfs) : Tool {
+        override val spec = ToolSpec(
+            name = "linux_status",
+            description = "报告 Linux 环境：是否已安装、发行版、占用空间、根目录路径。",
+            parametersJson = """{"type":"object","properties":{},"additionalProperties":false}""",
+        )
+
+        override suspend fun invoke(argumentsJson: String): String {
+            val json = JSONObject()
+            val dir = root.directory()
+            json.put("installed", root.isInstalled())
+            json.put("path", dir.absolutePath)
+            json.put("bytes", root.sizeBytes())
+            root.distribution()?.let { json.put("distribution", it) }
+            if (!root.isInstalled()) json.put("hint", "用 linux_setup 安装，URL 见插件配置项。")
+            return json.toString()
+        }
+    }
+
+    private class SetupTool(
+        private val root: Rootfs,
+        private val urlOf: () -> String,
+        private val onUrl: (String) -> Unit,
+    ) : Tool {
+        override val spec = ToolSpec(
+            name = "linux_setup",
+            description = "下载并解压根文件系统。参数 url 可省略，省略时用插件配置里的地址。",
+            parametersJson = """
+                {"type":"object","properties":{"url":{"type":"string","description":"rootfs tar.xz/tar.gz 地址"}},"additionalProperties":false}
+            """.trimIndent(),
+            dangerous = true,
+        )
+
+        override suspend fun invoke(argumentsJson: String): String {
+            val url = runCatching { JSONObject(argumentsJson).optString("url") }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: urlOf()
+            if (url.isBlank()) return errorJson("没有可用的下载地址：请在插件配置里填写，或把 url 参数传进来。")
+            onUrl(url)
+            return runCatching { root.install(url) }
+                .getOrElse { errorJson("安装失败：${it.message ?: it::class.simpleName}") }
+        }
+    }
+
+    private class RunTool(private val root: Rootfs, private val timeout: () -> Int) : Tool {
+        override val spec = ToolSpec(
+            name = "linux_run",
+            description = "在 Debian 环境里执行一条命令，返回 stdout/stderr/退出码。命令跑在 chroot 里，" +
+                "看不到 Android 的文件系统（除非显式挂载），与系统隔离。",
+            parametersJson = """
+                {"type":"object","properties":{"command":{"type":"string","description":"要在 Debian 里执行的命令"}},"required":["command"],"additionalProperties":false}
+            """.trimIndent(),
+            dangerous = true,
+        )
+
+        override suspend fun invoke(argumentsJson: String): String {
+            val command = runCatching { JSONObject(argumentsJson).optString("command") }.getOrNull()?.trim()
+            if (command.isNullOrEmpty()) return errorJson("缺少 command 参数")
+            if (!root.isInstalled()) return errorJson("Linux 环境还没安装：先调用 linux_setup。")
+            return root.run(command, timeout().coerceIn(1, 600))
+        }
+    }
+
+    private companion object {
+        const val PLUGIN_ID = "ev.buan.plugins.linux"
+        const val URL_FILE = "settings/rootfs-url.txt"
+        const val TIMEOUT_FILE = "settings/timeout.txt"
+
+        fun errorJson(message: String): String = JSONObject().put("error", message).toString()
+    }
+}
+
+/**
+ * The root filesystem on disk, plus the two operations that touch it.
+ *
+ * Everything here goes through `su -c`, because chroot needs root and the plugin runs as the app's
+ * uid. That is the same root shell the agent already has; this class does not widen the attack
+ * surface, it only gives the root shell a directory to chroot into.
+ */
+internal class Rootfs(private val storage: PluginStorage?) {
+
+    fun directory(): File = File(storage?.rootPath() ?: return File("/nonexistent"), DIR_NAME)
+
+    fun isInstalled(): Boolean = File(directory(), "bin/bash").exists() || File(directory(), "usr/bin/bash").exists()
+
+    fun sizeBytes(): Long = runCatching {
+        directory().walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }.getOrDefault(0L)
+
+    /** Reads /etc/os-release through the shell, so it works for any distro the user installed. */
+    fun distribution(): String? = runCatching {
+        val out = exec("chroot ${directory().absolutePath} /bin/sh -c 'head -2 /etc/os-release'", 15)
+        out.first.takeIf { it.isNotBlank() }?.lines()
+            ?.firstOrNull { it.startsWith("PRETTY_NAME=") }
+            ?.substringAfter('=')
+            ?.trim('"')
+    }.getOrNull()
+
+    /**
+     * Downloads [url] and extracts it into the root directory.
+     *
+     * Download goes to a sibling file first and extraction happens only when the download finished,
+     * so an interrupted transfer cannot leave a half-populated rootfs that looks installed.
+     */
+    fun install(url: String): String {
+        val target = directory()
+        target.mkdirs()
+        val archive = File(target.parentFile, "rootfs.download")
+        archive.delete()
+        val connection = java.net.URI(url).toURL().openConnection().apply {
+            connectTimeout = 20_000
+            readTimeout = 60_000
+            setRequestProperty("User-Agent", "EV-linux-plugin")
+        }
+        connection.getInputStream().use { input ->
+            archive.outputStream().use { output -> input.copyTo(output, 1 shl 16) }
+        }
+        val bytes = archive.length()
+        val extract = when {
+            url.endsWith(".tar.xz") || url.endsWith(".txz") -> "-xJf"
+            url.endsWith(".tar.gz") || url.endsWith(".tgz") -> "-xzf"
+            else -> "-xf"
+        }
+        val (out, err, code) = execRaw("tar $extract '${archive.absolutePath}' -C '${target.absolutePath}'", 600)
+        if (code != 0) {
+            archive.delete()
+            error("解压失败（退出码 $code）：${err.take(400)}")
+        }
+        archive.delete()
+        val ok = isInstalled()
+        return JSONObject()
+            .put("installed", ok)
+            .put("bytes_downloaded", bytes)
+            .put("path", target.absolutePath)
+            .put("stdout", out.take(400))
+            .put("hint", if (ok) "可以调用 linux_run 了。" else "解压完成但没找到 /bin/bash：确认这个归档是根文件系统，而不是一层目录。")
+            .toString()
+    }
+
+    fun run(command: String, timeoutSeconds: Int): String {
+        val quoted = command.replace("'", "'\\''")
+        val (out, err, code) = execRaw(
+            "chroot '${directory().absolutePath}' /bin/bash -lc '$quoted'",
+            timeoutSeconds,
+        )
+        return JSONObject()
+            .put("exit", code)
+            .put("stdout", out)
+            .put("stderr", err)
+            .toString()
+    }
+
+    private fun exec(command: String, timeoutSeconds: Int): Pair<String, String> {
+        val (out, err, _) = execRaw(command, timeoutSeconds)
+        return out to err
+    }
+
+    /** Runs through `su`, because chroot and tar into app storage both need the root shell. */
+    private fun execRaw(command: String, timeoutSeconds: Int): Triple<String, String, Int> {
+        val process = ProcessBuilder("su", "-c", command).redirectErrorStream(false).start()
+        val finished = process.waitFor(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            return Triple("", "超时（${timeoutSeconds}s）", -1)
+        }
+        val out = process.inputStream.bufferedReader().readText()
+        val err = process.errorStream.bufferedReader().readText()
+        return Triple(out, err, process.exitValue())
+    }
+
+    private companion object {
+        const val DIR_NAME = "debian"
+    }
+}

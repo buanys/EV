@@ -772,6 +772,8 @@ public interface org.cordis.api.PluginStorage {
     descriptor: (Ljava/lang/String;[B)V
   public abstract void atomicWrite(java.lang.String, byte[]);
     descriptor: (Ljava/lang/String;[B)V
+  public default java.lang.String rootPath();
+    descriptor: ()Ljava/lang/String;
   public abstract boolean delete(java.lang.String);
     descriptor: (Ljava/lang/String;)Z
   public abstract java.util.List<java.lang.String> list(java.lang.String);
@@ -780,6 +782,8 @@ public final class org.cordis.api.PluginStorage$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.PluginStorage> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
 public final class org.cordis.api.PluginStorage$DefaultImpls {
+  public static java.lang.String rootPath(org.cordis.api.PluginStorage);
+    descriptor: (Lorg/cordis/api/PluginStorage;)Ljava/lang/String;
 public final class org.cordis.api.PluginStorageQuotaExceededException extends java.io.IOException {
   public static final int $stable;
     descriptor: I
@@ -971,6 +975,9 @@ public interface org.cordis.api.UserDataStorage extends org.cordis.api.PluginSto
 public final class org.cordis.api.UserDataStorage$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.UserDataStorage> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.UserDataStorage$DefaultImpls {
+  public static java.lang.String rootPath(org.cordis.api.UserDataStorage);
+    descriptor: (Lorg/cordis/api/UserDataStorage;)Ljava/lang/String;
 public final class org.cordis.api.UserDataStorageKt {
   public static final void migrateToUserData(org.cordis.api.PluginStorage, org.cordis.api.UserDataStorage);
     descriptor: (Lorg/cordis/api/PluginStorage;Lorg/cordis/api/UserDataStorage;)V

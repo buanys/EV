@@ -50,6 +50,7 @@ include(":plugins:agent-device")
 include(":plugins:agent-browse")
 include(":plugins:agent-web")
 include(":plugins:agent-shell")
+include(":plugins:linux")
 include(":plugins:forge")
 include(":plugins:forge-compiler")
 // 主题插件：全局视觉定义的唯一来源。默认不随仓库打包，装到 mods 即生效；
