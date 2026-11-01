@@ -22,6 +22,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
+import ev.buan.ui.EvSettingsDivider
 import ev.buan.ui.EvSettingsGroup
 import ev.buan.ui.EvSettingsRow
 import ev.buan.ui.EvSettingsSection
@@ -35,7 +36,9 @@ import androidx.compose.ui.window.Dialog
 import ev.buan.ui.EvSettingsTrailing
 import ev.buan.ui.EvThemeTokens
 import org.cordis.api.PluginCapability
+import org.cordis.api.ManagedPlugin
 import org.cordis.api.PluginCatalogService
+import org.cordis.api.PluginManagerService
 import org.cordis.api.PluginManifest
 import org.cordis.api.PluginSetting
 
@@ -49,6 +52,7 @@ import org.cordis.api.PluginSetting
 @Composable
 fun EvPluginCatalogScreen(
     catalog: PluginCatalogService?,
+    manager: PluginManagerService?,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -56,7 +60,14 @@ fun EvPluginCatalogScreen(
     var selected by remember { mutableStateOf<PluginManifest?>(null) }
     val detail = selected
     if (detail != null) {
-        PluginDetail(detail, catalog, onBack = { selected = null }, modifier = modifier)
+        PluginDetail(
+            manifest = detail,
+            catalog = catalog,
+            manager = manager,
+            managed = manager?.plugins()?.firstOrNull { it.id == detail.id },
+            onBack = { selected = null },
+            modifier = modifier,
+        )
         return
     }
 
@@ -99,6 +110,8 @@ fun EvPluginCatalogScreen(
 private fun PluginDetail(
     manifest: PluginManifest,
     catalog: PluginCatalogService?,
+    manager: PluginManagerService?,
+    managed: ManagedPlugin?,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -127,6 +140,52 @@ private fun PluginDetail(
                         text = manifest.description,
                         style = EvThemeTokens.type.body.style(tokens.textSecondary),
                     )
+                }
+            }
+        }
+
+        if (managed != null) {
+            item {
+                EvSettingsSection("管理")
+                EvSettingsGroup {
+                    EvSettingsRow(
+                        title = "启用",
+                        glyph = EvGlyphKind.Gear,
+                        summary = managed.error ?: if (managed.enabled) "运行中" else "已禁用",
+                        trailing = EvSettingsTrailing.Switch,
+                        checked = managed.enabled,
+                        onCheckedChange = { on -> manager?.setEnabled(manifest.id, on) },
+                    )
+                    EvSettingsDivider()
+                    EvSettingsRow(
+                        title = "存储",
+                        glyph = EvGlyphKind.Doc,
+                        summary = formatBytes(managed.storageBytes) + " · 点此清除",
+                        onClick = { manager?.clearStorage(manifest.id) },
+                    )
+                }
+            }
+
+            val requested = managed.requestedPermissions
+            if (requested.isNotEmpty()) {
+                item {
+                    EvSettingsSection("权限")
+                    EvSettingsGroup {
+                        requested.forEach { permission ->
+                            val granted = permission in managed.grantedPermissions
+                            EvSettingsRow(
+                                title = permissionLabel(permission),
+                                glyph = EvGlyphKind.Lock,
+                                summary = if (granted) "已授予" else "未授予",
+                                trailing = EvSettingsTrailing.Switch,
+                                checked = granted,
+                                onCheckedChange = { on ->
+                                    if (on) manager?.grantPermission(manifest.id, permission)
+                                    else manager?.revokePermission(manifest.id, permission)
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -330,4 +389,21 @@ private fun ValueDialog(
             }
         }
     }
+}
+
+/** Byte count in the units a person reads, not the ones a formatter defaults to. */
+private fun formatBytes(bytes: Long): String = when {
+    bytes <= 0L -> "0 B"
+    bytes < 1024L -> "$bytes B"
+    bytes < 1024L * 1024L -> "${bytes / 1024} KB"
+    else -> "${bytes / (1024L * 1024L)} MB"
+}
+
+/** Host permission names are uppercase constants; show them as words. */
+private fun permissionLabel(permission: String): String = when (permission.uppercase()) {
+    "NETWORK" -> "网络访问"
+    "STORAGE" -> "存储读写"
+    "DEVICE" -> "设备控制"
+    "UI" -> "界面绘制"
+    else -> permission.lowercase().replaceFirstChar { it.uppercase() }
 }

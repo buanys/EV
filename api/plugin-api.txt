@@ -335,6 +335,57 @@ public final class org.cordis.api.LaunchOutcome$NoSuchApp implements org.cordis.
     descriptor: ()I
   public boolean equals(java.lang.Object);
     descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.ManagedPlugin {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.ManagedPlugin(java.lang.String, java.lang.String, java.lang.String, boolean, boolean, java.lang.String, java.util.List<java.lang.String>, java.util.List<java.lang.String>, long);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/util/List;Ljava/util/List;J)V
+  public org.cordis.api.ManagedPlugin(java.lang.String, java.lang.String, java.lang.String, boolean, boolean, java.lang.String, java.util.List, java.util.List, long, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/util/List;Ljava/util/List;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.lang.String getId();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getName();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getVersion();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getEnabled();
+    descriptor: ()Z
+  public final boolean getSigned();
+    descriptor: ()Z
+  public final java.lang.String getError();
+    descriptor: ()Ljava/lang/String;
+  public final java.util.List<java.lang.String> getRequestedPermissions();
+    descriptor: ()Ljava/util/List;
+  public final java.util.List<java.lang.String> getGrantedPermissions();
+    descriptor: ()Ljava/util/List;
+  public final long getStorageBytes();
+    descriptor: ()J
+  public final java.lang.String component1();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component4();
+    descriptor: ()Z
+  public final boolean component5();
+    descriptor: ()Z
+  public final java.lang.String component6();
+    descriptor: ()Ljava/lang/String;
+  public final java.util.List<java.lang.String> component7();
+    descriptor: ()Ljava/util/List;
+  public final java.util.List<java.lang.String> component8();
+    descriptor: ()Ljava/util/List;
+  public final long component9();
+    descriptor: ()J
+  public final org.cordis.api.ManagedPlugin copy(java.lang.String, java.lang.String, java.lang.String, boolean, boolean, java.lang.String, java.util.List<java.lang.String>, java.util.List<java.lang.String>, long);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/util/List;Ljava/util/List;J)Lorg/cordis/api/ManagedPlugin;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
 public interface org.cordis.api.ManifestProvider {
   public abstract org.cordis.api.PluginManifest getManifest();
     descriptor: ()Lorg/cordis/api/PluginManifest;
@@ -588,6 +639,22 @@ public final class org.cordis.api.PluginInstallStatus extends java.lang.Enum<org
     descriptor: (Ljava/lang/String;)Lorg/cordis/api/PluginInstallStatus;
   public static kotlin.enums.EnumEntries<org.cordis.api.PluginInstallStatus> getEntries();
     descriptor: ()Lkotlin/enums/EnumEntries;
+public interface org.cordis.api.PluginManagerService {
+  public static final org.cordis.api.PluginManagerService$Companion Companion;
+    descriptor: Lorg/cordis/api/PluginManagerService$Companion;
+  public abstract java.util.List<org.cordis.api.ManagedPlugin> plugins();
+    descriptor: ()Ljava/util/List;
+  public abstract void setEnabled(java.lang.String, boolean);
+    descriptor: (Ljava/lang/String;Z)V
+  public abstract void grantPermission(java.lang.String, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;)V
+  public abstract void revokePermission(java.lang.String, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;)V
+  public abstract void clearStorage(java.lang.String);
+    descriptor: (Ljava/lang/String;)V
+public final class org.cordis.api.PluginManagerService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.PluginManagerService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
 public final class org.cordis.api.PluginManifest {
   public static final int $stable;
     descriptor: I

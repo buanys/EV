@@ -284,6 +284,16 @@ class HostRuntime(private val context: AndroidContext) {
                 org.cordis.api.PluginCatalogService.Key,
                 HostPluginCatalog({ pluginManifests.values }, { pluginSettings[it] }),
             )
+            directory.publish(
+                org.cordis.api.PluginManagerService.Key,
+                HostPluginManager(
+                    this@HostRuntime,
+                    kotlinx.coroutines.CoroutineScope(
+                        kotlinx.coroutines.Dispatchers.Main.immediate +
+                            kotlinx.coroutines.SupervisorJob(),
+                    ),
+                ),
+            )
             serviceDirectory = directory
             directoryHandle = cordis.provide(ServiceDirectory.Key, directory)
                 .also { runCatching { it.awaitReady() } }

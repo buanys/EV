@@ -554,6 +554,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
             // The catalog is host-owned: plugins declare, the host collects, this page renders.
             EvPluginCatalogScreen(
                 catalog = directory?.lookup(org.cordis.api.PluginCatalogService.Key),
+                manager = directory?.lookup(org.cordis.api.PluginManagerService.Key),
                 onBack = { ui.pages.pop() },
                 modifier = modifier,
             )
