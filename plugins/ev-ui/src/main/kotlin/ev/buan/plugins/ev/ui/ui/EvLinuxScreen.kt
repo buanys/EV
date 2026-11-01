@@ -60,7 +60,9 @@ fun EvLinuxScreen(
     val log = remember { mutableStateListOf<String>() }
 
     fun refresh() {
-        val tool = registry()?.lookup("linux_status")
+        val reg = registry()
+        val tool = reg?.lookup("linux_status")
+        android.util.Log.e("EVLINUXUI", "refresh: registry=${reg != null} tool=${tool != null} specs=${reg?.specs()?.size}")
         if (tool == null) {
             log += "linux 插件没在运行"
             return
@@ -84,12 +86,14 @@ fun EvLinuxScreen(
             log += "先填写根文件系统地址"
             return
         }
-        catalog?.writeSetting(LINUX_ID, "url", url)
+        val isPath = url.startsWith("/")
+        if (!isPath) catalog?.writeSetting(LINUX_ID, "url", url)
         busy = true
-        log += "开始下载：$url"
+        log += if (isPath) "开始导入：$url" else "开始下载：$url"
         scope.launch {
             val raw = runCatching {
-                tool.invoke(JSONObject().put("url", url).toString())
+                if (isPath) tool.invoke(JSONObject().put("file", url).toString())
+                else tool.invoke(JSONObject().put("url", url).toString())
             }.getOrElse { "调用失败：${it.message}" }
             log += raw
             busy = false
@@ -125,7 +129,7 @@ fun EvLinuxScreen(
             EvSettingsGroup {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(
-                        text = "Debian 13 arm64 的 tar.xz / tar.gz 下载地址。不会替你选镜像。",
+                        text = "下载地址，或手机上的归档路径（以 / 开头）。应用没有外网时用路径导入。",
                         style = EvThemeTokens.type.caption.style(tokens.textTertiary),
                     )
                     Spacer(Modifier.height(8.dp))
