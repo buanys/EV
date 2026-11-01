@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -37,7 +38,9 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 fun EvSettingsSection(label: String) {
     Text(
         text = label,
-        style = EvThemeTokens.type.micro.style(EvThemeTokens.colors.textSecondary),
+        // label, not micro: a section heading at 11sp read as a caption belonging to the row above.
+        style = EvThemeTokens.type.label.style(EvThemeTokens.colors.textSecondary)
+            .copy(letterSpacing = 0.4.sp),
         modifier = Modifier.padding(start = 20.dp, top = 24.dp, bottom = 8.dp),
     )
 }
@@ -47,7 +50,7 @@ fun EvSettingsGroup(content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .clip(EvThemeTokens.radii.mediumShape)
+            .evHairline(EvThemeTokens.elevation.cardBorderAlpha, EvThemeTokens.radii.mediumShape)
             .background(EvThemeTokens.colors.surface1),
         content = content,
     )

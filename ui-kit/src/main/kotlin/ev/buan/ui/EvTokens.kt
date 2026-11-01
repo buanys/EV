@@ -300,6 +300,10 @@ object EvThemeTokens {
     val icons: EvIconSet
         @Composable @ReadOnlyComposable get() = LocalEvIconSet.current
 
+    /** Depth: hairline strength and the floating-surface highlight. */
+    val elevation: EvElevationSpec
+        @Composable @ReadOnlyComposable get() = LocalEvElevationSpec.current
+
     /** Whether animated specs must degrade to instant switches (spec §6.4 / §9). */
     val reducedMotion: Boolean
         @Composable @ReadOnlyComposable get() = LocalEvAppearance.current.reducedMotionEnabled

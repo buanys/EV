@@ -1,7 +1,7 @@
 package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import ev.buan.ui.evPressable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,7 +80,7 @@ private fun EvMoreTile(
             .aspectRatio(1f)
             .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
             .background(tokens.surface2)
-            .clickable(onClickLabel = label, onClick = onClick),
+            .evPressable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

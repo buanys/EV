@@ -23,8 +23,9 @@ fun EvCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val elevation = EvThemeTokens.elevation
     Card(
-        modifier = modifier,
+        modifier = modifier.evHairline(elevation.cardBorderAlpha, EvThemeTokens.radii.mediumShape),
         cornerRadius = EvThemeTokens.radii.medium,
         insideMargin = insideMargin,
         colors = colors,

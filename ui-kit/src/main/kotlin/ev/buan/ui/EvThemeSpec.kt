@@ -53,6 +53,8 @@ data class EvThemeSpec(
     val motion: EvMotionSpec = EvMotionSpec.Default,
     /** Icon language. A theme may redraw any glyph; the rest keep the built-in marks. */
     val icons: EvIconSet = EvIconSet.Default,
+    /** How strongly surfaces separate from the page: hairline alphas and the floating highlight. */
+    val elevation: EvElevationSpec = EvElevationSpec.Default,
 ) {
     companion object {
         /** The built-in theme. Its values are exactly the ones the tokens used before this split. */
@@ -61,3 +63,5 @@ data class EvThemeSpec(
 }
 
 internal val LocalEvGlassSpec = staticCompositionLocalOf { EvGlassSpec() }
+
+internal val LocalEvElevationSpec = staticCompositionLocalOf { EvElevationSpec.Default }

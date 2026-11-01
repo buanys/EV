@@ -169,6 +169,19 @@ fun EvDrawerScaffold(
                         },
                     )
                     .background(tokens.surface1)
+                    .evFloatingSurface(
+                        if (fromEnd) {
+                            RoundedCornerShape(
+                                topStart = EvThemeTokens.radii.large,
+                                bottomStart = EvThemeTokens.radii.large,
+                            )
+                        } else {
+                            RoundedCornerShape(
+                                topEnd = EvThemeTokens.radii.large,
+                                bottomEnd = EvThemeTokens.radii.large,
+                            )
+                        },
+                    )
                     .pointerInput(widthPx) {
                         var tracker = VelocityTracker()
                         detectHorizontalDragGestures(

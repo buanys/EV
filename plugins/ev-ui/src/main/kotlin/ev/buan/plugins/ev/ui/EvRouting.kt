@@ -1,6 +1,9 @@
 package ev.buan.plugins.ev.ui
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 /**
  * A full-screen surface that temporarily replaces the conversation.
@@ -52,14 +55,23 @@ internal class EvNavigator {
 
     val isOpen: Boolean get() = entries.isNotEmpty()
 
+    /**
+     * True when the last change was a pop, so the transition can run backwards. AnimatedContent
+     * cannot tell "back to the conversation" from "deeper into settings" by the states alone.
+     */
+    var lastWasPop: Boolean by mutableStateOf(false)
+        private set
+
     fun push(page: EvPage) {
         entries.add(page)
+        lastWasPop = false
     }
 
     /** Pops one page. Returns false when the conversation is already showing. */
     fun pop(): Boolean {
         if (entries.isEmpty()) return false
         entries.removeAt(entries.lastIndex)
+        lastWasPop = true
         return true
     }
 }

@@ -102,6 +102,7 @@ fun EvTheme(
             LocalEvRadiusTokens provides theme.radii,
             LocalEvGlassSpec provides theme.glass,
             LocalEvIconSet provides theme.icons,
+            LocalEvElevationSpec provides theme.elevation,
         ) {
             content()
         }

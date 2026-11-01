@@ -79,6 +79,7 @@ import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvIcons
 import ev.buan.ui.EvMotionTokens
+import ev.buan.ui.EvPageTransitions
 import ev.buan.ui.EvThemeTokens
 import top.yukonga.miuix.kmp.basic.Icon
 import kotlinx.coroutines.launch
@@ -395,137 +396,79 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         val availableThemes = themeCatalog?.available() ?: ev.buan.ui.EvThemeRegistry.all()
         // One dispatch for every full-screen surface. Adding a page is one branch here plus one push
         // at the call site; the back handler above needs no change, and cannot fall out of sync.
-        when (val page = ui.pages.current) {
-            // Conversation.
-            null -> Unit
+        val reducedMotion = EvThemeTokens.reducedMotion
+        // Pages used to swap instantly. One container now owns that change: entering drifts in from
+        // the side it belongs to, going back reverses it, and reduced motion degrades to a fade.
+        androidx.compose.animation.AnimatedContent(
+            targetState = ui.pages.current,
+            transitionSpec = {
+                if (ui.pages.lastWasPop) EvPageTransitions.backward(reducedMotion)
+                else EvPageTransitions.forward(reducedMotion)
+            },
+            label = "page",
+        ) { page ->
+            when (page) {
+        // Conversation.
+        null -> Unit
 
-            EvPage.Settings -> {
-                // Without the host appearance service the settings page cannot render, so the
-                // conversation stays visible rather than showing an empty surface.
-                if (appearanceService != null) {
-                    EvSettingsScreen(
-                        appearance = appearanceService,
-                        onBack = { ui.pages.pop() },
-                        onOpenPlugins = { navigation?.openPluginManager() },
-                        onOpenHostSettings = { navigation?.openSettings() },
-                        onOpenThemes = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Themes)) },
-                        themeName = availableThemes.firstOrNull { it.id == appearanceService.current.themeId }?.name
-                            ?: availableThemes.first().name,
-                        onOpenModels = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Models)) },
-                        onOpenTools = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Tools)) },
-                        onOpenMemory = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Memory)) },
-                        onOpenCharacters = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Characters)) },
-                        onOpenSkills = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Skills)) },
-                        modifier = modifier,
-                    )
-                    return
-                }
+        EvPage.Settings -> {
+            // Without the host appearance service the settings page cannot render, so the
+            // conversation stays visible rather than showing an empty surface.
+            if (appearanceService != null) {
+                EvSettingsScreen(
+                    appearance = appearanceService,
+                    onBack = { ui.pages.pop() },
+                    onOpenPlugins = { navigation?.openPluginManager() },
+                    onOpenHostSettings = { navigation?.openSettings() },
+                    onOpenThemes = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Themes)) },
+                    themeName = availableThemes.firstOrNull { it.id == appearanceService.current.themeId }?.name
+                        ?: availableThemes.first().name,
+                    onOpenModels = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Models)) },
+                    onOpenTools = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Tools)) },
+                    onOpenMemory = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Memory)) },
+                    onOpenCharacters = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Characters)) },
+                    onOpenSkills = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Skills)) },
+                    modifier = modifier,
+                )
             }
+        }
 
-            is EvPage.SettingsSection -> {
-                // A second-level settings page keeps the root underneath: back returns to it.
-                when (page.section) {
-                    SettingsChild.Themes -> EvThemePickerScreen(
-                        themes = availableThemes,
-                        currentId = appearanceService?.current?.themeId ?: return,
-                        // The host owns the appearance state: selecting a theme persists it and
-                        // recomposes the whole app, this page only asks for the change.
-                        onSelect = { id -> appearanceService.update { it.copy(themeId = id) } },
-                        onBack = { ui.pages.pop() },
-                        modifier = modifier,
-                    )
+        is EvPage.SettingsSection -> {
+            // A second-level settings page keeps the root underneath: back returns to it.
+            when (page.section) {
+                SettingsChild.Themes -> EvThemePickerScreen(
+                    themes = availableThemes,
+                    currentId = appearanceService?.current?.themeId.orEmpty(),
+                    // The host owns the appearance state: selecting a theme persists it and
+                    // recomposes the whole app, this page only asks for the change.
+                    onSelect = { id -> appearanceService?.update { it.copy(themeId = id) } },
+                    onBack = { ui.pages.pop() },
+                    modifier = modifier,
+                )
 
-                    SettingsChild.Models -> EvModelProvidersScreen(
-                        service = { directory?.lookup(ModelProviderService.Key) },
-                        onBack = { ui.pages.pop() },
-                        modifier = modifier,
-                    )
+                SettingsChild.Models -> EvModelProvidersScreen(
+                    service = { directory?.lookup(ModelProviderService.Key) },
+                    onBack = { ui.pages.pop() },
+                    modifier = modifier,
+                )
 
-                    SettingsChild.Tools -> EvToolsScreen(
-                        registry = { directory?.lookup(ToolRegistry.Key) },
-                        onBack = { ui.pages.pop() },
-                        modifier = modifier,
-                    )
-
-                    SettingsChild.Memory -> EvMemoryScreen(
-                        sessionId = activeSession.id,
-                        memory = { directory?.lookup(MemoryService.Key) },
-                        onBack = { ui.pages.pop() },
-                        modifier = modifier,
-                    )
-
-                    SettingsChild.Characters -> EvCharactersScreen(
-                        characters = characters,
-                        selectedId = activeSession.characterId,
-                        onBack = { ui.pages.pop() },
-                        onSelect = { characterId ->
-                            chat.mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
-                        },
-                        onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
-                        onDelete = { characterId -> deleteCharacter(characterId) },
-                        modifier = modifier,
-                    )
-
-                    SettingsChild.Skills -> EvSkillsScreen(
-                        skills = skills,
-                        selectedId = activeSession.skillId,
-                        onBack = { ui.pages.pop() },
-                        onSelect = { skillId ->
-                            chat.mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
-                        },
-                        onSave = { saved -> replaceSkills(skills.upsert(saved)) },
-                        onDelete = { skillId -> deleteSkill(skillId) },
-                        modifier = modifier,
-                    )
-                }
-                return
-            }
-
-            EvPage.Tools -> {
-                // Looked up per read, never cached: the tools plugin may be enabled or disabled while
-                // this page is open, and the panel has a refresh action for exactly that.
-                EvToolsScreen(
+                SettingsChild.Tools -> EvToolsScreen(
                     registry = { directory?.lookup(ToolRegistry.Key) },
                     onBack = { ui.pages.pop() },
                     modifier = modifier,
                 )
-                return
-            }
 
-            EvPage.Browser -> {
-                EvBrowserScreen(onBack = { ui.pages.pop() }, modifier = modifier)
-                return
-            }
-
-            EvPage.Terminal -> {
-                // Same tool registry the agent uses: here a human types the command, not a model.
-                EvTerminalScreen(
-                    registry = { directory?.lookup(ToolRegistry.Key) },
-                    onBack = { ui.pages.pop() },
-                    modifier = modifier,
-                )
-                return
-            }
-
-            EvPage.Memory -> {
-                // The memory plugin may be enabled, disabled or reconfigured while the page is open:
-                // the service is looked up on every read, and the panel has a refresh action.
-                EvMemoryScreen(
+                SettingsChild.Memory -> EvMemoryScreen(
                     sessionId = activeSession.id,
                     memory = { directory?.lookup(MemoryService.Key) },
                     onBack = { ui.pages.pop() },
                     modifier = modifier,
                 )
-                return
-            }
 
-            EvPage.Characters -> {
-                EvCharactersScreen(
+                SettingsChild.Characters -> EvCharactersScreen(
                     characters = characters,
                     selectedId = activeSession.characterId,
                     onBack = { ui.pages.pop() },
-                    // Selecting stores the id on the session, so one conversation can talk to one
-                    // role while another talks to none. `mutate` persists sessions.json by itself.
                     onSelect = { characterId ->
                         chat.mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
                     },
@@ -533,15 +476,11 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     onDelete = { characterId -> deleteCharacter(characterId) },
                     modifier = modifier,
                 )
-                return
-            }
 
-            EvPage.Skills -> {
-                EvSkillsScreen(
+                SettingsChild.Skills -> EvSkillsScreen(
                     skills = skills,
                     selectedId = activeSession.skillId,
                     onBack = { ui.pages.pop() },
-                    // Same per-session semantics as characters: the id lives on the conversation.
                     onSelect = { skillId ->
                         chat.mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
                     },
@@ -549,82 +488,150 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     onDelete = { skillId -> deleteSkill(skillId) },
                     modifier = modifier,
                 )
-                return
             }
         }
-        EvDrawerScaffold(
-            open = ui.drawerOpen,
-            onClose = { ui.drawerOpen = false },
-            drawer = {
-                EvChatDrawer(
-                    ui = ui,
-                    sessions = sessions,
-                    chat = chat,
-                    activeSessionId = activeSession.id,
-                    statusLine = run {
-                        val online = listOf(
-                            directory?.lookup(ModelService.Key),
-                            directory?.lookup(ToolRegistry.Key),
-                            directory?.lookup(MemoryService.Key),
-                        ).count { it != null }
-                        "本地 · 能力 $online/3 在线"
-                    },
-                    newSession = { newSession() },
-                    openPlugins = { navigation?.openPluginManager() },
-                    openSettings = { openSettings() },
-                    openSettingsSection = { section -> openSettings(section) },
-                )
-            },
-            content = {
-                // The quick menu is the same kind of surface as the drawer, from the other edge, so
-                // it reuses the same scaffold instead of growing a second animation implementation.
-                EvDrawerScaffold(
-                    open = ui.moreMenuOpen,
-                    onClose = { ui.moreMenuOpen = false },
-                    side = EvDrawerSide.End,
-                    drawer = {
-                        EvMoreMenuPanel(
-                            onTerminal = {
-                                ui.moreMenuOpen = false
-                                ui.pages.push(EvPage.Terminal)
-                            },
-                            onBrowser = {
-                                ui.moreMenuOpen = false
-                                ui.pages.push(EvPage.Browser)
-                            },
-                            // Two tiles are deliberately empty: the grid is 2 x 2 so adding the
-                            // third and fourth tool does not reshape it.
-                            onPlaceholderOne = {},
-                            onPlaceholderTwo = {},
-                        )
-                    },
-                    content = {
-                        EvChatColumn(
-                            modifier = modifier,
-                            isRoot = isRoot,
-                            pageTitle = pageTitle,
-                            onHost = onHost,
-                            directory = directory,
-                            activeSession = activeSession,
-                            sessions = sessions,
-                            chat = chat,
-                            ui = ui,
-                            listState = listState,
-                            workExpansion = workExpansion,
-                            approvalPending = approvalGate.pending.isNotEmpty(),
-                            // Placeholder rotates per conversation, not per recomposition (spec §7.3).
-                            placeholder = ComposerPlaceholders[
-                                Math.floorMod(activeSession.id.hashCode(), ComposerPlaceholders.size)
-                            ],
-                            suggestions = Suggestions,
-                            onOpenSettings = { openSettings() },
-                            onOpenSettingsSection = { section -> openSettings(section) },
-                            onOpenMore = { ui.moreMenuOpen = true },
-                        )
-                    },
-                )
-            },
-        )
+
+        EvPage.Tools -> {
+            // Looked up per read, never cached: the tools plugin may be enabled or disabled while
+            // this page is open, and the panel has a refresh action for exactly that.
+            EvToolsScreen(
+                registry = { directory?.lookup(ToolRegistry.Key) },
+                onBack = { ui.pages.pop() },
+                modifier = modifier,
+            )
+        }
+
+        EvPage.Browser -> {
+            EvBrowserScreen(onBack = { ui.pages.pop() }, modifier = modifier)
+        }
+
+        EvPage.Terminal -> {
+            // Same tool registry the agent uses: here a human types the command, not a model.
+            EvTerminalScreen(
+                registry = { directory?.lookup(ToolRegistry.Key) },
+                onBack = { ui.pages.pop() },
+                modifier = modifier,
+            )
+        }
+
+        EvPage.Memory -> {
+            // The memory plugin may be enabled, disabled or reconfigured while the page is open:
+            // the service is looked up on every read, and the panel has a refresh action.
+            EvMemoryScreen(
+                sessionId = activeSession.id,
+                memory = { directory?.lookup(MemoryService.Key) },
+                onBack = { ui.pages.pop() },
+                modifier = modifier,
+            )
+        }
+
+        EvPage.Characters -> {
+            EvCharactersScreen(
+                characters = characters,
+                selectedId = activeSession.characterId,
+                onBack = { ui.pages.pop() },
+                // Selecting stores the id on the session, so one conversation can talk to one
+                // role while another talks to none. `mutate` persists sessions.json by itself.
+                onSelect = { characterId ->
+                    chat.mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
+                },
+                onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
+                onDelete = { characterId -> deleteCharacter(characterId) },
+                modifier = modifier,
+            )
+        }
+
+        EvPage.Skills -> {
+            EvSkillsScreen(
+                skills = skills,
+                selectedId = activeSession.skillId,
+                onBack = { ui.pages.pop() },
+                // Same per-session semantics as characters: the id lives on the conversation.
+                onSelect = { skillId ->
+                    chat.mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
+                },
+                onSave = { saved -> replaceSkills(skills.upsert(saved)) },
+                onDelete = { skillId -> deleteSkill(skillId) },
+                modifier = modifier,
+            )
+        }
+                null -> {
+            EvDrawerScaffold(
+                open = ui.drawerOpen,
+                onClose = { ui.drawerOpen = false },
+                drawer = {
+                    EvChatDrawer(
+                        ui = ui,
+                        sessions = sessions,
+                        chat = chat,
+                        activeSessionId = activeSession.id,
+                        statusLine = run {
+                            val online = listOf(
+                                directory?.lookup(ModelService.Key),
+                                directory?.lookup(ToolRegistry.Key),
+                                directory?.lookup(MemoryService.Key),
+                            ).count { it != null }
+                            "本地 · 能力 $online/3 在线"
+                        },
+                        newSession = { newSession() },
+                        openPlugins = { navigation?.openPluginManager() },
+                        openSettings = { openSettings() },
+                        openSettingsSection = { section -> openSettings(section) },
+                    )
+                },
+                content = {
+                    // The quick menu is the same kind of surface as the drawer, from the other edge, so
+                    // it reuses the same scaffold instead of growing a second animation implementation.
+                    EvDrawerScaffold(
+                        open = ui.moreMenuOpen,
+                        onClose = { ui.moreMenuOpen = false },
+                        side = EvDrawerSide.End,
+                        drawer = {
+                            EvMoreMenuPanel(
+                                onTerminal = {
+                                    ui.moreMenuOpen = false
+                                    ui.pages.push(EvPage.Terminal)
+                                },
+                                onBrowser = {
+                                    ui.moreMenuOpen = false
+                                    ui.pages.push(EvPage.Browser)
+                                },
+                                // Two tiles are deliberately empty: the grid is 2 x 2 so adding the
+                                // third and fourth tool does not reshape it.
+                                onPlaceholderOne = {},
+                                onPlaceholderTwo = {},
+                            )
+                        },
+                        content = {
+                            EvChatColumn(
+                                modifier = modifier,
+                                isRoot = isRoot,
+                                pageTitle = pageTitle,
+                                onHost = onHost,
+                                directory = directory,
+                                activeSession = activeSession,
+                                sessions = sessions,
+                                chat = chat,
+                                ui = ui,
+                                listState = listState,
+                                workExpansion = workExpansion,
+                                approvalPending = approvalGate.pending.isNotEmpty(),
+                                // Placeholder rotates per conversation, not per recomposition (spec §7.3).
+                                placeholder = ComposerPlaceholders[
+                                    Math.floorMod(activeSession.id.hashCode(), ComposerPlaceholders.size)
+                                ],
+                                suggestions = Suggestions,
+                                onOpenSettings = { openSettings() },
+                                onOpenSettingsSection = { section -> openSettings(section) },
+                                onOpenMore = { ui.moreMenuOpen = true },
+                            )
+                        },
+                    )
+                },
+            )
+                }
+            }
+        }
     }
 
     private companion object {

@@ -238,6 +238,42 @@ public final class ev.buan.ui.EvDrawerSide extends java.lang.Enum<ev.buan.ui.EvD
     descriptor: (Ljava/lang/String;)Lev/buan/ui/EvDrawerSide;
   public static kotlin.enums.EnumEntries<ev.buan.ui.EvDrawerSide> getEntries();
     descriptor: ()Lkotlin/enums/EnumEntries;
+public final class ev.buan.ui.EvElevationSpec {
+  public static final ev.buan.ui.EvElevationSpec$Companion Companion;
+    descriptor: Lev/buan/ui/EvElevationSpec$Companion;
+  public static final int $stable;
+    descriptor: I
+  public ev.buan.ui.EvElevationSpec(float, float, float);
+    descriptor: (FFF)V
+  public ev.buan.ui.EvElevationSpec(float, float, float, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (FFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final float getCardBorderAlpha();
+    descriptor: ()F
+  public final float getFloatBorderAlpha();
+    descriptor: ()F
+  public final float getFloatHighlightAlpha();
+    descriptor: ()F
+  public final float component1();
+    descriptor: ()F
+  public final float component2();
+    descriptor: ()F
+  public final float component3();
+    descriptor: ()F
+  public final ev.buan.ui.EvElevationSpec copy(float, float, float);
+    descriptor: (FFF)Lev/buan/ui/EvElevationSpec;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+  public ev.buan.ui.EvElevationSpec();
+    descriptor: ()V
+public final class ev.buan.ui.EvElevationSpec$Companion {
+  public final ev.buan.ui.EvElevationSpec getDefault();
+    descriptor: ()Lev/buan/ui/EvElevationSpec;
+  public ev.buan.ui.EvElevationSpec$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 public final class ev.buan.ui.EvEmptyStateKt {
   public static final void EvEmptyState(java.lang.String, java.lang.String, androidx.compose.ui.Modifier, ev.buan.ui.EvGlyphKind, kotlin.jvm.functions.Function2<? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
     descriptor: (Ljava/lang/String;Ljava/lang/String;Landroidx/compose/ui/Modifier;Lev/buan/ui/EvGlyphKind;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
@@ -552,6 +588,15 @@ public final class ev.buan.ui.EvPageHeaderKt {
 public final class ev.buan.ui.EvPageKt {
   public static final void EvPage(java.lang.String, androidx.compose.ui.Modifier, java.lang.String, kotlin.jvm.functions.Function0<kotlin.Unit>, kotlin.jvm.functions.Function3<? super androidx.compose.foundation.layout.RowScope, ? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, androidx.compose.foundation.layout.PaddingValues, kotlin.jvm.functions.Function1<? super androidx.compose.foundation.lazy.LazyListScope, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
     descriptor: (Ljava/lang/String;Landroidx/compose/ui/Modifier;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;Landroidx/compose/foundation/layout/PaddingValues;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+public final class ev.buan.ui.EvPageTransitions {
+  public static final ev.buan.ui.EvPageTransitions INSTANCE;
+    descriptor: Lev/buan/ui/EvPageTransitions;
+  public static final int $stable;
+    descriptor: I
+  public final androidx.compose.animation.ContentTransform forward(boolean);
+    descriptor: (Z)Landroidx/compose/animation/ContentTransform;
+  public final androidx.compose.animation.ContentTransform backward(boolean);
+    descriptor: (Z)Landroidx/compose/animation/ContentTransform;
 public final class ev.buan.ui.EvPaletteStyle extends java.lang.Enum<ev.buan.ui.EvPaletteStyle> {
   public static final ev.buan.ui.EvPaletteStyle TONAL_SPOT;
     descriptor: Lev/buan/ui/EvPaletteStyle;
@@ -718,6 +763,13 @@ public final class ev.buan.ui.EvStatusColorsKt {
     descriptor: (Landroidx/compose/runtime/Composer;I)J
   public static final long getStatusIdle(androidx.compose.runtime.Composer, int);
     descriptor: (Landroidx/compose/runtime/Composer;I)J
+public final class ev.buan.ui.EvSurfaceKt {
+  public static final androidx.compose.ui.Modifier evHairline(androidx.compose.ui.Modifier, float, androidx.compose.ui.graphics.Shape, androidx.compose.runtime.Composer, int);
+    descriptor: (Landroidx/compose/ui/Modifier;FLandroidx/compose/ui/graphics/Shape;Landroidx/compose/runtime/Composer;I)Landroidx/compose/ui/Modifier;
+  public static final androidx.compose.ui.Modifier evFloatingSurface(androidx.compose.ui.Modifier, androidx.compose.ui.graphics.Shape, androidx.compose.runtime.Composer, int);
+    descriptor: (Landroidx/compose/ui/Modifier;Landroidx/compose/ui/graphics/Shape;Landroidx/compose/runtime/Composer;I)Landroidx/compose/ui/Modifier;
+  public static final androidx.compose.ui.Modifier evPressable(androidx.compose.ui.Modifier, boolean, float, kotlin.jvm.functions.Function0<kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
+    descriptor: (Landroidx/compose/ui/Modifier;ZFLkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Landroidx/compose/ui/Modifier;
 public final class ev.buan.ui.EvThemeKt {
   public static final void EvTheme(ev.buan.ui.EvAppearance, ev.buan.ui.EvThemeSpec, kotlin.jvm.functions.Function2<? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
     descriptor: (Lev/buan/ui/EvAppearance;Lev/buan/ui/EvThemeSpec;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
@@ -759,10 +811,10 @@ public final class ev.buan.ui.EvThemeSpec {
     descriptor: Lev/buan/ui/EvThemeSpec$Companion;
   public static final int $stable;
     descriptor: I
-  public ev.buan.ui.EvThemeSpec(java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function2<? super androidx.compose.ui.graphics.Color, ? super java.lang.Boolean, ev.buan.ui.EvColorTokens>, kotlin.jvm.functions.Function1<? super androidx.compose.ui.graphics.Color, ev.buan.ui.EvColorTokens>, ev.buan.ui.EvTypeTokens, ev.buan.ui.EvSpacingTokens, ev.buan.ui.EvRadiusTokens, ev.buan.ui.EvGlassSpec, ev.buan.ui.EvMotionSpec, ev.buan.ui.EvIconSet);
-    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lev/buan/ui/EvTypeTokens;Lev/buan/ui/EvSpacingTokens;Lev/buan/ui/EvRadiusTokens;Lev/buan/ui/EvGlassSpec;Lev/buan/ui/EvMotionSpec;Lev/buan/ui/EvIconSet;)V
-  public ev.buan.ui.EvThemeSpec(java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function2, kotlin.jvm.functions.Function1, ev.buan.ui.EvTypeTokens, ev.buan.ui.EvSpacingTokens, ev.buan.ui.EvRadiusTokens, ev.buan.ui.EvGlassSpec, ev.buan.ui.EvMotionSpec, ev.buan.ui.EvIconSet, int, kotlin.jvm.internal.DefaultConstructorMarker);
-    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lev/buan/ui/EvTypeTokens;Lev/buan/ui/EvSpacingTokens;Lev/buan/ui/EvRadiusTokens;Lev/buan/ui/EvGlassSpec;Lev/buan/ui/EvMotionSpec;Lev/buan/ui/EvIconSet;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public ev.buan.ui.EvThemeSpec(java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function2<? super androidx.compose.ui.graphics.Color, ? super java.lang.Boolean, ev.buan.ui.EvColorTokens>, kotlin.jvm.functions.Function1<? super androidx.compose.ui.graphics.Color, ev.buan.ui.EvColorTokens>, ev.buan.ui.EvTypeTokens, ev.buan.ui.EvSpacingTokens, ev.buan.ui.EvRadiusTokens, ev.buan.ui.EvGlassSpec, ev.buan.ui.EvMotionSpec, ev.buan.ui.EvIconSet, ev.buan.ui.EvElevationSpec);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lev/buan/ui/EvTypeTokens;Lev/buan/ui/EvSpacingTokens;Lev/buan/ui/EvRadiusTokens;Lev/buan/ui/EvGlassSpec;Lev/buan/ui/EvMotionSpec;Lev/buan/ui/EvIconSet;Lev/buan/ui/EvElevationSpec;)V
+  public ev.buan.ui.EvThemeSpec(java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function2, kotlin.jvm.functions.Function1, ev.buan.ui.EvTypeTokens, ev.buan.ui.EvSpacingTokens, ev.buan.ui.EvRadiusTokens, ev.buan.ui.EvGlassSpec, ev.buan.ui.EvMotionSpec, ev.buan.ui.EvIconSet, ev.buan.ui.EvElevationSpec, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lev/buan/ui/EvTypeTokens;Lev/buan/ui/EvSpacingTokens;Lev/buan/ui/EvRadiusTokens;Lev/buan/ui/EvGlassSpec;Lev/buan/ui/EvMotionSpec;Lev/buan/ui/EvIconSet;Lev/buan/ui/EvElevationSpec;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
   public final java.lang.String getId();
     descriptor: ()Ljava/lang/String;
   public final java.lang.String getName();
@@ -785,6 +837,8 @@ public final class ev.buan.ui.EvThemeSpec {
     descriptor: ()Lev/buan/ui/EvMotionSpec;
   public final ev.buan.ui.EvIconSet getIcons();
     descriptor: ()Lev/buan/ui/EvIconSet;
+  public final ev.buan.ui.EvElevationSpec getElevation();
+    descriptor: ()Lev/buan/ui/EvElevationSpec;
   public final java.lang.String component1();
     descriptor: ()Ljava/lang/String;
   public final java.lang.String component2();
@@ -807,8 +861,10 @@ public final class ev.buan.ui.EvThemeSpec {
     descriptor: ()Lev/buan/ui/EvMotionSpec;
   public final ev.buan.ui.EvIconSet component11();
     descriptor: ()Lev/buan/ui/EvIconSet;
-  public final ev.buan.ui.EvThemeSpec copy(java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function2<? super androidx.compose.ui.graphics.Color, ? super java.lang.Boolean, ev.buan.ui.EvColorTokens>, kotlin.jvm.functions.Function1<? super androidx.compose.ui.graphics.Color, ev.buan.ui.EvColorTokens>, ev.buan.ui.EvTypeTokens, ev.buan.ui.EvSpacingTokens, ev.buan.ui.EvRadiusTokens, ev.buan.ui.EvGlassSpec, ev.buan.ui.EvMotionSpec, ev.buan.ui.EvIconSet);
-    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lev/buan/ui/EvTypeTokens;Lev/buan/ui/EvSpacingTokens;Lev/buan/ui/EvRadiusTokens;Lev/buan/ui/EvGlassSpec;Lev/buan/ui/EvMotionSpec;Lev/buan/ui/EvIconSet;)Lev/buan/ui/EvThemeSpec;
+  public final ev.buan.ui.EvElevationSpec component12();
+    descriptor: ()Lev/buan/ui/EvElevationSpec;
+  public final ev.buan.ui.EvThemeSpec copy(java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function2<? super androidx.compose.ui.graphics.Color, ? super java.lang.Boolean, ev.buan.ui.EvColorTokens>, kotlin.jvm.functions.Function1<? super androidx.compose.ui.graphics.Color, ev.buan.ui.EvColorTokens>, ev.buan.ui.EvTypeTokens, ev.buan.ui.EvSpacingTokens, ev.buan.ui.EvRadiusTokens, ev.buan.ui.EvGlassSpec, ev.buan.ui.EvMotionSpec, ev.buan.ui.EvIconSet, ev.buan.ui.EvElevationSpec);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lev/buan/ui/EvTypeTokens;Lev/buan/ui/EvSpacingTokens;Lev/buan/ui/EvRadiusTokens;Lev/buan/ui/EvGlassSpec;Lev/buan/ui/EvMotionSpec;Lev/buan/ui/EvIconSet;Lev/buan/ui/EvElevationSpec;)Lev/buan/ui/EvThemeSpec;
   public java.lang.String toString();
     descriptor: ()Ljava/lang/String;
   public int hashCode();
@@ -824,6 +880,8 @@ public final class ev.buan.ui.EvThemeSpec$Companion {
     descriptor: (Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 public final class ev.buan.ui.EvThemeSpecKt {
   public static final androidx.compose.runtime.ProvidableCompositionLocal<ev.buan.ui.EvGlassSpec> getLocalEvGlassSpec();
+    descriptor: ()Landroidx/compose/runtime/ProvidableCompositionLocal;
+  public static final androidx.compose.runtime.ProvidableCompositionLocal<ev.buan.ui.EvElevationSpec> getLocalEvElevationSpec();
     descriptor: ()Landroidx/compose/runtime/ProvidableCompositionLocal;
 public final class ev.buan.ui.EvThemeTokens {
   public static final ev.buan.ui.EvThemeTokens INSTANCE;
@@ -842,6 +900,8 @@ public final class ev.buan.ui.EvThemeTokens {
     descriptor: (Landroidx/compose/runtime/Composer;I)Lev/buan/ui/EvGlassSpec;
   public final ev.buan.ui.EvIconSet getIcons(androidx.compose.runtime.Composer, int);
     descriptor: (Landroidx/compose/runtime/Composer;I)Lev/buan/ui/EvIconSet;
+  public final ev.buan.ui.EvElevationSpec getElevation(androidx.compose.runtime.Composer, int);
+    descriptor: (Landroidx/compose/runtime/Composer;I)Lev/buan/ui/EvElevationSpec;
   public final boolean getReducedMotion(androidx.compose.runtime.Composer, int);
     descriptor: (Landroidx/compose/runtime/Composer;I)Z
 public final class ev.buan.ui.EvTokensKt {
