@@ -86,12 +86,20 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
     }
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
-        val directory = ctx.require(ServiceDirectory.Key)
-        storage = ctx.require(PluginStorage.Key)
+        android.util.Log.e("EVLINUX", "apply: enter")
+        val directory = runCatching { ctx.require(ServiceDirectory.Key) }
+            .onFailure { android.util.Log.e("EVLINUX", "apply: no ServiceDirectory ${it.message}") }
+            .getOrNull() ?: return
+        storage = runCatching { ctx.require(PluginStorage.Key) }
+            .onFailure { android.util.Log.e("EVLINUX", "apply: no PluginStorage ${it.message}") }
+            .getOrNull()
+        android.util.Log.e("EVLINUX", "apply: storage=${storage != null}")
         rootfsUrl = storage?.read(URL_FILE)?.decodeToString()?.trim()?.takeIf { it.isNotEmpty() } ?: DEFAULT_URL
         timeoutSeconds = storage?.read(TIMEOUT_FILE)?.decodeToString()?.trim()?.toIntOrNull() ?: 60
 
-        val registry = directory.lookup(ToolRegistry.Key) ?: return
+        val registry = directory.lookup(ToolRegistry.Key)
+        android.util.Log.e("EVLINUX", "apply: registry=${registry != null}")
+        if (registry == null) return
         val root = Rootfs(storage)
         registry.register(
             PLUGIN_ID,
@@ -101,6 +109,7 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
                 RunTool(root, timeout = { timeoutSeconds }),
             ),
         )
+        android.util.Log.e("EVLINUX", "apply: tools registered")
         effect.collect { registry.unregister(PLUGIN_ID) }
     }
 
@@ -138,15 +147,19 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
             name = "linux_setup",
             description = "下载并解压根文件系统。参数 url 可省略，省略时用插件配置里的地址。",
             parametersJson = """
-                {"type":"object","properties":{"url":{"type":"string","description":"rootfs tar.xz/tar.gz 地址"}},"additionalProperties":false}
+                {"type":"object","properties":{"url":{"type":"string","description":"rootfs tar.xz/tar.gz 地址"},"file":{"type":"string","description":"已下载到本机的归档路径（应用没有外网时用这个）"}},"additionalProperties":false}
             """.trimIndent(),
             dangerous = true,
         )
 
         override suspend fun invoke(argumentsJson: String): String {
-            val url = runCatching { JSONObject(argumentsJson).optString("url") }.getOrNull()
-                ?.takeIf { it.isNotBlank() }
-                ?: urlOf()
+            val args = runCatching { JSONObject(argumentsJson) }.getOrNull()
+            val local = args?.optString("file")?.takeIf { it.isNotBlank() }
+            if (local != null) {
+                return runCatching { root.installFromFile(java.io.File(local)) }
+                    .getOrElse { errorJson("导入失败：${it.message ?: it::class.simpleName}") }
+            }
+            val url = args?.optString("url")?.takeIf { it.isNotBlank() } ?: urlOf()
             if (url.isBlank()) return errorJson("没有可用的下载地址：请在插件配置里填写，或把 url 参数传进来。")
             onUrl(url)
             return runCatching { root.install(url) }
@@ -223,6 +236,26 @@ internal class Rootfs(private val storage: PluginStorage?) {
      * Download goes to a sibling file first and extraction happens only when the download finished,
      * so an interrupted transfer cannot leave a half-populated rootfs that looks installed.
      */
+    /** Untars [archive] into the root directory and reports what came out. */
+    private fun extract(archive: java.io.File): Map<String, Any> {
+        val target = directory()
+        target.mkdirs()
+        val name = archive.name.lowercase()
+        val flag = when {
+            name.endsWith(".tar.xz") || name.endsWith(".txz") -> "-xJf"
+            name.endsWith(".tar.gz") || name.endsWith(".tgz") -> "-xzf"
+            else -> "-xf"
+        }
+        val (_, err, code) = execRaw("tar $flag '${archive.absolutePath}' -C '${target.absolutePath}'", 900)
+        val ok = code == 0 && isInstalled()
+        return mapOf(
+            "installed" to ok,
+            "path" to target.absolutePath,
+            "error" to if (code != 0) "解压失败（退出码 $code）：${err.take(400)}" else "",
+            "hint" to if (ok) "可以调用 linux_run 了。" else "没找到 /bin/bash：确认归档本身就是根文件系统。",
+        )
+    }
+
     fun install(url: String): String {
         val target = directory()
         target.mkdirs()
@@ -252,25 +285,16 @@ internal class Rootfs(private val storage: PluginStorage?) {
             error("下载失败：只收到 ${archive.length()} 字节，链路中断或地址不可达")
         }
         val bytes = archive.length()
-        val extract = when {
-            url.endsWith(".tar.xz") || url.endsWith(".txz") -> "-xJf"
-            url.endsWith(".tar.gz") || url.endsWith(".tgz") -> "-xzf"
-            else -> "-xf"
-        }
-        val (out, err, code) = execRaw("tar $extract '${archive.absolutePath}' -C '${target.absolutePath}'", 600)
-        if (code != 0) {
-            archive.delete()
-            error("解压失败（退出码 $code）：${err.take(400)}")
-        }
-        archive.delete()
-        val ok = isInstalled()
-        return JSONObject()
-            .put("installed", ok)
+        val result = extract(archive)
+        return JSONObject(result)
             .put("bytes_downloaded", bytes)
-            .put("path", target.absolutePath)
-            .put("stdout", out.take(400))
-            .put("hint", if (ok) "可以调用 linux_run 了。" else "解压完成但没找到 /bin/bash：确认这个归档是根文件系统，而不是一层目录。")
             .toString()
+    }
+
+    /** Extracts an archive the user already has on disk. Same steps as the download path after transfer. */
+    fun installFromFile(archive: java.io.File): String {
+        require(archive.isFile) { "文件不存在：${archive.absolutePath}" }
+        return JSONObject(extract(archive)).toString()
     }
 
     fun run(command: String, timeoutSeconds: Int): String {
