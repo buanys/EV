@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -35,12 +37,23 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.skydoves.cloudy.cloudy
+import com.skydoves.cloudy.rememberSky
+import com.skydoves.cloudy.sky
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
 /** Which edge a slide-over panel comes from. Menus use End, navigation uses Start. */
 enum class EvDrawerSide { Start, End }
+
+/**
+ * The backdrop captured for glass surfaces, provided by [EvDrawerScaffold].
+ *
+ * A floating surface cannot capture "what is behind me" on its own; the container that owns both
+ * layers has to do it. Null means "no backdrop here", and glass degrades to an opaque surface.
+ */
+val LocalEvSky = staticCompositionLocalOf<com.skydoves.cloudy.Sky?> { null }
 
 object EvDrawerDefaults {
     /** 78% of the screen, never wider than 320dp (spec §7.4). */
@@ -89,6 +102,24 @@ fun EvDrawerScaffold(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val drawerWidth = minOf(screenWidth * EvDrawerDefaults.WidthFraction, EvDrawerDefaults.MaxWidth)
     val widthPx = with(density) { drawerWidth.toPx() }
+    // Backdrop blur: the content behind the panel is the source, the panel is the glass.
+    // The appearance toggle doubles as the performance escape hatch for weak devices.
+    val blurEnabled = LocalBlurEnabled.current
+    val glass = EvThemeTokens.glass
+    val sky = rememberSky()
+    val blurRadius = with(density) { glass.blurRadius.toPx() }
+    val panelShape = if (fromEnd) {
+        RoundedCornerShape(
+            topStart = EvThemeTokens.radii.large,
+            bottomStart = EvThemeTokens.radii.large,
+        )
+    } else {
+        RoundedCornerShape(
+            topEnd = EvThemeTokens.radii.large,
+            bottomEnd = EvThemeTokens.radii.large,
+        )
+    }
+    val glassTint = tokens.surface1.copy(alpha = glass.tintAlpha)
     val scope = rememberCoroutineScope()
 
     val progress = remember { Animatable(if (open) 1f else 0f) }
@@ -126,14 +157,16 @@ fun EvDrawerScaffold(
     Box(Modifier.fillMaxSize()) {
         // Content layer: recedes slightly as the drawer covers it, giving the pair real depth.
         Box(
-            Modifier.fillMaxSize().graphicsLayer {
+            Modifier.fillMaxSize().sky(sky).graphicsLayer {
                 val scale = 1f - 0.06f * p
                 scaleX = scale
                 scaleY = scale
                 translationX = widthPx * 0.06f * p * (if (fromEnd) -1f else 1f)
             },
         ) {
-            content()
+            CompositionLocalProvider(LocalEvSky provides sky) {
+                content()
+            }
         }
 
         if (p > 0.001f || open) {
@@ -155,33 +188,18 @@ fun EvDrawerScaffold(
                     .offset {
                         IntOffset((widthPx * (1f - p) * (if (fromEnd) 1f else -1f)).roundToInt(), 0)
                     }
-                    .clip(
-                        if (fromEnd) {
-                            RoundedCornerShape(
-                                topStart = EvThemeTokens.radii.large,
-                                bottomStart = EvThemeTokens.radii.large,
-                            )
-                        } else {
-                            RoundedCornerShape(
-                                topEnd = EvThemeTokens.radii.large,
-                                bottomEnd = EvThemeTokens.radii.large,
-                            )
-                        },
+                    .clip(panelShape)
+                    // The blurred copy of the page, tinted and clipped to the panel's own shape.
+                    .cloudy(
+                        sky = sky,
+                        radius = (blurRadius * p).roundToInt().coerceAtLeast(0),
+                        tint = glassTint,
+                        shape = panelShape,
+                        enabled = blurEnabled && p > 0.01f,
                     )
-                    .background(tokens.surface1)
-                    .evFloatingSurface(
-                        if (fromEnd) {
-                            RoundedCornerShape(
-                                topStart = EvThemeTokens.radii.large,
-                                bottomStart = EvThemeTokens.radii.large,
-                            )
-                        } else {
-                            RoundedCornerShape(
-                                topEnd = EvThemeTokens.radii.large,
-                                bottomEnd = EvThemeTokens.radii.large,
-                            )
-                        },
-                    )
+                    // Without blur the panel must stay readable: fall back to the opaque surface.
+                    .background(if (blurEnabled) Color.Transparent else tokens.surface1)
+                    .evFloatingSurface(panelShape)
                     .pointerInput(widthPx) {
                         var tracker = VelocityTracker()
                         detectHorizontalDragGestures(

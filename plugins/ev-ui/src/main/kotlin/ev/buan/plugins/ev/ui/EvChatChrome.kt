@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import ev.buan.plugins.ev.ui.ui.ellipsize
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
-import ev.buan.ui.evFloatingSurface
+import ev.buan.ui.evGlassFloating
 import ev.buan.ui.EvIcons
 import ev.buan.ui.EvThemeTokens
 import top.yukonga.miuix.kmp.basic.Icon
@@ -47,8 +47,7 @@ internal fun EvModelDetailCard(
         modifier
             .widthIn(min = 220.dp, max = 280.dp)
             .clip(EvThemeTokens.radii.largeShape)
-            .background(tokens.surface2)
-            .evFloatingSurface(EvThemeTokens.radii.largeShape)
+            .evGlassFloating(EvThemeTokens.radii.largeShape)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(

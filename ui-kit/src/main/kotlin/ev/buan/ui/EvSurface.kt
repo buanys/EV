@@ -6,12 +6,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.background
+import com.skydoves.cloudy.cloudy
+import com.skydoves.cloudy.sky
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -82,6 +86,35 @@ fun Modifier.evFloatingSurface(shape: Shape): Modifier {
  * The spring is the same `snappy` one every button uses, so a tap and a page change feel like the
  * same interface.
  */
+/**
+ * A floating surface made of glass: the captured backdrop, blurred, tinted and clipped to [shape].
+ *
+ * Degrades in two ways, both deliberate: no backdrop (a page that is not under a scaffold) or the
+ * blur setting turned off renders an opaque surface, so the surface never becomes unreadable and a
+ * weak device can opt out of the per-frame cost.
+ */
+@Composable
+fun Modifier.evGlassFloating(shape: Shape): Modifier {
+    val sky = LocalEvSky.current
+    val enabled = LocalBlurEnabled.current
+    val glass = EvThemeTokens.glass
+    val tokens = EvThemeTokens.colors
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    if (sky == null || !enabled) {
+        return this.background(tokens.surface2, shape).evHairline(glass.borderAlpha, shape)
+    }
+    val radius = with(density) { glass.blurRadius.toPx() }.toInt()
+    return this
+        .clip(shape)
+        .cloudy(
+            sky = sky,
+            radius = radius,
+            tint = tokens.surface2.copy(alpha = glass.tintAlpha),
+            shape = shape,
+        )
+        .evFloatingSurface(shape)
+}
+
 @Composable
 fun Modifier.evPressable(
     enabled: Boolean = true,
@@ -106,4 +139,46 @@ fun Modifier.evPressable(
             enabled = enabled,
             onClick = onClick,
         )
+}
+
+/**
+ * A captured backdrop, handed to a plugin without exposing the glass library's types.
+ *
+ * The owning screen marks the scrolling content with [evBackdropSource] and paints each surface that
+ * floats above it with [evGlassOver]. Cloudy's Sky stays an implementation detail of ui-kit, so a
+ * plugin compiles against this module and never against the blur dependency.
+ */
+@Stable
+class EvBackdrop internal constructor(internal val sky: com.skydoves.cloudy.Sky)
+
+/** Creates the capture slot for one screen. One per screen, shared by everything that floats. */
+@Composable
+fun rememberEvBackdrop(): EvBackdrop = EvBackdrop(com.skydoves.cloudy.rememberSky())
+
+/** Marks the content that sits *behind* glass surfaces; it is the thing that gets blurred. */
+@Composable
+fun Modifier.evBackdropSource(backdrop: EvBackdrop): Modifier =
+    if (LocalBlurEnabled.current) this.sky(backdrop.sky)
+    else this
+
+/** Paints [shape] as glass over an [EvBackdrop]; opaque when blur is off. */
+@Composable
+fun Modifier.evGlassOver(backdrop: EvBackdrop, shape: Shape): Modifier {
+    val enabled = LocalBlurEnabled.current
+    val glass = EvThemeTokens.glass
+    val tokens = EvThemeTokens.colors
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    if (!enabled) {
+        return this.background(tokens.surface2, shape).evHairline(glass.borderAlpha, shape)
+    }
+    val radius = with(density) { glass.blurRadius.toPx() }.toInt()
+    return this
+        .clip(shape)
+        .cloudy(
+            sky = backdrop.sky,
+            radius = radius,
+            tint = tokens.surface2.copy(alpha = glass.tintAlpha),
+            shape = shape,
+        )
+        .evFloatingSurface(shape)
 }

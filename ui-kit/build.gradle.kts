@@ -30,6 +30,10 @@ dependencies {
     api("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
     api("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
 
+    // Blur / glass effects. Backdrop blur + liquid-glass refraction need AGSL (Android 33+),
+    // which the device runs; the library falls back on its own for older API levels.
+    implementation("com.github.skydoves:cloudy:1.0.0-alpha01")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.20")
 }
