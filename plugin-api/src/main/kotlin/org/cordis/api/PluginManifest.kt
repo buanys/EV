@@ -91,7 +91,31 @@ interface PluginCatalogService {
 
     fun manifestOf(id: String): PluginManifest?
 
+    /**
+     * A configuration value as the plugin currently understands it. Defaults keep the interface
+     * source-compatible for any other implementation (contract rule: additions carry defaults).
+     */
+    fun readSetting(id: String, key: String): String? = null
+
+    /** Writes a value back through the plugin that declared it. No-op by default. */
+    fun writeSetting(id: String, key: String, value: String) {}
+
     companion object {
         val Key = ServiceKey<PluginCatalogService>("host/plugin-catalog")
     }
+}
+
+/**
+ * Read and write the configuration a plugin declared in [PluginManifest.settings].
+ *
+ * A plugin implements this when it wants its settings to be editable from the host UI. The host
+ * calls in with the key it showed; the plugin owns the meaning and the storage, so a setting the
+ * plugin ignores simply does not change anything.
+ */
+interface PluginSettings {
+    /** Current value, or null to show the declared default. */
+    fun read(key: String): String?
+
+    /** Persists and applies a new value. Called on the UI thread; keep it quick. */
+    fun write(key: String, value: String)
 }

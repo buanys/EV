@@ -173,6 +173,9 @@ class HostRuntime(private val context: AndroidContext) {
 
     /** Declarations plugins made about themselves; empty until each one activates. */
     private val pluginManifests = ConcurrentHashMap<String, org.cordis.api.PluginManifest>()
+
+    /** Settings handlers, for the plugins that let the host change their configuration. */
+    private val pluginSettings = ConcurrentHashMap<String, org.cordis.api.PluginSettings>()
     private val failures = linkedMapOf<String, String>()
     private var syncErrors: List<String> = emptyList()
     private var pendingUnsigned: List<PendingUnsigned> = emptyList()
@@ -279,7 +282,7 @@ class HostRuntime(private val context: AndroidContext) {
             directory.publish(org.cordis.api.ThemeCatalogService.Key, HostThemeCatalog(directory))
             directory.publish(
                 org.cordis.api.PluginCatalogService.Key,
-                HostPluginCatalog { pluginManifests.values },
+                HostPluginCatalog({ pluginManifests.values }, { pluginSettings[it] }),
             )
             serviceDirectory = directory
             directoryHandle = cordis.provide(ServiceDirectory.Key, directory)
@@ -696,6 +699,7 @@ class HostRuntime(private val context: AndroidContext) {
                 ?: error("入口 ${plugin.entryClass} 未实现 org.cordis.Plugin")
             // A declaration is recorded before the plugin can fail later: the point of the manifest
             // is to describe the container, and it stays true even if the plugin then throws.
+            (instance as? org.cordis.api.PluginSettings)?.let { pluginSettings[plugin.id] = it }
             (instance as? org.cordis.api.ManifestProvider)?.manifest?.let { declared ->
                 if (declared.id == plugin.id) pluginManifests[plugin.id] = declared
             }

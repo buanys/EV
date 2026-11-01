@@ -22,12 +22,12 @@ import org.cordis.dependencies
  * gate before any command runs. Root is never a default capability: with the UI disabled the
  * calls fail closed, and this plugin holds no approval logic of its own.
  */
-class AgentShellPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+class AgentShellPlugin : Plugin<Unit>, AgentSurface, org.cordis.api.ManifestProvider, org.cordis.api.PluginSettings {
     override val name = "agent-shell"
     override val title = "agent Shell"
     override val body = "run_shell：经 su 执行 root 命令。高危工具，每次执行都需人工审批；授权记录见插件管理页。"
 
-    override val inject: Dependencies = dependencies(ServiceDirectory.Key)
+    override val inject: Dependencies = dependencies(ServiceDirectory.Key, org.cordis.api.PluginStorage.Key)
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
@@ -37,7 +37,14 @@ class AgentShellPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
             // it degrades to "no tools" instead of crashing the host.
             return
         }
-        registry.register(PLUGIN_ID, ShellTools.all(ProbingShellRunner()))
+        storage = ctx.require(org.cordis.api.PluginStorage.Key)
+        // The saved value is read once at activation; the tool asks for it per call, so a change
+        // made in settings applies to the next command instead of the next process.
+        defaultTimeout = runCatching {
+            storage?.read(TIMEOUT_FILE)?.decodeToString()?.trim()?.toIntOrNull()
+        }.getOrNull()?.coerceIn(1, ShellTools.MAX_TIMEOUT_SECONDS)
+            ?: ShellTools.DEFAULT_TIMEOUT_SECONDS
+        registry.register(PLUGIN_ID, ShellTools.all(ProbingShellRunner()) { defaultTimeout })
         // Identity is unnecessary here (unregister is owner-scoped): even a stale disposer can
         // only remove this plugin's own group, which is exactly what disposal means.
         effect.collect {
@@ -45,7 +52,24 @@ class AgentShellPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
         }
     }
 
+    private var storage: org.cordis.api.PluginStorage? = null
+    private var defaultTimeout: Int = ShellTools.DEFAULT_TIMEOUT_SECONDS
+
+    override fun read(key: String): String? =
+        when (key) {
+            "timeout" -> defaultTimeout.toString()
+            else -> null
+        }
+
+    override fun write(key: String, value: String) {
+        if (key != "timeout") return
+        val seconds = value.trim().toIntOrNull()?.coerceIn(1, ShellTools.MAX_TIMEOUT_SECONDS) ?: return
+        defaultTimeout = seconds
+        runCatching { storage?.atomicWrite(TIMEOUT_FILE, seconds.toString().encodeToByteArray()) }
+    }
+
     private companion object {
+        const val TIMEOUT_FILE = "settings/timeout.txt"
         const val PLUGIN_ID = "ev.buan.plugins.agent.shell"
     }
 
@@ -71,8 +95,8 @@ class AgentShellPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
                 key = "timeout",
                 title = "默认超时",
                 kind = org.cordis.api.PluginSetting.Kind.TEXT,
-                description = "单条命令的最长运行时间。",
-                value = "30 秒",
+                description = "单条命令的最长运行时间，1 到 120 秒。",
+                value = "30",
             ),
         ),
     )

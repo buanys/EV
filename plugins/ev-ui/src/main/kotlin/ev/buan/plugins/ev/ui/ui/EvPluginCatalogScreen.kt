@@ -25,8 +25,17 @@ import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsGroup
 import ev.buan.ui.EvSettingsRow
 import ev.buan.ui.EvSettingsSection
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.window.Dialog
+import ev.buan.ui.EvSettingsTrailing
 import ev.buan.ui.EvThemeTokens
 import org.cordis.api.PluginCapability
+import org.cordis.api.PluginCatalogService
 import org.cordis.api.PluginManifest
 import org.cordis.api.PluginSetting
 
@@ -39,14 +48,15 @@ import org.cordis.api.PluginSetting
  */
 @Composable
 fun EvPluginCatalogScreen(
-    manifests: List<PluginManifest>,
+    catalog: PluginCatalogService?,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val manifests = catalog?.manifests().orEmpty()
     var selected by remember { mutableStateOf<PluginManifest?>(null) }
     val detail = selected
     if (detail != null) {
-        PluginDetail(detail, onBack = { selected = null }, modifier = modifier)
+        PluginDetail(detail, catalog, onBack = { selected = null }, modifier = modifier)
         return
     }
 
@@ -88,10 +98,21 @@ fun EvPluginCatalogScreen(
 @Composable
 private fun PluginDetail(
     manifest: PluginManifest,
+    catalog: PluginCatalogService?,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tokens = EvThemeTokens.colors
+    // Values live in the plugin, so they are read on entry and after every write instead of being
+    // copied into the declaration.
+    var revision by remember { mutableStateOf(0) }
+    val values = remember(manifest.id, revision) {
+        manifest.settings.associate { it.key to (catalog?.readSetting(manifest.id, it.key) ?: it.value) }
+    }
+    val write: (String, String) -> Unit = { key, value ->
+        catalog?.writeSetting(manifest.id, key, value)
+        revision += 1
+    }
     EvPage(
         title = manifest.name,
         subtitle = "${manifest.version} · ${manifest.id}",
@@ -144,7 +165,13 @@ private fun PluginDetail(
             item {
                 EvSettingsSection("配置项")
                 EvSettingsGroup {
-                    manifest.settings.forEach { setting -> SettingRow(setting) }
+                    manifest.settings.forEach { setting ->
+                        SettingRow(
+                            setting = setting,
+                            value = values[setting.key] ?: setting.value,
+                            onWrite = { written -> write(setting.key, written) },
+                        )
+                    }
                 }
             }
         }
@@ -178,29 +205,129 @@ private fun CapabilityRow(capability: PluginCapability) {
 }
 
 @Composable
-private fun SettingRow(setting: PluginSetting) {
+private fun SettingRow(
+    setting: PluginSetting,
+    value: String,
+    onWrite: (String) -> Unit,
+) {
     val tokens = EvThemeTokens.colors
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = setting.title,
-                style = EvThemeTokens.type.body.style(tokens.textPrimary),
+    var editing by remember { mutableStateOf(false) }
+
+    when (setting.kind) {
+        PluginSetting.Kind.BOOLEAN -> EvSettingsRow(
+            title = setting.title,
+            glyph = EvGlyphKind.Info,
+            summary = setting.description,
+            trailing = EvSettingsTrailing.Switch,
+            checked = value.equals("true", ignoreCase = true),
+            onCheckedChange = { onWrite(it.toString()) },
+        )
+
+        PluginSetting.Kind.ACTION -> EvSettingsRow(
+            title = setting.title,
+            glyph = EvGlyphKind.Sparkle,
+            summary = setting.description,
+            onClick = { onWrite("") },
+        )
+
+        // TEXT and SELECT share one editor: a value you can see, change and save.
+        else -> {
+            EvSettingsRow(
+                title = setting.title,
+                glyph = EvGlyphKind.Create,
+                summary = if (value.isBlank()) setting.description else "$value${if (setting.description.isBlank()) "" else " · ${setting.description}"}",
+                onClick = { editing = true },
             )
-            if (setting.description.isNotBlank()) {
-                Text(
-                    text = setting.description,
-                    style = EvThemeTokens.type.caption.style(tokens.textTertiary),
+            if (editing) {
+                ValueDialog(
+                    title = setting.title,
+                    options = if (setting.kind == PluginSetting.Kind.SELECT) setting.options else emptyList(),
+                    initial = value,
+                    onDismiss = { editing = false },
+                    onConfirm = { written ->
+                        editing = false
+                        onWrite(written)
+                    },
                 )
             }
         }
-        if (setting.value.isNotBlank()) {
-            Text(
-                text = setting.value,
-                style = EvThemeTokens.type.label.style(tokens.textSecondary),
-            )
+    }
+}
+
+/** One editor for both text and a fixed option list; both end in "save this value". */
+@Composable
+private fun ValueDialog(
+    title: String,
+    options: List<String>,
+    initial: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val tokens = EvThemeTokens.colors
+    var text by remember { mutableStateOf(initial) }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(EvThemeTokens.radii.large))
+                .background(tokens.surface2)
+                .padding(20.dp),
+        ) {
+            Text(text = title, style = EvThemeTokens.type.title.style(tokens.textPrimary))
+            Spacer(Modifier.height(12.dp))
+            if (options.isEmpty()) {
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    textStyle = EvThemeTokens.type.body.style(tokens.textPrimary),
+                    cursorBrush = SolidColor(tokens.accent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
+                        .background(tokens.surface1)
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                )
+            } else {
+                options.forEach { option ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
+                            .clickable { text = option }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = option,
+                            style = EvThemeTokens.type.body.style(
+                                if (option == text) tokens.textPrimary else tokens.textSecondary,
+                            ),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(
+                    text = "取消",
+                    style = EvThemeTokens.type.label.style(tokens.textSecondary),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
+                        .clickable(onClick = onDismiss)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "保存",
+                    style = EvThemeTokens.type.label.style(tokens.onAccent),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
+                        .background(tokens.accent)
+                        .clickable { onConfirm(text) }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                )
+            }
         }
     }
 }

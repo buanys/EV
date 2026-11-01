@@ -497,9 +497,18 @@ public interface org.cordis.api.PluginCatalogService {
     descriptor: ()Ljava/util/List;
   public abstract org.cordis.api.PluginManifest manifestOf(java.lang.String);
     descriptor: (Ljava/lang/String;)Lorg/cordis/api/PluginManifest;
+  public default java.lang.String readSetting(java.lang.String, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+  public default void writeSetting(java.lang.String, java.lang.String, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 public final class org.cordis.api.PluginCatalogService$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.PluginCatalogService> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.PluginCatalogService$DefaultImpls {
+  public static java.lang.String readSetting(org.cordis.api.PluginCatalogService, java.lang.String, java.lang.String);
+    descriptor: (Lorg/cordis/api/PluginCatalogService;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+  public static void writeSetting(org.cordis.api.PluginCatalogService, java.lang.String, java.lang.String, java.lang.String);
+    descriptor: (Lorg/cordis/api/PluginCatalogService;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 public final class org.cordis.api.PluginInstallRequest {
   public static final int $stable;
     descriptor: I
@@ -682,6 +691,11 @@ public final class org.cordis.api.PluginSetting$Kind extends java.lang.Enum<org.
     descriptor: (Ljava/lang/String;)Lorg/cordis/api/PluginSetting$Kind;
   public static kotlin.enums.EnumEntries<org.cordis.api.PluginSetting$Kind> getEntries();
     descriptor: ()Lkotlin/enums/EnumEntries;
+public interface org.cordis.api.PluginSettings {
+  public abstract java.lang.String read(java.lang.String);
+    descriptor: (Ljava/lang/String;)Ljava/lang/String;
+  public abstract void write(java.lang.String, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;)V
 public interface org.cordis.api.PluginStorage {
   public static final org.cordis.api.PluginStorage$Companion Companion;
     descriptor: Lorg/cordis/api/PluginStorage$Companion;

@@ -24,7 +24,12 @@ internal object ShellTools {
     /** Hard ceiling: no model turn gets to park a command for longer than this. */
     const val MAX_TIMEOUT_SECONDS = 120
 
-    fun all(runner: ShellRunner): List<Tool> = listOf(RunShellTool(runner))
+    /**
+     * @param defaultTimeoutSeconds read per call, so a value changed in settings applies to the next
+     *   command rather than to the next process.
+     */
+    fun all(runner: ShellRunner, defaultTimeoutSeconds: () -> Int = { DEFAULT_TIMEOUT_SECONDS }): List<Tool> =
+        listOf(RunShellTool(runner, defaultTimeoutSeconds))
 
     val runShellSpec: ToolSpec = ToolSpec(
         name = "run_shell",
@@ -36,7 +41,10 @@ internal object ShellTools {
         dangerous = true,
     )
 
-    private class RunShellTool(private val runner: ShellRunner) : Tool {
+    private class RunShellTool(
+        private val runner: ShellRunner,
+        private val defaultTimeoutSeconds: () -> Int,
+    ) : Tool {
         override val spec: ToolSpec = runShellSpec
 
         override suspend fun invoke(argumentsJson: String): String {
@@ -44,7 +52,8 @@ internal object ShellTools {
                 ?: return errorJson("请求体不是合法 JSON")
             val command = arguments.optString("command", "").trim()
             if (command.isEmpty()) return errorJson("缺少 command 参数")
-            val requested = arguments.optInt("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
+            val fallback = runCatching { defaultTimeoutSeconds() }.getOrDefault(DEFAULT_TIMEOUT_SECONDS)
+            val requested = arguments.optInt("timeout_seconds", fallback)
             val timeoutSeconds = requested.coerceIn(1, MAX_TIMEOUT_SECONDS)
 
             val result = try {
