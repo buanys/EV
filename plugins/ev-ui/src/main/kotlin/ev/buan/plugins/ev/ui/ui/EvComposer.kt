@@ -1,5 +1,9 @@
 package ev.buan.plugins.ev.ui.ui
 
+import ev.buan.ui.evGlassLayer
+import ev.buan.ui.evHairline
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvMotionTokens
@@ -27,6 +31,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -56,6 +61,13 @@ object EvComposerDefaults {
     val RestingRadius = 28.dp
     val SidePadding = 16.dp
     val ActionSize = 36.dp
+
+    /** Space held for the model chip at the end of the text field. */
+    val ModelChipMax = 110.dp
+
+    /** One picker row; the sheet is sized in multiples of it. */
+    val SheetRow = 56.dp
+    val ModelChipReserve = 116.dp
     val ActionGlyph = 17.dp
     /** The "+" is drawn one notch smaller: a cross fills its box, a mic does not. */
     val PlusGlyph = 16.dp
@@ -118,6 +130,8 @@ fun EvComposer(
     onMic: (() -> Unit)? = null,
     /** Current model, shown as a chip left of the mic; null hides it. */
     modelName: String? = null,
+    /** When false the caller paints the background (glass); the field only draws its content. */
+    opaque: Boolean = true,
     onModelClick: () -> Unit = {},
     busy: Boolean = false,
     onStop: () -> Unit = {},
@@ -174,12 +188,14 @@ fun EvComposer(
     )
     val safeSideInset = sideInset.coerceAtLeast(0.dp)
     val safeToolbarReserve = toolbarReserve.coerceAtLeast(0.dp)
+    // Width the model chip occupies at the end of the field, so the text stops before it.
+    val modelReserve = if (modelName != null) EvComposerDefaults.ModelChipReserve else 0.dp
 
     Box(
         modifier.fillMaxWidth()
             .padding(horizontal = EvComposerDefaults.SidePadding, vertical = 10.dp)
             .clip(RoundedCornerShape(radius))
-            .background(containerColor),
+            .then(if (opaque) Modifier.background(containerColor) else Modifier),
     ) {
         Column(
             Modifier
@@ -191,7 +207,7 @@ fun EvComposer(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = fieldMinHeight, max = EvComposerDefaults.FieldMaxActive)
-                    .padding(start = safeSideInset, end = safeSideInset),
+                    .padding(start = safeSideInset, end = safeSideInset + modelReserve),
                 contentAlignment = if (active) Alignment.TopStart else Alignment.CenterStart,
             ) {
                 if (value.isEmpty()) {
@@ -222,9 +238,8 @@ fun EvComposer(
             modifier = Modifier.align(Alignment.TopStart).offset(x = 2.dp, y = actionDrop),
         )
         // The model lives next to the mic, not in the top bar: it is a property of what you are
-        // about to send, so it belongs where you send from. Hidden while the field is expanded,
-        // where the same strip of pixels is the text you are typing.
-        if (modelName != null && !active) {
+        // about to send, so it belongs where you send from - collapsed or expanded.
+        if (modelName != null) {
             ModelChip(
                 name = modelName,
                 onClick = onModelClick,
@@ -255,6 +270,7 @@ private fun ModelChip(name: String, onClick: () -> Unit, modifier: Modifier = Mo
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .height(EvComposerDefaults.ActionSize)
+            .widthIn(max = EvComposerDefaults.ModelChipMax)
             .clip(CircleShape)
             .background(tokens.surface3)
             .clickable(onClickLabel = "切换模型", onClick = onClick)
@@ -389,14 +405,16 @@ fun EvModelSheet(
     modifier: Modifier = Modifier,
 ) {
     val tokens = EvThemeTokens.colors
+    // Five and a half rows: enough to see there is more, short enough to leave the conversation
+    // visible. A picker that covers the screen is a page, not a sheet.
+    val maxHeight = EvComposerDefaults.SheetRow * 5.5f
     Column(
         modifier
             .fillMaxWidth()
             .padding(horizontal = EvComposerDefaults.SidePadding)
-            .padding(bottom = 4.dp)
-            .clip(RoundedCornerShape(EvThemeTokens.radii.large))
-            .background(tokens.surface2)
-            .padding(vertical = 6.dp),
+            .padding(bottom = 8.dp)
+            .heightIn(max = maxHeight)
+            .verticalScroll(rememberScrollState()),
     ) {
         if (models.isEmpty()) {
             Text(
@@ -446,9 +464,7 @@ fun EvComposerPanel(
             .fillMaxWidth()
             .padding(horizontal = EvComposerDefaults.SidePadding)
             .padding(bottom = 4.dp)
-            .clip(RoundedCornerShape(EvThemeTokens.radii.large))
-            .background(tokens.surface2)
-            .padding(vertical = 16.dp),
+            .padding(vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         actions.forEach { action ->

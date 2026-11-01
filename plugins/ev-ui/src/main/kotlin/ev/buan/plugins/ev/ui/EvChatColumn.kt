@@ -216,47 +216,38 @@ internal fun EvChatColumn(
             }
         }
 
-        // 3) Composer: same arrangement - glass underneath, controls on top.
+        // 3) Composer: the area owns its own glass (only the field, not the panels above it).
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            Box(
-                Modifier.matchParentSize().evGlassLayer(
-                    RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                ),
+            EvComposerArea(
+                modelName = currentModel,
+                models = availableModels,
+                modelSheetOpen = ui.modelSheetOpen,
+                onModelClick = {
+                    keyboard?.hide()
+                    ui.plusPanelOpen = false
+                    ui.modelSheetOpen = !ui.modelSheetOpen
+                },
+                onPickModel = { name ->
+                    ui.modelSheetOpen = false
+                    onPickModel(name)
+                },
+                draft = ui.draft,
+                onDraftChange = { ui.draft = it },
+                onSend = { chat.send(ui.draft) },
+                placeholder = placeholder,
+                busy = replying,
+                onStop = { chat.stopReply() },
+                plusActive = ui.plusPanelOpen,
+                onPlus = {
+                    if (!ui.plusPanelOpen) keyboard?.hide()
+                    ui.plusPanelOpen = !ui.plusPanelOpen
+                },
+                onFocusChange = { focused -> if (focused) ui.plusPanelOpen = false },
+                onOpenBrowser = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Browser) },
+                onOpenTools = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Tools) },
+                onOpenCharacters = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Characters) },
+                onOpenSkills = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Skills) },
             )
-            Column {
-                EvComposerArea(
-                    modelName = currentModel,
-                    models = availableModels,
-                    modelSheetOpen = ui.modelSheetOpen,
-                    onModelClick = {
-                        keyboard?.hide()
-                        ui.plusPanelOpen = false
-                        ui.modelSheetOpen = !ui.modelSheetOpen
-                    },
-                    onPickModel = { name ->
-                        ui.modelSheetOpen = false
-                        onPickModel(name)
-                    },
-                    draft = ui.draft,
-                    onDraftChange = { ui.draft = it },
-                    onSend = { chat.send(ui.draft) },
-                    // Placeholder rotates per conversation, not per recomposition (spec §7.3).
-                    placeholder = placeholder,
-                    busy = replying,
-                    onStop = { chat.stopReply() },
-                    plusActive = ui.plusPanelOpen,
-                    // Opening the panel trades the keyboard for it - they never share the screen.
-                    onPlus = {
-                        if (!ui.plusPanelOpen) keyboard?.hide()
-                        ui.plusPanelOpen = !ui.plusPanelOpen
-                    },
-                    onFocusChange = { focused -> if (focused) ui.plusPanelOpen = false },
-                    onOpenBrowser = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Browser) },
-                    onOpenTools = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Tools) },
-                    onOpenCharacters = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Characters) },
-                    onOpenSkills = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Skills) },
-                )
-            }
         }
     }
 }

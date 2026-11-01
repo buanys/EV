@@ -1,5 +1,12 @@
 package ev.buan.plugins.ev.ui
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import ev.buan.ui.evGlassLayer
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -24,24 +31,15 @@ import ev.buan.ui.EvThemeTokens
  * tap goes, it only reports it, which is what let the surface lose its layout code.
  */
 @Composable
-internal fun EvComposerArea(
-    draft: String,
-    onDraftChange: (String) -> Unit,
-    onSend: () -> Unit,
-    placeholder: String,
-    busy: Boolean,
-    onStop: () -> Unit,
+private fun EvComposerPanels(
     plusActive: Boolean,
-    onPlus: () -> Unit,
-    onFocusChange: (Boolean) -> Unit,
     onOpenBrowser: () -> Unit,
     onOpenTools: () -> Unit,
     onOpenCharacters: () -> Unit,
     onOpenSkills: () -> Unit,
-    modelName: String?,
-    models: List<String>,
     modelSheetOpen: Boolean,
-    onModelClick: () -> Unit,
+    models: List<String>,
+    modelName: String?,
     onPickModel: (String) -> Unit,
 ) {
     androidx.compose.animation.AnimatedVisibility(
@@ -72,7 +70,52 @@ internal fun EvComposerArea(
         EvModelSheet(models = models, current = modelName, onPick = onPickModel)
     }
 
-    EvComposer(
+}
+
+@Composable
+internal fun EvComposerArea(
+    draft: String,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    placeholder: String,
+    busy: Boolean,
+    onStop: () -> Unit,
+    plusActive: Boolean,
+    onPlus: () -> Unit,
+    onFocusChange: (Boolean) -> Unit,
+    onOpenBrowser: () -> Unit,
+    onOpenTools: () -> Unit,
+    onOpenCharacters: () -> Unit,
+    onOpenSkills: () -> Unit,
+    modelName: String?,
+    models: List<String>,
+    modelSheetOpen: Boolean,
+    onModelClick: () -> Unit,
+    onPickModel: (String) -> Unit,
+) {
+    // One sheet, not three cards: the glass wraps the panels and the field together, so an open
+    // panel reads as the composer growing rather than as a second surface landing on top of it.
+    val sheetShape = RoundedCornerShape(
+        topStart = EvThemeTokens.radii.large,
+        topEnd = EvThemeTokens.radii.large,
+        bottomStart = EvThemeTokens.radii.large,
+        bottomEnd = EvThemeTokens.radii.large,
+    )
+    Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
+        Box(Modifier.matchParentSize().evGlassLayer(sheetShape))
+        Column {
+            EvComposerPanels(
+                plusActive = plusActive,
+                onOpenBrowser = onOpenBrowser,
+                onOpenTools = onOpenTools,
+                onOpenCharacters = onOpenCharacters,
+                onOpenSkills = onOpenSkills,
+                modelSheetOpen = modelSheetOpen,
+                models = models,
+                modelName = modelName,
+                onPickModel = onPickModel,
+            )
+            EvComposer(
         value = draft,
         onValueChange = onDraftChange,
         onSend = onSend,
@@ -83,7 +126,10 @@ internal fun EvComposerArea(
         onPlus = onPlus,
         onFocusChange = onFocusChange,
         modelName = modelName,
+        opaque = false,
         onModelClick = onModelClick,
-        modifier = Modifier.imePadding(),
-    )
+            modifier = Modifier.imePadding(),
+        )
+        }
+    }
 }
