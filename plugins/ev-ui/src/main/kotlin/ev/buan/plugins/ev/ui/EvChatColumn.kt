@@ -6,7 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.shape.RoundedCornerShape
-import ev.buan.ui.evGlassFloating
+import ev.buan.ui.evGlassLayer
 import ev.buan.ui.evGlassOver
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -130,9 +130,11 @@ internal fun EvChatColumn(
             }
         }
 
-        // 2) Top bar: glass over the conversation.
+        // 2) Top bar: the glass is its own layer so the bar's content never depends on the blur
+        // having captured a frame yet.
         Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
-            Column(Modifier.evGlassFloating(RectangleShape)) {
+            Box(Modifier.matchParentSize().evGlassLayer(RectangleShape))
+            Column {
                 if (isRoot) {
                     // Live lookup per composition: the capsule mirrors whatever provider the
                     // contract resolves as current.
@@ -189,9 +191,14 @@ internal fun EvChatColumn(
             }
         }
 
-        // 3) Composer: glass over the conversation.
+        // 3) Composer: same arrangement - glass underneath, controls on top.
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            Column(Modifier.evGlassFloating(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))) {
+            Box(
+                Modifier.matchParentSize().evGlassLayer(
+                    RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                ),
+            )
+            Column {
                 EvComposerArea(
                     draft = ui.draft,
                     onDraftChange = { ui.draft = it },

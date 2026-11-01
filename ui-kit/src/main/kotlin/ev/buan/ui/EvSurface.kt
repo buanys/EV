@@ -161,6 +161,31 @@ fun Modifier.evBackdropSource(backdrop: EvBackdrop): Modifier =
     if (LocalBlurEnabled.current) this.sky(backdrop.sky)
     else this
 
+/**
+ * A glass *background* layer: paint it behind normal content instead of wrapping the content.
+ *
+ * The blur needs a captured frame, and until the first one arrives it draws nothing. Wrapping
+ * content in it therefore makes the whole surface vanish for that first frame - which reads as
+ * "the bar only appears after I tap something". Painting it as a separate layer keeps the content
+ * visible at all times and lets the blur arrive a frame later.
+ */
+@Composable
+fun Modifier.evGlassLayer(shape: Shape): Modifier {
+    val sky = LocalEvSky.current
+    val enabled = LocalBlurEnabled.current
+    val glass = EvThemeTokens.glass
+    val tokens = EvThemeTokens.colors
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // Always paint the tint: it is what makes the surface readable before the first capture.
+    val base = this.background(tokens.surface1.copy(alpha = glass.tintAlpha), shape)
+    if (!enabled) return base.evHairline(glass.borderAlpha, shape)
+    if (sky == null) return base.evFloatingSurface(shape)
+    val radius = with(density) { glass.blurRadius.toPx() }.toInt()
+    return base
+        .cloudy(sky = sky, radius = radius, shape = shape)
+        .evFloatingSurface(shape)
+}
+
 /** Paints [shape] as glass over an [EvBackdrop]; opaque when blur is off. */
 @Composable
 fun Modifier.evGlassOver(backdrop: EvBackdrop, shape: Shape): Modifier {
