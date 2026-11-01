@@ -215,8 +215,8 @@ public final class ev.buan.ui.EvDrawerItem {
   public boolean equals(java.lang.Object);
     descriptor: (Ljava/lang/Object;)Z
 public final class ev.buan.ui.EvDrawerKt {
-  public static final void EvDrawerScaffold(boolean, kotlin.jvm.functions.Function0<kotlin.Unit>, kotlin.jvm.functions.Function3<? super androidx.compose.foundation.layout.ColumnScope, ? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, kotlin.jvm.functions.Function2<? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, androidx.compose.runtime.Composer, int);
-    descriptor: (ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V
+  public static final void EvDrawerScaffold(boolean, kotlin.jvm.functions.Function0<kotlin.Unit>, kotlin.jvm.functions.Function3<? super androidx.compose.foundation.layout.ColumnScope, ? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, kotlin.jvm.functions.Function2<? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, ev.buan.ui.EvDrawerSide, androidx.compose.runtime.Composer, int, int);
+    descriptor: (ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function2;Lev/buan/ui/EvDrawerSide;Landroidx/compose/runtime/Composer;II)V
   public static final void EvDrawerHeader(java.lang.String, java.lang.String, kotlin.jvm.functions.Function0<kotlin.Unit>, androidx.compose.runtime.Composer, int);
     descriptor: (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;I)V
   public static final void EvDrawerNavItem(ev.buan.ui.EvDrawerItem, androidx.compose.runtime.Composer, int);
@@ -227,6 +227,17 @@ public final class ev.buan.ui.EvDrawerKt {
     descriptor: (Ljava/util/List;Landroidx/compose/runtime/Composer;I)V
   public static final void EvDrawerFooter(java.lang.String, kotlin.jvm.functions.Function0<kotlin.Unit>, kotlin.jvm.functions.Function0<kotlin.Unit>, androidx.compose.runtime.Composer, int);
     descriptor: (Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;I)V
+public final class ev.buan.ui.EvDrawerSide extends java.lang.Enum<ev.buan.ui.EvDrawerSide> {
+  public static final ev.buan.ui.EvDrawerSide Start;
+    descriptor: Lev/buan/ui/EvDrawerSide;
+  public static final ev.buan.ui.EvDrawerSide End;
+    descriptor: Lev/buan/ui/EvDrawerSide;
+  public static ev.buan.ui.EvDrawerSide[] values();
+    descriptor: ()[Lev/buan/ui/EvDrawerSide;
+  public static ev.buan.ui.EvDrawerSide valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lev/buan/ui/EvDrawerSide;
+  public static kotlin.enums.EnumEntries<ev.buan.ui.EvDrawerSide> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
 public final class ev.buan.ui.EvEmptyStateKt {
   public static final void EvEmptyState(java.lang.String, java.lang.String, androidx.compose.ui.Modifier, ev.buan.ui.EvGlyphKind, kotlin.jvm.functions.Function2<? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
     descriptor: (Ljava/lang/String;Ljava/lang/String;Landroidx/compose/ui/Modifier;Lev/buan/ui/EvGlyphKind;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V

@@ -19,6 +19,9 @@ internal sealed interface EvPage {
 
     data object Tools : EvPage
     data object Browser : EvPage
+
+    /** A shell that runs commands directly, without a conversation. */
+    data object Terminal : EvPage
     data object Memory : EvPage
     data object Characters : EvPage
     data object Skills : EvPage

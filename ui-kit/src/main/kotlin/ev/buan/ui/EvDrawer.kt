@@ -39,6 +39,9 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
+/** Which edge a slide-over panel comes from. Menus use End, navigation uses Start. */
+enum class EvDrawerSide { Start, End }
+
 object EvDrawerDefaults {
     /** 78% of the screen, never wider than 320dp (spec §7.4). */
     const val WidthFraction = 0.78f
@@ -76,7 +79,10 @@ fun EvDrawerScaffold(
     onClose: () -> Unit,
     drawer: @Composable ColumnScope.() -> Unit,
     content: @Composable () -> Unit,
+    /** Edge the panel slides in from. The right-hand menu mirrors the drawer's physics. */
+    side: EvDrawerSide = EvDrawerSide.Start,
 ) {
+    val fromEnd = side == EvDrawerSide.End
     val tokens = EvThemeTokens.colors
     val reduced = EvThemeTokens.reducedMotion
     val density = LocalDensity.current
@@ -124,7 +130,7 @@ fun EvDrawerScaffold(
                 val scale = 1f - 0.06f * p
                 scaleX = scale
                 scaleY = scale
-                translationX = widthPx * 0.06f * p
+                translationX = widthPx * 0.06f * p * (if (fromEnd) -1f else 1f)
             },
         ) {
             content()
@@ -143,12 +149,21 @@ fun EvDrawerScaffold(
                 Modifier
                     .fillMaxHeight()
                     .width(drawerWidth)
-                    .offset { IntOffset((-widthPx * (1f - p)).roundToInt(), 0) }
+                    .offset {
+                        IntOffset((widthPx * (1f - p) * (if (fromEnd) 1f else -1f)).roundToInt(), 0)
+                    }
                     .clip(
-                        RoundedCornerShape(
-                            topEnd = EvThemeTokens.radii.large,
-                            bottomEnd = EvThemeTokens.radii.large,
-                        ),
+                        if (fromEnd) {
+                            RoundedCornerShape(
+                                topStart = EvThemeTokens.radii.large,
+                                bottomStart = EvThemeTokens.radii.large,
+                            )
+                        } else {
+                            RoundedCornerShape(
+                                topEnd = EvThemeTokens.radii.large,
+                                bottomEnd = EvThemeTokens.radii.large,
+                            )
+                        },
                     )
                     .background(tokens.surface1)
                     .pointerInput(widthPx) {
@@ -158,7 +173,8 @@ fun EvDrawerScaffold(
                             onHorizontalDrag = { change, dragAmount ->
                                 change.consume()
                                 tracker.addPosition(change.uptimeMillis, change.position)
-                                if (dragAmount < 0 || progress.value < 1f) {
+                                val closingDrag = if (fromEnd) dragAmount > 0 else dragAmount < 0
+                                if (closingDrag || progress.value < 1f) {
                                     // Full drawer width made every drag feel heavy: 50dp of finger
                                     // travel only moved progress by ~0.16. A gain above 1 restores
                                     // the "it follows my thumb" feel without changing the travel.

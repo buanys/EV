@@ -54,6 +54,8 @@ internal fun EvChatColumn(
     placeholder: String,
     suggestions: List<EvSuggestion>,
     onOpenSettings: () -> Unit,
+    /** Opens the right-hand quick menu. */
+    onOpenMore: () -> Unit,
     onOpenSettingsSection: (SettingsChild) -> Unit,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -88,7 +90,8 @@ internal fun EvChatColumn(
                 onNewChat = { chat.newChat(); keyboard?.hide(); ui.drawerOpen = false; ui.searching = false; ui.searchQuery = "" },
                 onMore = {
                     keyboard?.hide()
-                    onOpenSettings()
+                    ui.modelCardOpen = false
+                    onOpenMore()
                 },
             )
         } else {

@@ -31,6 +31,9 @@ internal class EvChatUiState {
     var searchQuery by mutableStateOf("")
 
     /** The composer's `+` panel and the top bar's model card: both close on any outside tap. */
+    /** The right-hand quick menu (终端 / 浏览器 / …). */
+    var moreMenuOpen by mutableStateOf(false)
+
     var plusPanelOpen by mutableStateOf(false)
     var modelCardOpen by mutableStateOf(false)
 

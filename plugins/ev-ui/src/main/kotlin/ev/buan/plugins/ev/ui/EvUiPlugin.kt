@@ -51,6 +51,8 @@ import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.ev.ui.ui.EvBrowserScreen
 import ev.buan.plugins.ev.ui.ui.EvCharactersScreen
+import ev.buan.plugins.ev.ui.ui.EvMoreMenuPanel
+import ev.buan.plugins.ev.ui.ui.EvTerminalScreen
 import ev.buan.plugins.ev.ui.ui.EvThemePickerScreen
 import ev.buan.plugins.ev.ui.ui.EvDrawerContent
 import ev.buan.plugins.ev.ui.ui.ellipsize
@@ -72,6 +74,7 @@ import ev.buan.plugins.ev.ui.ui.EvHomeHero
 import ev.buan.plugins.ev.ui.ui.EvSuggestion
 import ev.buan.plugins.ev.ui.ui.EvTypingIndicator
 import ev.buan.ui.EvDrawerScaffold
+import ev.buan.ui.EvDrawerSide
 import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvIcons
@@ -292,8 +295,13 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         // host activities: the system back button has to return to the conversation instead of leaving
         // the chat (or the app). The browser panel installs its own handler: it must walk the page
         // history first.
-        BackHandler(enabled = ui.pages.isOpen) {
+        BackHandler(enabled = ui.pages.isOpen || ui.moreMenuOpen) {
             keyboard?.hide()
+            if (ui.moreMenuOpen) {
+                // The quick menu is a transient surface: back closes it before it pops a page.
+                ui.moreMenuOpen = false
+                return@BackHandler
+            }
             // One pop, always: a second-level settings page returns to the settings root, and the
             // root returns to the conversation. The browser installs its own handler deeper in the
             // tree, so back walks page history before it ever reaches this one.
@@ -489,6 +497,16 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                 return
             }
 
+            EvPage.Terminal -> {
+                // Same tool registry the agent uses: here a human types the command, not a model.
+                EvTerminalScreen(
+                    registry = { directory?.lookup(ToolRegistry.Key) },
+                    onBack = { ui.pages.pop() },
+                    modifier = modifier,
+                )
+                return
+            }
+
             EvPage.Memory -> {
                 // The memory plugin may be enabled, disabled or reconfigured while the page is open:
                 // the service is looked up on every read, and the panel has a refresh action.
@@ -557,29 +575,56 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
                     openSettingsSection = { section -> openSettings(section) },
                 )
             },
-        ) {
-            EvChatColumn(
-                modifier = modifier,
-                isRoot = isRoot,
-                pageTitle = pageTitle,
-                onHost = onHost,
-                directory = directory,
-                activeSession = activeSession,
-                sessions = sessions,
-                chat = chat,
-                ui = ui,
-                listState = listState,
-                workExpansion = workExpansion,
-                approvalPending = approvalGate.pending.isNotEmpty(),
-                // Placeholder rotates per conversation, not per recomposition (spec §7.3).
-                placeholder = ComposerPlaceholders[
-                    Math.floorMod(activeSession.id.hashCode(), ComposerPlaceholders.size)
-                ],
-                suggestions = Suggestions,
-                onOpenSettings = { openSettings() },
-                onOpenSettingsSection = { section -> openSettings(section) },
-            )
-        }
+            content = {
+                // The quick menu is the same kind of surface as the drawer, from the other edge, so
+                // it reuses the same scaffold instead of growing a second animation implementation.
+                EvDrawerScaffold(
+                    open = ui.moreMenuOpen,
+                    onClose = { ui.moreMenuOpen = false },
+                    side = EvDrawerSide.End,
+                    drawer = {
+                        EvMoreMenuPanel(
+                            onTerminal = {
+                                ui.moreMenuOpen = false
+                                ui.pages.push(EvPage.Terminal)
+                            },
+                            onBrowser = {
+                                ui.moreMenuOpen = false
+                                ui.pages.push(EvPage.Browser)
+                            },
+                            // Two tiles are deliberately empty: the grid is 2 x 2 so adding the
+                            // third and fourth tool does not reshape it.
+                            onPlaceholderOne = {},
+                            onPlaceholderTwo = {},
+                        )
+                    },
+                    content = {
+                        EvChatColumn(
+                            modifier = modifier,
+                            isRoot = isRoot,
+                            pageTitle = pageTitle,
+                            onHost = onHost,
+                            directory = directory,
+                            activeSession = activeSession,
+                            sessions = sessions,
+                            chat = chat,
+                            ui = ui,
+                            listState = listState,
+                            workExpansion = workExpansion,
+                            approvalPending = approvalGate.pending.isNotEmpty(),
+                            // Placeholder rotates per conversation, not per recomposition (spec §7.3).
+                            placeholder = ComposerPlaceholders[
+                                Math.floorMod(activeSession.id.hashCode(), ComposerPlaceholders.size)
+                            ],
+                            suggestions = Suggestions,
+                            onOpenSettings = { openSettings() },
+                            onOpenSettingsSection = { section -> openSettings(section) },
+                            onOpenMore = { ui.moreMenuOpen = true },
+                        )
+                    },
+                )
+            },
+        )
     }
 
     private companion object {
