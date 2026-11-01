@@ -83,7 +83,7 @@ tasks.register("bundlePlugin") {
               "entryClass": "ev.buan.plugins.linux.LinuxPlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.api", "ev.buan.plugins.agent.tools"],
-              "permissions": ["ROOT_SHELL"]
+              "permissions": ["ROOT_SHELL", "PLUGIN_STORAGE"]
             }
         """.trimIndent()
         File(pluginDist.get().asFile, "linux.json").writeText(metadata)

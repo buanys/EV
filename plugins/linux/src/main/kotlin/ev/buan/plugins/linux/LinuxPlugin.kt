@@ -51,8 +51,8 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
                 key = "url",
                 title = "根文件系统地址",
                 kind = PluginSetting.Kind.TEXT,
-                description = "Debian 13 arm64 rootfs 的 tar.xz 或 tar.gz 地址；留空则只用已安装的环境。",
-                value = "",
+                description = "Debian 13 arm64 rootfs 的 tar.xz / tar.gz 地址；默认用 proot-distro 的 trixie 镜像。",
+                value = DEFAULT_URL,
             ),
             PluginSetting(
                 key = "timeout",
@@ -66,7 +66,7 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
     )
 
     private var storage: PluginStorage? = null
-    private var rootfsUrl: String = ""
+    private var rootfsUrl: String = DEFAULT_URL
     private var timeoutSeconds: Int = 60
 
     override fun read(key: String): String? = when (key) {
@@ -88,7 +88,7 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
         storage = ctx.require(PluginStorage.Key)
-        rootfsUrl = storage?.read(URL_FILE)?.decodeToString()?.trim().orEmpty()
+        rootfsUrl = storage?.read(URL_FILE)?.decodeToString()?.trim()?.takeIf { it.isNotEmpty() } ?: DEFAULT_URL
         timeoutSeconds = storage?.read(TIMEOUT_FILE)?.decodeToString()?.trim()?.toIntOrNull() ?: 60
 
         val registry = directory.lookup(ToolRegistry.Key) ?: return
@@ -176,6 +176,15 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
     private companion object {
         const val PLUGIN_ID = "ev.buan.plugins.linux"
         const val URL_FILE = "settings/rootfs-url.txt"
+
+        /**
+         * Debian 13 (trixie) arm64 rootfs from the proot-distro release assets, ~34 MB.
+         *
+         * Chosen because it is a plain tar.xz of a minimal Debian userland and it is versioned, so the
+         * same URL keeps working. The mirror stays a setting: this is a default, not a policy.
+         */
+        const val DEFAULT_URL =
+            "https://github.com/termux/proot-distro/releases/download/v4.29.0/debian-trixie-aarch64-pd-v4.29.0.tar.xz"
         const val TIMEOUT_FILE = "settings/timeout.txt"
 
         fun errorJson(message: String): String = JSONObject().put("error", message).toString()
@@ -218,14 +227,29 @@ internal class Rootfs(private val storage: PluginStorage?) {
         val target = directory()
         target.mkdirs()
         val archive = File(target.parentFile, "rootfs.download")
-        archive.delete()
-        val connection = java.net.URI(url).toURL().openConnection().apply {
-            connectTimeout = 20_000
-            readTimeout = 60_000
-            setRequestProperty("User-Agent", "EV-linux-plugin")
+        // Resume, because a 34 MB transfer over a phone link gets cut and "start over" is not
+        // something the user can act on. Three attempts, each continuing from the current size.
+        var attempt = 0
+        while (attempt < 3) {
+            attempt += 1
+            val have = if (archive.exists()) archive.length() else 0L
+            val connection = java.net.URI(url).toURL().openConnection().apply {
+                connectTimeout = 20_000
+                readTimeout = 120_000
+                setRequestProperty("User-Agent", "EV-linux-plugin")
+                if (have > 0) setRequestProperty("Range", "bytes=$have-")
+            }
+            val ok = runCatching {
+                connection.getInputStream().use { input ->
+                    java.io.FileOutputStream(archive, have > 0).use { output ->
+                        input.copyTo(output, 1 shl 16)
+                    }
+                }
+            }.isSuccess
+            if (ok) break
         }
-        connection.getInputStream().use { input ->
-            archive.outputStream().use { output -> input.copyTo(output, 1 shl 16) }
+        if (!archive.exists() || archive.length() < 4096) {
+            error("下载失败：只收到 ${archive.length()} 字节，链路中断或地址不可达")
         }
         val bytes = archive.length()
         val extract = when {
