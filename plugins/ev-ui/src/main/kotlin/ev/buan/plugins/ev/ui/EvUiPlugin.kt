@@ -409,8 +409,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage {
         ) { page ->
             when (page) {
         // Conversation.
-        null -> Unit
-
         EvPage.Settings -> {
             // Without the host appearance service the settings page cannot render, so the
             // conversation stays visible rather than showing an empty surface.
