@@ -19,7 +19,20 @@ import org.cordis.dependencies
  * 编译器类只能从**本插件容器的 dex** 里加载——这是宿主的类加载器边界决定的；
  * 载荷里的 jar 是给编译器当 `-classpath` 的文件，两者不是一回事。
  */
-class ForgeCompilerPlugin : Plugin<Unit>, AgentSurface {
+class ForgeCompilerPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.forge.compiler",
+        name = "插件编译器",
+        version = "0.1.0",
+        description = "Kotlin 源码到 dex 的编译链，供插件工坊调用。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("forge/compiler", org.cordis.api.PluginCapability.Kind.SERVICE, "编译源码", "编译并返回 dex 与依赖信息。"),
+        ),
+    )
+
     override val name = "forge-compiler"
     override val title = "锻造工具链"
     override val body = "设备端 Kotlin 编译器与 d8（重载荷，按需启用）"

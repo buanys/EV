@@ -22,7 +22,20 @@ import org.cordis.dependencies
  * 两者都可能是"这一秒不在"的状态（插件被停用、宿主版本旧），所以都是可选查询：
  * 拿不到就如实回一句"未启用/不支持"，而不是让整颗插件起不来。
  */
-class AgentForgePlugin : Plugin<Unit>, AgentSurface {
+class AgentForgePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.forge",
+        name = "插件工坊",
+        version = "0.1.0",
+        description = "在设备上编译并安装插件：源码到 dex 到容器，全在本机完成。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("forge", org.cordis.api.PluginCapability.Kind.TOOL, "编译插件", "把一份源码编译成可安装的容器。"),
+        ),
+    )
+
     override val name = "forge"
     override val title = "锻造"
     override val body = "让 agent 在手机上编译并安装自己的插件（编译器在 forge-compiler 里，按需启用）"

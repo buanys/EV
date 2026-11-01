@@ -20,7 +20,21 @@ import org.cordis.dependencies
  * so the owner can type it into the browser. Root is not involved — this plugin asks only for
  * NETWORK and its own storage.
  */
-class AgentWebPlugin : Plugin<Unit>, AgentSurface {
+class AgentWebPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.web",
+        name = "网页抓取",
+        version = "0.1.0",
+        description = "HTTP 抓取与正文提取，不渲染 JS。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("fetch", org.cordis.api.PluginCapability.Kind.TOOL, "抓取 URL", "返回状态码、正文与内容类型。"),
+        ),
+        permissions = listOf("android.permission.INTERNET"),
+    )
+
     override val name = "agent-web"
     override val title = "agent Web 控制台"
     override val body = "局域网 Web 门面：聊天 + 工具审批（v1）。端口 ${WebConsoleServer.DEFAULT_PORT}，令牌见存储区 web/token.txt。"

@@ -30,7 +30,25 @@ import org.cordis.dependencies
  * HTTP calls and `PLUGIN_STORAGE` for the document - both declared in the container metadata, so
  * activation is gated until the user grants them (ADR-0003).
  */
-class AgentModelPlugin : Plugin<Unit>, AgentSurface {
+class AgentModelPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.model",
+        name = "模型服务",
+        version = "0.1.0",
+        description = "OpenAI 兼容的模型调用：provider、Key、模型清单都在这里。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("agent/model", org.cordis.api.PluginCapability.Kind.SERVICE, "提供模型调用", "complete() 跑一次补全，供 agent-brain 使用。"),
+            org.cordis.api.PluginCapability("agent/model-providers", org.cordis.api.PluginCapability.Kind.SERVICE, "管理 provider", "地址、Key、模型列表的读写与连通性测试。"),
+        ),
+        permissions = listOf("android.permission.INTERNET"),
+        settings = listOf(
+            org.cordis.api.PluginSetting("provider", "当前 provider", org.cordis.api.PluginSetting.Kind.TEXT, "模型请求发往哪里。"),
+        ),
+    )
+
     override val name = "agent-model"
     override val title = "模型服务"
     override val body = "OpenAI 兼容的多提供商模型层；提供商、模型与选中项存储在宿主的用户数据区，不随插件卸载或重装丢失。"

@@ -20,7 +20,22 @@ import org.cordis.dependencies
  *
  * 后者是关键：宁可让模型看到"这一页需要渲染但渲染不可用"，也不要让它以为网页就是空的。
  */
-class AgentBrowsePlugin : Plugin<Unit>, AgentSurface {
+class AgentBrowsePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.browse",
+        name = "浏览器",
+        version = "0.1.0",
+        description = "让模型开网页、读页面、点东西。界面里的浏览器面板也用它。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("browser", org.cordis.api.PluginCapability.Kind.UI, "内置浏览器面板"),
+            org.cordis.api.PluginCapability("browse_page", org.cordis.api.PluginCapability.Kind.TOOL, "抓取网页内容", "取正文文本，供模型阅读。"),
+        ),
+        permissions = listOf("android.permission.INTERNET"),
+    )
+
     override val name = "agent-browse"
     override val title = "联网搜索"
     override val body = "web_search 搜索网页、web_fetch 读页面正文；需要 JS 的页面自动交给离屏浏览器。"

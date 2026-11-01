@@ -20,7 +20,21 @@ import org.cordis.dependencies
  * declares no permissions. The lookups happen per call (see [CapabilityProvider]) and the directory
  * retract on dispose keeps a disabled brain from leaving a stale service behind.
  */
-class AgentBrainPlugin : Plugin<Unit>, AgentSurface {
+class AgentBrainPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.brain",
+        name = "Agent 主循环",
+        version = "0.1.0",
+        description = "把对话变成行动：规划、调工具、收尾，带预算和进度事件。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("agent", org.cordis.api.PluginCapability.Kind.SERVICE, "运行一轮对话", "接收消息与工具清单，产出回复与事件流。"),
+            org.cordis.api.PluginCapability("agent/progress", org.cordis.api.PluginCapability.Kind.SERVICE, "进度事件", "把中间步骤同步给界面。"),
+        ),
+    )
+
     override val name = "agent-brain"
     override val title = "对话大脑"
     override val body = "组合 agent-model / agent-tools / agent-memory；缺失的依赖按未连接或纯文本降级。"

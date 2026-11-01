@@ -18,7 +18,20 @@ import org.cordis.dependencies
  * A Cordis service would make every consumer a hard dependency and leave it waiting while this
  * plugin is disabled; the directory is a lookup, so an agent degrades to stateless instead.
  */
-class AgentMemoryPlugin : Plugin<Unit>, AgentSurface {
+class AgentMemoryPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.memory",
+        name = "记忆",
+        version = "0.1.0",
+        description = "按会话保存事实，下次对话时取回；不是把整段聊天塞进上下文。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("agent/memory", org.cordis.api.PluginCapability.Kind.SERVICE, "读写记忆", "按会话存一条事实，按相关度取回。"),
+        ),
+    )
+
     override val name = "agent-memory"
     override val title = "agent 记忆"
     override val body = "会话记忆按 JSON 存在宿主的用户数据区，发布为 MemoryService。"

@@ -21,7 +21,21 @@ import org.json.JSONObject
  * 2. 全流校验一次，把 ERROR 级违规记进日志（`logcat`），不写进事件流——
  *    校验发现的违规要不要入流、由谁写，属于判定层的职责，这里不自作主张地写。
  */
-class AgentLogPlugin : Plugin<Unit>, AgentSurface {
+class AgentLogPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+    /**
+     * What this container gives the app, stated here rather than discovered by reading its code.
+     */
+    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
+        id = "ev.buan.plugins.agent.log",
+        name = "审计日志",
+        version = "0.1.0",
+        description = "记录谁在什么时候做了什么：工具调用、审批决定、插件启停。",
+        capabilities = listOf(
+            org.cordis.api.PluginCapability("agent/log", org.cordis.api.PluginCapability.Kind.SERVICE, "写入审计事件"),
+            org.cordis.api.PluginCapability("audit", org.cordis.api.PluginCapability.Kind.BACKGROUND, "保留审计记录", "按容量滚动，供事后追查。"),
+        ),
+    )
+
     override val name = "agent-log"
     override val title = "agent 事件流"
     override val body = "append-only 事件日志：回放、校验、崩溃恢复。所有 agent 行为的真相源。"
