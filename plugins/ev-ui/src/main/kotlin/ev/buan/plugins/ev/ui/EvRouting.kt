@@ -31,6 +31,9 @@ internal sealed interface EvPage {
 
     /** The capability catalog: what every installed plugin declared about itself. */
     data object Plugins : EvPage
+
+    /** The Debian environment: status, rootfs URL, install. */
+    data object Linux : EvPage
 }
 
 /** The second-level settings rows. Values are stable ids; labels live in the settings screen. */

@@ -51,6 +51,7 @@ import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.ev.ui.ui.EvBrowserScreen
 import ev.buan.plugins.ev.ui.ui.EvCharactersScreen
+import ev.buan.plugins.ev.ui.ui.EvLinuxScreen
 import ev.buan.plugins.ev.ui.ui.EvMoreMenuPanel
 import ev.buan.plugins.ev.ui.ui.EvTerminalScreen
 import ev.buan.plugins.ev.ui.ui.EvThemePickerScreen
@@ -428,6 +429,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     onBack = { ui.pages.pop() },
                     onOpenPlugins = { navigation?.openPluginManager() },
                     onOpenPluginCatalog = { ui.pages.push(EvPage.Plugins) },
+                    onOpenLinux = { ui.pages.push(EvPage.Linux) },
                     onOpenHostSettings = { navigation?.openSettings() },
                     onOpenThemes = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Themes)) },
                     themeName = availableThemes.firstOrNull { it.id == appearanceService.current.themeId }?.name
@@ -546,6 +548,16 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                 },
                 onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
                 onDelete = { characterId -> deleteCharacter(characterId) },
+                modifier = modifier,
+            )
+        }
+
+        EvPage.Linux -> {
+            // A view over the linux plugin: settings through the catalog, actions through the tool bus.
+            EvLinuxScreen(
+                registry = { directory?.lookup(ToolRegistry.Key) },
+                catalog = directory?.lookup(org.cordis.api.PluginCatalogService.Key),
+                onBack = { ui.pages.pop() },
                 modifier = modifier,
             )
         }

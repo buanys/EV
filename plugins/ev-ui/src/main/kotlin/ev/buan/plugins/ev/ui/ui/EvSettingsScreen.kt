@@ -37,6 +37,7 @@ fun EvSettingsScreen(
     onBack: () -> Unit,
     onOpenPlugins: () -> Unit,
     onOpenPluginCatalog: () -> Unit,
+    onOpenLinux: () -> Unit,
     onOpenHostSettings: () -> Unit,
     onOpenModels: () -> Unit,
     onOpenTools: () -> Unit,
@@ -117,6 +118,18 @@ fun EvSettingsScreen(
                     glyph = EvGlyphKind.Skill,
                     summary = "会话的文本指令",
                     onClick = onOpenSkills,
+                )
+            }
+        }
+
+        item { EvSettingsSection("环境") }
+        item {
+            EvSettingsGroup {
+                EvSettingsRow(
+                    title = "Linux 环境",
+                    glyph = EvGlyphKind.Screen,
+                    summary = "Debian 根文件系统：apt、编译器、完整用户态",
+                    onClick = onOpenLinux,
                 )
             }
         }
