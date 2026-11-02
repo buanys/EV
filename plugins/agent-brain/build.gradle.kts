@@ -11,7 +11,7 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = 2
-        versionName = "1.0.2"
+        versionName = "1.0.4"
     }
 
     buildTypes {
@@ -82,7 +82,7 @@ tasks.register("bundlePlugin") {
         val metadata = """
             {
               "id": "ev.buan.plugins.agent.brain",
-              "version": "1.0.2",
+              "version": "1.0.4",
               "entryClass": "ev.buan.plugins.agent.brain.AgentBrainPlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.api"]

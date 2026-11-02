@@ -24,6 +24,23 @@ internal interface ProviderTransport {
     fun get(url: String, headers: Map<String, String>): ProviderResponse
 
     fun post(url: String, headers: Map<String, String>, body: String): ProviderResponse
+
+    /**
+     * POSTs a `stream = true` request and hands each SSE payload to [onData] as it arrives.
+     *
+     * The callback runs on the calling thread, once per `data:` line, before the call returns —
+     * that is the whole point: the caller forwards each piece to the UI. `[DONE]`, blank payloads
+     * and `:` comments are filtered out here so callers only ever see JSON objects.
+     *
+     * A non-2xx answer never streams: the whole error body is read and returned, so the caller can
+     * report `HTTP 401: {...}` the same way the non-streaming path does.
+     */
+    fun postSse(
+        url: String,
+        headers: Map<String, String>,
+        body: String,
+        onData: (String) -> Unit,
+    ): ProviderResponse
 }
 
 /** Thin OkHttp adapter: the client itself belongs to the host, only the request is built here. */
@@ -43,10 +60,40 @@ internal class OkHttpProviderTransport(
                 .build(),
         )
 
-    private fun execute(request: Request): ProviderResponse =
-        client.newCall(request).execute().use { response ->
-            ProviderResponse(code = response.code, body = response.body.string())
+    override fun postSse(
+        url: String,
+        headers: Map<String, String>,
+        body: String,
+        onData: (String) -> Unit,
+    ): ProviderResponse = execute(
+        Request.Builder()
+            .url(url)
+            .apply { headers.forEach(::header) }
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .header("Accept", "text/event-stream")
+            .build(),
+        onData = onData,
+    )
+
+    private fun execute(
+        request: Request,
+        onData: ((String) -> Unit)? = null,
+    ): ProviderResponse = client.newCall(request).execute().use { response ->
+        if (onData == null || !response.isSuccessful) {
+            return ProviderResponse(code = response.code, body = response.body.string())
         }
+        // Read line by line instead of buffering the body: a streamed completion can take minutes,
+        // and the caller needs each piece while it is still being produced.
+        val source = response.body.source()
+        while (true) {
+            val line = source.readUtf8Line() ?: break
+            if (!line.startsWith("data:")) continue
+            val payload = line.removePrefix("data:").trim()
+            if (payload.isEmpty() || payload == "[DONE]") continue
+            onData(payload)
+        }
+        ProviderResponse(code = response.code, body = "")
+    }
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()

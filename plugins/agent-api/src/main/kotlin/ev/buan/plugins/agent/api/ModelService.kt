@@ -25,6 +25,28 @@ interface ModelService {
         tools: List<ToolSpec> = emptyList(),
     ): AgentReply
 
+    /**
+     * Runs one completion and reports text as the model produces it.
+     *
+     * [onDelta] receives the *increments*, not the accumulated text: concatenating every call in
+     * order reproduces [AgentReply.message]'s content. Providers that cannot stream keep working
+     * through the default implementation, which runs [complete] and reports the whole message once -
+     * the caller sees the same reply either way, only later.
+     *
+     * The reply is still returned in full, because the tool protocol needs the finished message
+     * (ids, names, arguments) before the next round can start.
+     */
+    suspend fun completeStreaming(
+        model: ModelRef,
+        messages: List<AgentMessage>,
+        tools: List<ToolSpec> = emptyList(),
+        onDelta: suspend (String) -> Unit,
+    ): AgentReply {
+        val reply = complete(model, messages, tools)
+        reply.message.content.takeIf { it.isNotEmpty() }?.let { onDelta(it) }
+        return reply
+    }
+
     companion object {
         val Key = ServiceKey<ModelService>("agent/model")
     }

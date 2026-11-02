@@ -9,6 +9,9 @@ import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolSpec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -40,53 +43,135 @@ internal class AgentModelService(
         messages: List<AgentMessage>,
         tools: List<ToolSpec>,
     ): AgentReply = withContext(Dispatchers.IO) {
-        // A revoked grant must fail on the next call, not on the next activation (ADR-0003).
+        val target = when (val resolved = targetOf(model)) {
+            is Target.Failed -> return@withContext resolved.reply
+            is Target.Ready -> resolved
+        }
+        val body = try {
+            OpenAiProtocol.requestBody(target.descriptor.id, messages, tools, target.descriptor.parameters)
+        } catch (error: Throwable) {
+            return@withContext errorReply(target.ref, "请求体构造失败：${error.message ?: error::class.simpleName}")
+        }
+        val response = try {
+            transport.post(
+                url = ProviderUrls.chatCompletions(target.provider.baseUrl),
+                headers = ProviderDocuments.requestHeaders(target.provider),
+                body = body,
+            )
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (error: Throwable) {
+            return@withContext errorReply(target.ref, "网络错误：${error.message ?: error::class.simpleName}")
+        }
+        if (response.code !in 200..299) {
+            return@withContext errorReply(
+                target.ref,
+                "HTTP ${response.code}：${response.body.take(MAX_ERROR_BODY)}",
+            )
+        }
+        try {
+            OpenAiProtocol.parseReply(response.body, target.ref)
+        } catch (failure: OpenAiFailure) {
+            errorReply(target.ref, failure.message ?: "模型接口返回错误")
+        }
+    }
+
+    /**
+     * Streaming sibling of [complete].
+     *
+     * Same provider resolution and the same failure replies; the difference is that text reaches
+     * [onDelta] while the server is still producing it. Deltas are pumped through a channel rather
+     * than called from the transport callback: the callback runs on the OkHttp thread, and a
+     * `FlowCollector.emit` must happen in the collector's coroutine.
+     *
+     * The finished [AgentReply] is still returned whole - the tool protocol needs ids and complete
+     * argument JSON before the next round can start.
+     */
+    override suspend fun completeStreaming(
+        model: ModelRef,
+        messages: List<AgentMessage>,
+        tools: List<ToolSpec>,
+        onDelta: suspend (String) -> Unit,
+    ): AgentReply = withContext(Dispatchers.IO) {
+        val target = when (val resolved = targetOf(model)) {
+            is Target.Failed -> return@withContext resolved.reply
+            is Target.Ready -> resolved
+        }
+        val body = try {
+            OpenAiProtocol.streamRequestBody(target.descriptor.id, messages, tools, target.descriptor.parameters)
+        } catch (error: Throwable) {
+            return@withContext errorReply(target.ref, "请求体构造失败：${error.message ?: error::class.simpleName}")
+        }
+        val stream = OpenAiStream(target.ref)
+        coroutineScope {
+            val deltas = Channel<String>(Channel.UNLIMITED)
+            val pump = launch { for (delta in deltas) onDelta(delta) }
+            val response = try {
+                transport.postSse(
+                    url = ProviderUrls.chatCompletions(target.provider.baseUrl),
+                    headers = ProviderDocuments.requestHeaders(target.provider),
+                    body = body,
+                ) { payload -> stream.feed(payload)?.let(deltas::trySend) }
+            } catch (cancel: CancellationException) {
+                deltas.close()
+                pump.cancel()
+                throw cancel
+            } catch (failure: OpenAiFailure) {
+                deltas.close()
+                pump.join()
+                return@coroutineScope errorReply(target.ref, failure.message ?: "模型接口返回错误")
+            } catch (error: Throwable) {
+                deltas.close()
+                pump.join()
+                return@coroutineScope errorReply(target.ref, "网络错误：${error.message ?: error::class.simpleName}")
+            }
+            deltas.close()
+            pump.join()
+            if (response.code !in 200..299) {
+                errorReply(target.ref, "HTTP ${response.code}：${response.body.take(MAX_ERROR_BODY)}")
+            } else {
+                stream.reply()
+            }
+        }
+    }
+
+    private sealed interface Target {
+        data class Ready(
+            val provider: ev.buan.plugins.agent.api.ModelProvider,
+            val descriptor: ev.buan.plugins.agent.api.ModelDescriptor,
+            val ref: ModelRef,
+        ) : Target
+
+        data class Failed(val reply: AgentReply) : Target
+    }
+
+    /** Provider lookup shared by both call paths, so their failure text cannot drift apart. */
+    private suspend fun targetOf(model: ModelRef): Target {
         network.ensure()
         val providers = try {
             repository.load()
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Throwable) {
-            return@withContext errorReply(model, "读取模型提供商配置失败：${error.message ?: error::class.simpleName}")
+            return Target.Failed(
+                errorReply(model, "读取模型提供商配置失败：${error.message ?: error::class.simpleName}"),
+            )
         }
         val provider = providers.firstOrNull { it.id == model.provider }
-            ?: return@withContext errorReply(model, "未找到模型提供商 ${model.provider}")
+            ?: return Target.Failed(errorReply(model, "未找到模型提供商 ${model.provider}"))
         if (!provider.enabled) {
-            return@withContext errorReply(model, "模型提供商 ${provider.name} 已禁用")
+            return Target.Failed(errorReply(model, "模型提供商 ${provider.name} 已禁用"))
         }
         ProviderDocuments.baseUrlError(provider.baseUrl)?.let { error ->
-            return@withContext errorReply(model, "模型提供商 ${provider.name}：$error")
+            return Target.Failed(errorReply(model, "模型提供商 ${provider.name}：$error"))
         }
         val descriptor = provider.models.firstOrNull { it.id == model.model }
-            ?: return@withContext errorReply(model, "提供商 ${provider.name} 未配置模型 ${model.model}")
-        val resolved = ModelRef(provider = provider.id, model = descriptor.id)
-        val body = try {
-            OpenAiProtocol.requestBody(descriptor.id, messages, tools, descriptor.parameters)
-        } catch (error: Throwable) {
-            return@withContext errorReply(resolved, "请求体构造失败：${error.message ?: error::class.simpleName}")
-        }
-        val response = try {
-            transport.post(
-                url = ProviderUrls.chatCompletions(provider.baseUrl),
-                headers = ProviderDocuments.requestHeaders(provider),
-                body = body,
-            )
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (error: Throwable) {
-            return@withContext errorReply(resolved, "网络错误：${error.message ?: error::class.simpleName}")
-        }
-        if (response.code !in 200..299) {
-            return@withContext errorReply(
-                resolved,
-                "HTTP ${response.code}：${response.body.take(MAX_ERROR_BODY)}",
-            )
-        }
-        try {
-            OpenAiProtocol.parseReply(response.body, resolved)
-        } catch (failure: OpenAiFailure) {
-            errorReply(resolved, failure.message ?: "模型接口返回错误")
-        }
+            ?: return Target.Failed(errorReply(model, "提供商 ${provider.name} 未配置模型 ${model.model}"))
+        return Target.Ready(
+            provider = provider,
+            descriptor = descriptor,
+            ref = ModelRef(provider = provider.id, model = descriptor.id),
+        )
     }
 
     private fun errorReply(model: ModelRef, reason: String): AgentReply {

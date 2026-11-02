@@ -136,6 +136,7 @@ internal fun EvChatColumn(
                         messages = activeSession.messages,
                         listState = listState,
                         liveRounds = chat.liveRounds,
+                        streamingText = chat.streamingText,
                         replying = replying,
                         awaitingModel = chat.awaitingModel,
                         finalizing = chat.finalizing,

@@ -59,6 +59,16 @@ internal class ChatSessionController(
     var finalizing by mutableStateOf(false)
         private set
 
+    /**
+     * The assistant text of the round in flight, as the model writes it.
+     *
+     * Kept apart from [liveRounds] because it is not a step: it is the answer being typed. It is
+     * cleared when the turn settles, and the stored message takes its place — the bubble the user
+     * is reading must not be the source of truth for what happened.
+     */
+    var streamingText by mutableStateOf("")
+        private set
+
     /** Last completed turn's token spend, shown in the model capsule's detail card. */
     var lastTurnTokens by mutableStateOf<Int?>(null)
         private set
@@ -114,6 +124,7 @@ internal class ChatSessionController(
         if (replyingSessionId == sessionId) return
         replyingSessionId = sessionId
         liveRounds = emptyList()
+        streamingText = ""
         awaitingModel = true
         finalizing = false
         val job = scope.launch {
@@ -137,8 +148,17 @@ internal class ChatSessionController(
                         when (progress) {
                             is AgentProgress.RoundStarted -> {
                                 awaitingModel = false
+                                // A new round starts a new answer: the previous round's text
+                                // either became a stored message or was scaffolding around a
+                                // tool call, and either way it must not run into this one.
+                                streamingText = ""
                                 rounds = reduce(rounds, progress)
                                 liveRounds = rounds
+                            }
+
+                            is AgentProgress.TextDelta -> {
+                                awaitingModel = false
+                                streamingText += progress.text
                             }
 
                             is AgentProgress.ToolStarted,
@@ -164,7 +184,12 @@ internal class ChatSessionController(
                                 liveRounds = rounds
                             }
 
-                            is AgentProgress.Done -> finished = progress.reply
+                            is AgentProgress.Done -> {
+                                finished = progress.reply
+                                // The stored message takes over in the same frame; leaving the
+                                // live text would render the answer twice.
+                                streamingText = ""
+                            }
                         }
                     }
                     val reply = finished ?: error("智能体没有返回最终结果")
@@ -197,6 +222,7 @@ internal class ChatSessionController(
             } finally {
                 if (replyingSessionId == sessionId) replyingSessionId = null
                 liveRounds = emptyList()
+                streamingText = ""
                 awaitingModel = false
                 finalizing = false
                 replyJobs.remove(sessionId)

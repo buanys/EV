@@ -40,6 +40,8 @@ internal fun EvMessageList(
     messages: List<ChatMessage>,
     listState: LazyListState,
     liveRounds: List<RoundTrace>,
+    /** Assistant text of the round in flight, growing as the model writes it. */
+    streamingText: String,
     replying: Boolean,
     awaitingModel: Boolean,
     finalizing: Boolean,
@@ -147,9 +149,26 @@ internal fun EvMessageList(
                 )
             }
         }
-        // Dots mean one thing only: the model is thinking. While a tool runs
-        // there is real progress on screen, so they disappear.
-        if (replying && awaitingModel) {
+        // The answer being typed, before it becomes a stored message. It sits after the work
+        // timeline for the same reason the stored layout does: the tool work explains the reply,
+        // so it reads above it.
+        if (streamingText.isNotBlank()) {
+            item(key = "live-text") {
+                EvChatBubble(
+                    text = streamingText,
+                    fromUser = false,
+                    events = emptyList(),
+                    lastInCluster = false,
+                    streaming = true,
+                    onRegenerate = null,
+                    onDelete = null,
+                    modifier = Modifier.padding(top = EvChatDefaults.SwitchSideGap),
+                )
+            }
+        }
+        // Dots mean one thing only: the model is thinking. While a tool runs, or while text is
+        // already appearing, there is real progress on screen, so they disappear.
+        if (replying && awaitingModel && streamingText.isBlank()) {
             item { EvTypingIndicator(label = if (finalizing) "正在总结…" else null) }
         }
     }

@@ -784,11 +784,15 @@ class AgentBrainServiceTest {
                 AgentProgress.ToolFinished::class,
                 AgentProgress.RoundFinished::class,
                 AgentProgress.RoundStarted::class,
+                // Streaming is the normal path now: the answer arrives as a delta before the
+                // round closes, and Done still carries the finished reply.
+                AgentProgress.TextDelta::class,
                 AgentProgress.Done::class,
             ),
             seen.map { it::class },
         )
         assertEquals(StepState.Ok, (seen[2] as AgentProgress.ToolFinished).state)
+        assertEquals("读完了", (seen[5] as AgentProgress.TextDelta).text)
     }
 
     @Test

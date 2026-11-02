@@ -25,7 +25,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -100,13 +100,18 @@ class AgentBrainService internal constructor(
         text: String,
         model: ModelRef?,
         systemPrompt: String?,
-    ): Flow<AgentProgress> = flow {
-        turn(sessionId, text, model, systemPrompt)
+    ): Flow<AgentProgress> = channelFlow {
+        val collector = object : FlowCollector<AgentProgress> {
+            override suspend fun emit(value: AgentProgress) { send(value) }
+        }
+        collector.turn(sessionId, text, model, systemPrompt)
     }.flowOn(Dispatchers.IO)
 
     /**
-     * The loop itself. Every event is emitted from this one coroutine: [flowOn] moves the whole
-     * flow, it does not cross contexts per emission.
+     * The loop itself. Plain `flow` would forbid what streaming needs: text deltas arrive on the
+     * pump coroutine inside [ModelService.completeStreaming], and a `FlowCollector` may only be
+     * driven from the flow's own coroutine. `channelFlow` gives a buffered channel instead, so an
+     * emission from a child coroutine is legal and ordered.
      */
     private suspend fun FlowCollector<AgentProgress>.turn(
         sessionId: String,
@@ -190,7 +195,12 @@ class AgentBrainService internal constructor(
             rounds++
             emit(AgentProgress.RoundStarted(rounds))
             val reply = try {
-                modelService.complete(target, inputs, specs)
+                // Streaming is the default path: deltas reach the UI while the model is still
+                // writing, and a provider that cannot stream degrades to a single delta through
+                // the contract's default implementation.
+                modelService.completeStreaming(target, inputs, specs) { delta ->
+                    emit(AgentProgress.TextDelta(rounds, delta))
+                }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Throwable) {

@@ -45,11 +45,29 @@ internal class RecordingTransport : ProviderTransport {
     var response: ProviderResponse = ProviderResponse(code = 200, body = "{}")
     var failure: Throwable? = null
 
+    /**
+     * Raw SSE payloads to replay for a streaming call; null means "this fake cannot stream", which
+     * makes the streaming path fall back to whatever [response] holds - the same shape a provider
+     * without streaming support produces.
+     */
+    var sseEvents: List<String>? = null
+
     override fun get(url: String, headers: Map<String, String>): ProviderResponse =
         record(RecordedHttpRequest("GET", url, headers, null))
 
     override fun post(url: String, headers: Map<String, String>, body: String): ProviderResponse =
         record(RecordedHttpRequest("POST", url, headers, body))
+
+    override fun postSse(
+        url: String,
+        headers: Map<String, String>,
+        body: String,
+        onData: (String) -> Unit,
+    ): ProviderResponse {
+        val recorded = record(RecordedHttpRequest("POST", url, headers, body))
+        sseEvents?.forEach(onData)
+        return recorded
+    }
 
     private fun record(request: RecordedHttpRequest): ProviderResponse {
         requests += request

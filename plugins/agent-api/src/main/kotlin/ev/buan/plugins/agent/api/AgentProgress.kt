@@ -37,6 +37,15 @@ sealed interface AgentProgress {
         val preview: String?,
     ) : AgentProgress
 
+    /**
+     * Text the model produced in [round], as an increment.
+     *
+     * Deltas arrive between [RoundStarted] and [RoundFinished], and concatenating them in order
+     * reproduces the final message. A provider that cannot stream sends exactly one delta carrying
+     * the whole text, so the UI needs no special case - it appends whatever it receives.
+     */
+    data class TextDelta(val round: Int, val text: String) : AgentProgress
+
     /** Every tool of [round] is done; the next step is another model call. */
     data class RoundFinished(val round: Int) : AgentProgress
 

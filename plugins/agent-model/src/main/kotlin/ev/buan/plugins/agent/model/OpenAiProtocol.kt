@@ -47,7 +47,28 @@ object OpenAiProtocol {
         messages: List<AgentMessage>,
         tools: List<ToolSpec> = emptyList(),
         parameters: ModelParameters = ModelParameters(),
-    ): String = buildJsonObject {
+    ): String = bodyJson(model, messages, tools, parameters, stream = false).toString()
+
+    /**
+     * The same request with `stream = true`, plus `stream_options.include_usage`.
+     *
+     * Without `include_usage` an OpenAI-compatible server reports no token counts on a streaming
+     * response, and the usage panel would go blank the moment streaming is on.
+     */
+    fun streamRequestBody(
+        model: String,
+        messages: List<AgentMessage>,
+        tools: List<ToolSpec> = emptyList(),
+        parameters: ModelParameters = ModelParameters(),
+    ): String = bodyJson(model, messages, tools, parameters, stream = true).toString()
+
+    private fun bodyJson(
+        model: String,
+        messages: List<AgentMessage>,
+        tools: List<ToolSpec>,
+        parameters: ModelParameters,
+        stream: Boolean,
+    ): JsonObject = buildJsonObject {
         put("model", model)
         putJsonArray("messages") {
             messages.forEach { message -> add(messageJson(message)) }
@@ -61,7 +82,11 @@ object OpenAiProtocol {
             }
             put("tool_choice", "auto")
         }
-    }.toString()
+        if (stream) {
+            put("stream", true)
+            putJsonObject("stream_options") { put("include_usage", true) }
+        }
+    }
 
     /**
      * Parses a `chat.completion` response into the vendor-neutral reply.
@@ -103,7 +128,7 @@ object OpenAiProtocol {
         )
     }
 
-    private fun parseObject(bodyText: String): JsonObject =
+    internal fun parseObject(bodyText: String): JsonObject =
         try {
             json.parseToJsonElement(bodyText) as? JsonObject
                 ?: throw OpenAiFailure("响应不是 JSON 对象")
@@ -165,7 +190,7 @@ object OpenAiProtocol {
      * Extracts assistant text. The OpenAI API returns a string, some compatible servers an array
      * of content parts; both are flattened, a null/missing content reads as empty.
      */
-    private fun contentOf(message: JsonObject): String? = when (val element = message["content"]) {
+    internal fun contentOf(message: JsonObject): String? = when (val element = message["content"]) {
         is JsonPrimitive -> element.takeIf { it.isString }?.content
         is JsonArray -> element.mapNotNull { part ->
             (part as? JsonObject)?.stringOrNull("text")
@@ -185,7 +210,7 @@ object OpenAiProtocol {
     }
 
     /** Arguments are JSON *text* per the API, but some servers return an already-parsed object. */
-    private fun argumentsOf(element: JsonElement?): String? = when (element) {
+    internal fun argumentsOf(element: JsonElement?): String? = when (element) {
         is JsonObject, is JsonArray -> element.toString()
         is JsonPrimitive -> element.takeIf { it.isString }?.content
         else -> null
@@ -198,7 +223,7 @@ object OpenAiProtocol {
      * keeps the fields it *did* report; each unknown field stays null rather than becoming 0, so a
      * consumer can distinguish "not reported" from "zero tokens".
      */
-    private fun usageOf(element: JsonElement?): AgentUsage? {
+    internal fun usageOf(element: JsonElement?): AgentUsage? {
         val root = element as? JsonObject ?: return null
         val prompt = root.intOrNull("prompt_tokens")
         val completion = root.intOrNull("completion_tokens")
@@ -211,7 +236,7 @@ object OpenAiProtocol {
         )
     }
 
-    private fun errorMessage(element: JsonElement): String {
+    internal fun errorMessage(element: JsonElement): String {
         val detail = (element as? JsonObject)?.stringOrNull("message")
         return (detail ?: element.toString()).take(MAX_ERROR_LENGTH).ifBlank { "模型接口返回未知错误" }
     }

@@ -10,8 +10,8 @@ android {
         applicationId = "ev.buan.plugins.agent.model"
         minSdk = 33
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
     }
 
     buildTypes {
@@ -87,7 +87,7 @@ tasks.register("bundlePlugin") {
         val metadata = """
             {
               "id": "ev.buan.plugins.agent.model",
-              "version": "1.0.0",
+              "version": "1.0.1",
               "entryClass": "ev.buan.plugins.agent.model.AgentModelPlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.api"],
