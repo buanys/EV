@@ -141,12 +141,22 @@ class AgentBrainService internal constructor(
         // The behaviour baseline plus the caller's character prompt, as one ordered message. It
         // belongs to this request only: it goes in front of history and the current user message,
         // and is never appended to memory.
+        //
+        // Volatile layers (the clock, battery, foreground app) are deliberately *not* in that
+        // message: prefix caching compares a request from its first token, so a single changing
+        // minute in the system message invalidates the cache for the whole history behind it.
+        // They ride at the tail instead, appended to this turn's user message.
+        val prompt = composePrompt(current.prompt, systemPrompt, sessionId)
         val inputs = mutableListOf<AgentMessage>()
-        composeSystemPrompt(current.prompt, systemPrompt, sessionId)?.let {
-            inputs += AgentMessage(AgentRole.SYSTEM, it)
-        }
+        prompt.system?.let { inputs += AgentMessage(AgentRole.SYSTEM, it) }
         inputs += historyOf(memory, sessionId)
-        inputs += userMessage
+        inputs += if (prompt.volatile.isNullOrBlank()) {
+            userMessage
+        } else {
+            AgentMessage(AgentRole.USER, "${text}\n\n${prompt.volatile}")
+        }
+        // Memory keeps what the user actually typed: the volatile tail is regenerated every turn,
+        // and storing it would replay a stale clock in later requests.
         remember(memory, sessionId, userMessage)
 
         val startedAt = System.nanoTime()
@@ -402,7 +412,15 @@ class AgentBrainService internal constructor(
     }
 
     /**
-     * The system message for one turn: the prompt plugin's layers, plus the caller's character.
+     * The two halves of one request's prompt: the stable system message, and the volatile tail.
+     *
+     * [volatile] is null when no layer asked for it, which is the case for the built-in baseline -
+     * a request whose tail never changes must not grow a "runtime info" section for nothing.
+     */
+    private data class ComposedPrompt(val system: String?, val volatile: String?)
+
+    /**
+     * The prompt for one turn: the prompt plugin's layers, plus the caller's character.
      *
      * Three degradations, all deliberate:
      * - no plugin, an empty list, or a plugin that throws -> [BUILTIN_LAYERS], because a turn
@@ -411,11 +429,11 @@ class AgentBrainService internal constructor(
      * - layers that do not fit [MAX_SYSTEM_PROMPT_CHARS] are dropped whole, smallest priority
      *   first, because half a rule is worse than no rule.
      */
-    private fun composeSystemPrompt(
+    private fun composePrompt(
         provider: SystemPromptService?,
         characterPrompt: String?,
         sessionId: String,
-    ): String? {
+    ): ComposedPrompt {
         val fromPlugin = try {
             provider?.layers(PromptContext(sessionId = sessionId, nowMillis = System.currentTimeMillis()))
         } catch (error: Throwable) {
@@ -423,11 +441,15 @@ class AgentBrainService internal constructor(
             null
         }
         val layers = if (fromPlugin.isNullOrEmpty()) BUILTIN_LAYERS else fromPlugin
-        val all = layers.toMutableList()
+        val stable = layers.filterNot { it.volatile }.toMutableList()
         characterPrompt?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            all += PromptLayer(PERSONA_ID, "角色", it, PERSONA_PRIORITY)
+            stable += PromptLayer(PERSONA_ID, "角色", it, PERSONA_PRIORITY)
         }
-        return assemble(all)
+        val volatile = layers.filter { it.volatile }
+            .joinToString("\n") { it.body.trim() }
+            .takeIf { it.isNotEmpty() }
+            ?.let { "$VOLATILE_HEADER\n$it" }
+        return ComposedPrompt(system = assemble(stable), volatile = volatile)
     }
 
     /** Priority descending, id ascending for ties, so the same layers always render the same way. */
@@ -626,6 +648,15 @@ class AgentBrainService internal constructor(
         const val PROMPT_LAYER_OVERHEAD_CHARS = 2
 
         const val PERSONA_ID = "persona"
+
+        /**
+         * Header on the volatile tail, so the model can tell it apart from what the user typed.
+         *
+         * The tail rides inside the user message (a second system message mid-conversation is
+         * rejected by some OpenAI-compatible servers), which makes this line the only thing
+         * separating "the user said" from "the runtime appended".
+         */
+        const val VOLATILE_HEADER = "（运行时信息，不是用户输入）"
 
         /** Between `style` (75) and `env` (40): a persona shapes tone, not behaviour. */
         const val PERSONA_PRIORITY = 60

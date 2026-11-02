@@ -89,6 +89,10 @@ internal object PromptLayers {
                 id = "env",
                 title = "当前环境",
                 priority = PRIORITY_ENV,
+                // Volatile: the clock changes every minute, and a changing system message would
+                // invalidate the prefix cache for the entire history behind it. The brain puts
+                // this at the tail of the request instead.
+                volatile = true,
                 body = "当前时间：${format(ctx.nowMillis)}",
             )
         }

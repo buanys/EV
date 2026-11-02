@@ -898,6 +898,38 @@ class AgentBrainServiceTest {
         assertEquals("必须留下", body)
     }
 
+    @Test
+    fun `volatile layers ride at the tail of the user message, not in the system prompt`() {
+        val memory = RecordingMemory()
+        val model = ScriptedModel(mutableListOf(textReply("好")))
+        val prompt = SystemPromptService {
+            listOf(
+                PromptLayer("identity", "身份", "稳定基线", 100),
+                PromptLayer("env", "环境", "当前时间：现在", 40, volatile = true),
+            )
+        }
+
+        runBlocking { brain(model = model, memory = memory, prompt = prompt).send("s", "你好") }
+
+        val messages = model.requests.single().messages
+        val system = messages.first()
+        assertEquals(AgentRole.SYSTEM, system.role)
+        assertFalse("system must stay cacheable", system.content.contains("当前时间"))
+        assertTrue(system.content.contains("稳定基线"))
+
+        val last = messages.last()
+        assertEquals(AgentRole.USER, last.role)
+        assertTrue(last.content, last.content.startsWith("你好"))
+        assertTrue(last.content, last.content.contains("当前时间：现在"))
+        assertTrue(last.content, last.content.endsWith("当前时间：现在"))
+
+        // Memory keeps what the user typed: a stored clock would be replayed stale next turn.
+        assertEquals(
+            listOf("你好"),
+            memory.sessions.getValue("s").filter { it.role == AgentRole.USER }.map { it.content },
+        )
+    }
+
     private fun brain(
         model: ModelService? = null,
         tools: ToolRegistry? = null,

@@ -11,7 +11,7 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = 3
-        versionName = "1.0.3"
+        versionName = "1.0.4"
     }
 
     buildTypes {
@@ -75,7 +75,7 @@ tasks.register("bundlePlugin") {
         val metadata = """
             {
               "id": "ev.buan.plugins.agent.prompt",
-              "version": "1.0.3",
+              "version": "1.0.4",
               "entryClass": "ev.buan.plugins.agent.prompt.AgentPromptPlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.api"],

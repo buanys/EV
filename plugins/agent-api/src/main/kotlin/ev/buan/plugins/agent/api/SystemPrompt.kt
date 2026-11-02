@@ -57,4 +57,14 @@ data class PromptLayer(
     val body: String,
     /** Larger wins; the brain drops the smallest layers first when over budget. */
     val priority: Int,
+    /**
+     * Marks content that changes on its own clock (the current time, battery, foreground app).
+     *
+     * A volatile layer is **not** part of the system message. Prefix caching compares a request
+     * from its first token, and the system message is that first token: one changing minute there
+     * invalidates the cache for the whole conversation history behind it. The brain therefore
+     * appends volatile layers to the tail of the request instead, where a change costs only the
+     * tokens after it.
+     */
+    val volatile: Boolean = false,
 )

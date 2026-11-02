@@ -63,7 +63,22 @@ data class PromptContext(val sessionId: String, val nowMillis: Long)
 - 新插件 `plugins/agent-prompt`（`ev.buan.plugins.agent.prompt`），发布 `agent/system-prompt`，声明 `PLUGIN_STORAGE` 用于保存用户自定义文本。
 - 同一个插件的两份实例（不同 id、不同设置）天然构成 A/B 对照，这是后续「agent 改自己的行为准则」（自我迭代 L1 层）的载体。
 
-## 4. 未决
+## 4. 易变内容放在请求尾部（2026-11-03 追加）
+
+`env` 层（当前时间）原本和其它层一样进 system 消息。问题：前缀缓存从第一个 token 开始
+比对，而 system 是整个请求的最前面——时间每跳一分钟，后面整段对话历史的前缀缓存全部作废。
+
+改法：`PromptLayer` 增加 `volatile`（默认 `false`，源码兼容）。`volatile = true` 的层**不进
+system**，由主循环拼到本轮 user 消息的末尾，带一行「（运行时信息，不是用户输入）」与其后的
+内容分隔。这样稳定前缀（system + history）保持命中，变化只影响尾部几个 token。
+
+两条附带约束：
+
+- 尾部内容**不写入记忆**：记忆里存的是用户真正键入的文字，否则下一轮会重放一个过时的时间；
+- 现在时间仍是**分钟级**。如果实测对缓存收益影响仍然明显，下一步降到日期级（一天失效一次），
+  或者干脆移出提示词、交给 `device_status` 之类的工具按需查询。
+
+## 5. 未决
 
 - `env` 层目前只有时间。电量、前台应用、网络需要 `host/device-context`，留给后续版本，避免第一版依赖过多。
 - 「专用工具优先于 run_shell」这一条是从工具集与审批成本推出来的，**未实测**。32 个工具的选择准确率可能已经进入衰减区，`run_shell` 反而更稳；需要真实任务跑过之后再改这一段。
