@@ -171,7 +171,14 @@ class PluginInstaller(
         collectBundled(sources, errors)
         collectExternal(sources, errors)
         acceptOrder(sources, errors).forEach { source ->
-            accept(source.file, source.meta, accepted, hashes, pending, errors)
+            // Per-container isolation: one jar that makes a gate throw used to abort the whole
+            // accept loop, and the plugin simply vanished from every list with no message. A bad
+            // container must cost exactly its own slot.
+            runCatching {
+                accept(source.file, source.meta, accepted, hashes, pending, errors)
+            }.onFailure { error ->
+                errors += "${source.file.name}: ${error.javaClass.name}: ${error.message.orEmpty()}"
+            }
         }
 
         prunePrivate(accepted.keys, errors)
