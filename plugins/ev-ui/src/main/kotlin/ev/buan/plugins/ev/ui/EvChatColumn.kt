@@ -234,7 +234,11 @@ internal fun EvChatColumn(
                 },
                 draft = ui.draft,
                 onDraftChange = { ui.draft = it },
-                onSend = { chat.send(ui.draft) },
+                onSend = {
+                    // Clear only when the turn really started: a rejected send (still replying,
+                    // blank draft) must not eat what the user typed.
+                    if (chat.send(ui.draft)) ui.draft = ""
+                },
                 placeholder = placeholder,
                 busy = replying,
                 onStop = { chat.stopReply() },

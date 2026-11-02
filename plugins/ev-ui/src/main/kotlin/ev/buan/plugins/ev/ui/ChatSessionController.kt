@@ -245,11 +245,18 @@ internal class ChatSessionController(
         activeSessionId = fresh.id
     }
 
-    fun send(text: String) {
+    /**
+     * Sends [text] as the next user turn, and reports whether the turn actually started.
+     *
+     * The caller owns the draft field, so it can only clear the composer on `true`: an empty or
+     * whitespace-only draft, and a second send while a turn is still running, must leave whatever
+     * the user typed in place instead of silently swallowing it.
+     */
+    fun send(text: String): Boolean {
         val body = text.trim()
-        if (body.isEmpty()) return
-        val target = sessions.firstOrNull { it.id == activeSessionId } ?: return
-        if (replyingSessionId == target.id) return
+        if (body.isEmpty()) return false
+        val target = sessions.firstOrNull { it.id == activeSessionId } ?: return false
+        if (replyingSessionId == target.id) return false
         mutate(target.id) { session ->
             session.copy(
                 messages = session.messages + userMessage(body),
@@ -258,6 +265,7 @@ internal class ChatSessionController(
             )
         }
         requestReply(target.id, body)
+        return true
     }
 
     /**
