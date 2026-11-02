@@ -209,6 +209,7 @@ class PluginInstaller(
                 // anything is copied or written. The error stays per-asset, not a crash.
                 PluginId.requireValid(meta.id)
                 sources += PluginSource(staged, meta)
+                trace("scanned (bundled) ${meta.id}")
             }.onFailure { errors += "内置插件 $name: $it" }
         }
     }
@@ -239,6 +240,7 @@ class PluginInstaller(
                     // a drive prefix or control characters must never become a file name.
                     PluginId.requireValid(meta.id)
                     sources += PluginSource(source, meta)
+                    trace("scanned ${meta.id} from ${source.name}")
                 }.onFailure { errors += "${source.name}: $it" }
             }
     }
@@ -265,6 +267,12 @@ class PluginInstaller(
         resolution.cycleRings.forEach { ring ->
             errors += "${PluginRejectionCode.DEPENDENCY_CYCLE}: 循环依赖 $ring" +
                 "（无法确定接受顺序，相关插件全部拒绝）"
+        }
+        // Visibility for the one path that used to be silent: an id that was collected but never
+        // reaches the accept loop leaves no card, no pending row and no error - it just disappears.
+        val ordered = resolution.order.toSet()
+        (byId.keys - ordered).filterNot { it in resolution.cyclicIds }.forEach { id ->
+            errors += "$id: 已扫描但未进入接受顺序（依赖解析没有给出位置，插件未安装）"
         }
         return resolution.order.flatMap { id -> byId[id].orEmpty() }
     }
@@ -322,6 +330,7 @@ class PluginInstaller(
         if (decision is ValidationResult.NeedsUnsignedApproval) {
             if (!autoTrustUnsigned) {
                 pending += PendingUnsigned(meta.id, meta.version, decision.sha256, source.name)
+                trace("pending ${meta.id} (${source.name})")
                 return
             }
             approvals.approve(decision.pluginId, decision.sha256)
@@ -331,7 +340,10 @@ class PluginInstaller(
             )
         }
         when (decision) {
-            ValidationResult.Accepted -> publish(source, meta, hash, candidate, accepted, hashes)
+            ValidationResult.Accepted -> {
+                publish(source, meta, hash, candidate, accepted, hashes)
+                trace("accepted ${meta.id} (${source.name})")
+            }
             is ValidationResult.Rejected ->
                 if (decision.rejection.code == PluginRejectionCode.PERMISSION_DENIED) {
                     // Install is not run. Publish so the management page can list the plugin and
@@ -339,8 +351,10 @@ class PluginInstaller(
                     // that decides whether it may actually load. The permission gate is the last
                     // one in the validator, so every trust/content/identity check already passed.
                     publish(source, meta, hash, candidate, accepted, hashes)
+                    trace("accepted-with-denied-permissions ${meta.id} (${source.name})")
                 } else {
                     errors += "${decision.rejection.code}: ${decision.rejection.message}"
+                    trace("rejected ${meta.id} (${source.name}): ${decision.rejection.code}")
                 }
 
             is ValidationResult.NeedsUnsignedApproval ->
@@ -540,6 +554,14 @@ class PluginInstaller(
         privateRoot.mkdirs()
         return File(privateRoot, name)
     }
+
+    /**
+     * One line per container decision, on logcat's `EV` tag.
+     *
+     * Installs run at start-up, before any UI exists, so the only place a decision can be observed
+     * after the fact is the log. Card state alone cannot distinguish "rejected" from "never seen".
+     */
+    private fun trace(message: String) = android.util.Log.i("EV", "plugin $message")
 
     private companion object {
         // Packages the platform or the host runtime always owns. A plugin defining any of these
