@@ -44,7 +44,8 @@ class AgentBrowsePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
-        val registry = directory.lookup(ToolRegistry.Key) ?: return
+        val registry = directory.lookup(ToolRegistry.Key)
+            ?: error("工具总线未就绪：agent-tools 必须先激活（sidecar 依赖 ev.buan.plugins.agent.tools）")
         // 每次活跃期建一个客户端：连接池随插件生命周期走，禁用插件就释放。
         val client: OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)

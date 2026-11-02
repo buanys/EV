@@ -4,6 +4,8 @@ import ev.buan.plugins.agent.api.AgentEvent
 import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentProgress
 import ev.buan.plugins.agent.api.StepState
+import ev.buan.plugins.agent.api.SystemPromptService
+import ev.buan.plugins.agent.api.PromptLayer
 import ev.buan.plugins.agent.api.AgentReply
 import ev.buan.plugins.agent.api.AgentRole
 import ev.buan.plugins.agent.api.AgentStop
@@ -68,7 +70,10 @@ class AgentBrainServiceTest {
         val reply = runBlocking { brain.send("session", "hi") }
 
         assertEquals("你好，世界", reply.message.content)
-        assertEquals(listOf("hi"), model.requests.single().messages.map { it.content })
+        assertEquals(
+            listOf("hi"),
+            model.requests.single().messages.filter { it.role != AgentRole.SYSTEM }.map { it.content },
+        )
         val stored = memory.sessions.getValue("session")
         assertEquals(listOf(AgentRole.USER, AgentRole.ASSISTANT), stored.map { it.role })
         assertEquals(listOf("hi", "你好，世界"), stored.map { it.content })
@@ -88,7 +93,7 @@ class AgentBrainServiceTest {
 
         assertEquals(
             listOf("旧问题", "旧回答", "新问题"),
-            model.requests.single().messages.map { it.content },
+            model.requests.single().messages.filter { it.role != AgentRole.SYSTEM }.map { it.content },
         )
     }
 
@@ -223,7 +228,10 @@ class AgentBrainServiceTest {
         val reply = runBlocking { brain(model = model, memory = memory).send("session", "hi") }
 
         assertEquals("仍然能回答", reply.message.content)
-        assertEquals(listOf("hi"), model.requests.single().messages.map { it.content })
+        assertEquals(
+            listOf("hi"),
+            model.requests.single().messages.filter { it.role != AgentRole.SYSTEM }.map { it.content },
+        )
     }
 
     @Test
@@ -271,7 +279,7 @@ class AgentBrainServiceTest {
             listOf(AgentRole.SYSTEM, AgentRole.USER, AgentRole.ASSISTANT, AgentRole.USER),
             messages.map { it.role },
         )
-        assertEquals("你是 EV 的助手，只回答中文。", messages.first().content)
+        assertEquals("你是 EV 的助手，只回答中文。", messages.first().content.substringAfterLast("\n\n"))
     }
 
     @Test
@@ -285,9 +293,17 @@ class AgentBrainServiceTest {
         }
 
         assertEquals(AgentRole.SYSTEM, model.requests[0].messages.first().role)
-        assertEquals("你是助手", model.requests[0].messages.first().content)
-        assertEquals(listOf(AgentRole.USER), model.requests[1].messages.map { it.role })
-        assertEquals("第二个", model.requests[1].messages.single().content)
+        assertEquals("你是助手", model.requests[0].messages.first().content.substringAfterLast("\n\n"))
+        // A blank character prompt contributes nothing, but the baseline still applies: a turn
+        // with no instructions at all is not a state this brain is allowed to reach.
+        assertEquals(
+            listOf(AgentRole.USER),
+            model.requests[1].messages.filter { it.role != AgentRole.SYSTEM }.map { it.role },
+        )
+        assertEquals(
+            "第二个",
+            model.requests[1].messages.filter { it.role != AgentRole.SYSTEM }.single().content,
+        )
     }
 
     @Test
@@ -309,7 +325,7 @@ class AgentBrainServiceTest {
     }
 
     @Test
-    fun `default and explicit model calls still work without a system prompt`() {
+    fun `default and explicit model calls still work without a character prompt`() {
         val memory = RecordingMemory()
         val model = ScriptedModel(mutableListOf(textReply("默认"), textReply("指定")))
         val brain = brain(model = model, memory = memory)
@@ -320,8 +336,15 @@ class AgentBrainServiceTest {
 
         assertEquals("默认", first.message.content)
         assertEquals("指定", second.message.content)
-        assertEquals(listOf(AgentRole.USER, AgentRole.USER), model.requests.map { it.messages.first().role })
-        assertFalse(model.requests.any { request -> request.messages.any { it.role == AgentRole.SYSTEM } })
+        assertEquals(
+            listOf(AgentRole.USER, AgentRole.USER),
+            model.requests.map { it.messages.filter { message -> message.role != AgentRole.SYSTEM }.first().role },
+        )
+        // No character prompt, but the built-in baseline always applies: a turn without any
+        // instructions is how the agent ends up describing the device instead of operating it.
+        assertTrue(
+            model.requests.all { request -> request.messages.first().content.contains("Android") },
+        )
     }
 
     @Test
@@ -345,7 +368,7 @@ class AgentBrainServiceTest {
         assertEquals(2, model.requests.size)
         model.requests.forEach { request ->
             assertEquals(AgentRole.SYSTEM, request.messages.first().role)
-            assertEquals("你是助手", request.messages.first().content)
+            assertEquals("你是助手", request.messages.first().content.substringAfterLast("\n\n"))
         }
         assertTrue(model.requests[1].messages.last().content.contains("hello"))
     }
@@ -822,12 +845,66 @@ class AgentBrainServiceTest {
 
     // ------------------------------------------------------------------ fakes
 
+    @Test
+    fun `prompt plugin layers are ordered by priority and the character comes last`() {
+        val model = ScriptedModel(mutableListOf(textReply("好")))
+        val prompt = SystemPromptService {
+            listOf(
+                PromptLayer("env", "环境", "低优先级", 40),
+                PromptLayer("identity", "身份", "高优先级", 100),
+                PromptLayer("tools", "工具", "中优先级", 85),
+            )
+        }
+
+        runBlocking { brain(model = model, prompt = prompt).send("s", "hi", systemPrompt = "你是助手") }
+
+        val body = model.requests.single().messages.first().content
+        assertEquals(AgentRole.SYSTEM, model.requests.single().messages.first().role)
+        assertTrue(body, body.indexOf("高优先级") < body.indexOf("中优先级"))
+        // persona is priority 60: above env (40), below every behaviour layer.
+        assertTrue(body, body.indexOf("中优先级") < body.indexOf("你是助手"))
+        assertTrue(body, body.indexOf("你是助手") < body.indexOf("低优先级"))
+    }
+
+    @Test
+    fun `a prompt plugin that throws falls back to the built-in baseline`() {
+        val model = ScriptedModel(mutableListOf(textReply("好")))
+        val prompt = SystemPromptService { throw IllegalStateException("坏掉的提示词插件") }
+
+        val reply = runBlocking { brain(model = model, prompt = prompt).send("s", "hi") }
+
+        assertEquals("好", reply.message.content)
+        val body = model.requests.single().messages.first().content
+        assertTrue(body, body.contains("Android"))
+        assertTrue(body, body.contains("预算"))
+    }
+
+    @Test
+    fun `layers over budget are dropped whole, lowest priority first`() {
+        val model = ScriptedModel(mutableListOf(textReply("好")))
+        // One character over AgentBrainService.MAX_SYSTEM_PROMPT_CHARS (8000), which is private:
+        // the constant is asserted through behaviour, not through the field.
+        val huge = "x".repeat(8_001)
+        val prompt = SystemPromptService {
+            listOf(
+                PromptLayer("identity", "身份", "必须留下", 100),
+                PromptLayer("env", "环境", huge, 40),
+            )
+        }
+
+        runBlocking { brain(model = model, prompt = prompt).send("s", "hi") }
+
+        val body = model.requests.single().messages.first().content
+        assertEquals("必须留下", body)
+    }
+
     private fun brain(
         model: ModelService? = null,
         tools: ToolRegistry? = null,
         memory: MemoryService? = null,
         approval: ApprovalService? = null,
-    ): AgentBrainService = AgentBrainService(capabilities = { BrainCapabilities(model, tools, memory, approval) })
+        prompt: SystemPromptService? = null,
+    ): AgentBrainService = AgentBrainService(capabilities = { BrainCapabilities(model, tools, memory, approval, prompt) })
 
     private fun brain(
         budget: Budget,
@@ -835,8 +912,9 @@ class AgentBrainServiceTest {
         tools: ToolRegistry? = null,
         approval: ApprovalService? = null,
         memory: MemoryService? = null,
+        prompt: SystemPromptService? = null,
     ): AgentBrainService = AgentBrainService(
-        capabilities = { BrainCapabilities(model, tools, memory, approval) },
+        capabilities = { BrainCapabilities(model, tools, memory, approval, prompt) },
         budget = budget,
     )
 

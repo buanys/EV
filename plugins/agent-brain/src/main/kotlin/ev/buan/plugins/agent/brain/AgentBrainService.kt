@@ -14,7 +14,10 @@ import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelRef
 import ev.buan.plugins.agent.api.ModelService
+import ev.buan.plugins.agent.api.PromptContext
+import ev.buan.plugins.agent.api.PromptLayer
 import ev.buan.plugins.agent.api.StepState
+import ev.buan.plugins.agent.api.SystemPromptService
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.agent.api.ToolSpec
@@ -27,16 +30,18 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * The conversation brain: one [AgentService] over three optional capability plugins.
+ * The conversation brain: one [AgentService] over four optional capability plugins.
  *
  * A turn is `system? -> memory.history -> model.complete -> (tool calls) -> model.complete ->
- * memory.append`. The optional system prompt is supplied by the caller per turn: it goes ahead of
- * history and the current user message, and is never appended to memory, so a role instruction
- * cannot leak into the stored conversation. Every capability is optional and looked up per call
- * through [CapabilityProvider]:
+ * memory.append`. The system message is assembled per turn from the `agent/system-prompt` plugin's
+ * layers plus the caller's character prompt (see [composeSystemPrompt]): it goes ahead of history
+ * and the current user message, and is never appended to memory, so a role instruction cannot leak
+ * into the stored conversation. Every capability is optional and looked up per call through
+ * [CapabilityProvider]:
  *  - no model              -> a readable "not connected / not configured" reply, never an exception;
  *  - no tools              -> plain text turns, tool requests are answered with a degraded result;
  *  - no memory             -> single-turn conversation;
+ *  - no prompt             -> the built-in baseline layers;
  *  - a capability throw    -> the turn becomes an error reply instead of killing the host.
  *
  * Tool calls are executed here, not inside the model plugin: the contract makes executing them the
@@ -133,10 +138,13 @@ class AgentBrainService internal constructor(
         val usages = mutableListOf<AgentUsage?>()
 
         val userMessage = AgentMessage(role = AgentRole.USER, content = text)
-        // A role instruction belongs to this request only: it goes in front of history and the
-        // current user message, and is never appended to memory.
+        // The behaviour baseline plus the caller's character prompt, as one ordered message. It
+        // belongs to this request only: it goes in front of history and the current user message,
+        // and is never appended to memory.
         val inputs = mutableListOf<AgentMessage>()
-        systemPrompt?.trim()?.takeIf { it.isNotEmpty() }?.let { inputs += AgentMessage(AgentRole.SYSTEM, it) }
+        composeSystemPrompt(current.prompt, systemPrompt, sessionId)?.let {
+            inputs += AgentMessage(AgentRole.SYSTEM, it)
+        }
         inputs += historyOf(memory, sessionId)
         inputs += userMessage
         remember(memory, sessionId, userMessage)
@@ -394,6 +402,55 @@ class AgentBrainService internal constructor(
     }
 
     /**
+     * The system message for one turn: the prompt plugin's layers, plus the caller's character.
+     *
+     * Three degradations, all deliberate:
+     * - no plugin, an empty list, or a plugin that throws -> [BUILTIN_LAYERS], because a turn
+     *   without a baseline is how the agent ends up giving advice instead of acting;
+     * - a blank character prompt contributes nothing, it does not remove the baseline;
+     * - layers that do not fit [MAX_SYSTEM_PROMPT_CHARS] are dropped whole, smallest priority
+     *   first, because half a rule is worse than no rule.
+     */
+    private fun composeSystemPrompt(
+        provider: SystemPromptService?,
+        characterPrompt: String?,
+        sessionId: String,
+    ): String? {
+        val fromPlugin = try {
+            provider?.layers(PromptContext(sessionId = sessionId, nowMillis = System.currentTimeMillis()))
+        } catch (error: Throwable) {
+            // A broken prompt plugin must not take the turn down; the baseline still applies.
+            null
+        }
+        val layers = if (fromPlugin.isNullOrEmpty()) BUILTIN_LAYERS else fromPlugin
+        val all = layers.toMutableList()
+        characterPrompt?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            all += PromptLayer(PERSONA_ID, "角色", it, PERSONA_PRIORITY)
+        }
+        return assemble(all)
+    }
+
+    /** Priority descending, id ascending for ties, so the same layers always render the same way. */
+    private fun assemble(layers: List<PromptLayer>): String? {
+        val ordered = layers.sortedWith(
+            compareByDescending<PromptLayer> { it.priority }.thenBy { it.id },
+        )
+        val kept = mutableListOf<String>()
+        var chars = 0
+        for (layer in ordered) {
+            val body = layer.body.trim()
+            if (body.isEmpty()) continue
+            val cost = body.length + PROMPT_LAYER_OVERHEAD_CHARS
+            // The first layer is kept unconditionally: a prompt trimmed to nothing is worse than
+            // one that overspends by a few hundred characters.
+            if (kept.isNotEmpty() && chars + cost > MAX_SYSTEM_PROMPT_CHARS) continue
+            kept += body
+            chars += cost
+        }
+        return kept.takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+    }
+
+    /**
      * Normalizes a TOOL_CALL event into the contract shape. Events are the brain's source of
      * truth; a provider that omits the call id gets a synthesized one so the assistant message and
      * the tool result still correlate.
@@ -561,6 +618,41 @@ class AgentBrainService internal constructor(
         const val FALLBACK_NO_TEXT = "模型没有返回文本。"
         const val FALLBACK_STOPPED =
             "本轮因预算用尽而停止，收尾总结也未能生成。已完成的操作已保存在会话历史里。"
+
+        /** Room for the whole system message; see [composeSystemPrompt]. */
+        const val MAX_SYSTEM_PROMPT_CHARS = 8_000
+
+        /** Counting a heading separator per layer when budgeting the system message. */
+        const val PROMPT_LAYER_OVERHEAD_CHARS = 2
+
+        const val PERSONA_ID = "persona"
+
+        /** Between `style` (75) and `env` (40): a persona shapes tone, not behaviour. */
+        const val PERSONA_PRIORITY = 60
+
+        /**
+         * What the agent is told when no prompt plugin is installed.
+         *
+         * Short on purpose: it only has to stop the worst failure - an agent that talks about the
+         * device instead of operating it, and one that never says when it is done. Everything
+         * richer belongs to `agent-prompt`, which the user can replace.
+         */
+        val BUILTIN_LAYERS: List<PromptLayer> = listOf(
+            PromptLayer(
+                id = "identity",
+                title = "身份与位置",
+                priority = 100,
+                body = "你运行在一台 Android 手机上的 agent 宿主里，可以用工具真的操作它。" +
+                    "说\"已完成\"之前必须真的调用过工具并看到结果；还没动手就说明打算怎么做。",
+            ),
+            PromptLayer(
+                id = "stop",
+                title = "什么时候停",
+                priority = 90,
+                body = "一轮对话有预算：最多 $MAX_ROUNDS 次模型往返、$MAX_TOOL_CALLS 次工具调用、" +
+                    "${DEADLINE_MS / 60_000} 分钟。做完就停；做不到要说清卡在哪，不要含糊收尾。",
+            ),
+        )
     }
 }
 

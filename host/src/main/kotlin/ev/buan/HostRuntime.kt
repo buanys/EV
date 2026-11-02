@@ -361,6 +361,15 @@ class HostRuntime(private val context: AndroidContext) {
                 else -> deactivate(plugin.id)
             }
         }
+        // Last pass: an enabled plugin that is neither active nor failed is the one state the card
+        // used to show as a healthy row. Say it out loud instead - before this, "enabled but never
+        // imported" looked exactly like "running fine" (see the agent-prompt case).
+        installed.values.forEach { plugin ->
+            if (isEnabled(plugin.id) && plugin.id !in active && plugin.id !in failures) {
+                failures[plugin.id] = NOT_LOADED
+                android.util.Log.e("EV", "plugin ${plugin.id} enabled but not loaded")
+            }
+        }
     }
 
     /**
@@ -855,6 +864,14 @@ class HostRuntime(private val context: AndroidContext) {
         const val START_TIMEOUT_MS = 90_000L
         /** Card text while safe mode keeps an enabled plugin unloaded; not an activation failure. */
         const val SAFE_MODE_BLOCKED = "安全模式：上次运行崩溃，本次启动未加载（退出安全模式后重试）"
+
+        /**
+         * Card text for an enabled plugin that the loader never produced an instance for.
+         *
+         * This is the catch-all that was missing: before it, "never imported" and "running fine"
+         * rendered identically, and the only way to tell them apart was to read the host's code.
+         */
+        const val NOT_LOADED = "已启用但未加载：导入阶段没有返回实例（详见 logcat 的 EV 标签）"
         const val KEY_HOME = "home.page"
         const val DEFAULT_HOME_PLUGIN = "ev.buan.plugins.ev.ui"
 

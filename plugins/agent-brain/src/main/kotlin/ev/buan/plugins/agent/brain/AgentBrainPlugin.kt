@@ -4,6 +4,7 @@ import ev.buan.plugins.agent.api.AgentService
 import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelService
+import ev.buan.plugins.agent.api.SystemPromptService
 import ev.buan.plugins.agent.api.ToolRegistry
 import org.cordis.Context
 import org.cordis.Dependencies
@@ -49,6 +50,7 @@ class AgentBrainPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
                 tools = directory.lookup(ToolRegistry.Key),
                 memory = directory.lookup(MemoryService.Key),
                     approval = directory.lookup(ApprovalService.Key),
+                    prompt = directory.lookup(SystemPromptService.Key),
                 )
             },
         )

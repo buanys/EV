@@ -33,9 +33,10 @@ class AgentShellPlugin : Plugin<Unit>, AgentSurface, org.cordis.api.ManifestProv
         val directory = ctx.require(ServiceDirectory.Key)
         val registry = directory.lookup(ToolRegistry.Key)
         if (registry == null) {
-            // The sidecar dependency should make this unreachable; a hand-built container without
-            // it degrades to "no tools" instead of crashing the host.
-            return
+            // The sidecar declares agent.tools as a dependency, so this is a host-ordering bug, not
+            // a normal state. Returning quietly used to leave the card looking healthy while the
+            // model simply never saw `run_shell` - fail loudly instead, so `failures` says why.
+            error("工具总线未就绪：agent-tools 必须先激活（sidecar 依赖 ev.buan.plugins.agent.tools）")
         }
         storage = ctx.require(org.cordis.api.PluginStorage.Key)
         // The saved value is read once at activation; the tool asks for it per call, so a change
