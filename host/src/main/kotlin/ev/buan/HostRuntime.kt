@@ -786,6 +786,13 @@ class HostRuntime(private val context: AndroidContext) {
             val fiber = pluginContext.plugin(instance, Unit)
             // A plugin that never finishes applying must not hold the whole host hostage.
             withTimeout(START_TIMEOUT_MS) { fiber.await() }
+            // PENDING is the state a fiber is born in and only a started transition leaves. An
+            // inject list that was never provided leaves it exactly there: apply() is skipped,
+            // await() returns immediately, and activation would otherwise "succeed" with a plugin
+            // that registered nothing - which is how agent-shell lost run_shell without a trace.
+            if (fiber.state == org.cordis.FiberState.PENDING) {
+                error("插件没有启动：inject 声明的服务没有被提供，apply 从未执行")
+            }
             active[plugin.id] = scope
         } catch (timeout: TimeoutCancellationException) {
             failures[plugin.id] = "启动超时（${START_TIMEOUT_MS / 1000} 秒）"
