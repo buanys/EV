@@ -464,8 +464,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     modifier = modifier,
                 )
 
-                SettingsChild.Tools -> EvToolsScreen(
-                    registry = { directory?.lookup(ToolRegistry.Key) },
+                SettingsChild.Tools -> EvPluginPage(
+                    pluginId = TOOLS_PLUGIN_ID,
+                    directory = directory,
                     onBack = { ui.pages.pop() },
                     modifier = modifier,
                 )
@@ -504,10 +505,10 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
         }
 
         EvPage.Tools -> {
-            // Looked up per read, never cached: the tools plugin may be enabled or disabled while
-            // this page is open, and the panel has a refresh action for exactly that.
-            EvToolsScreen(
-                registry = { directory?.lookup(ToolRegistry.Key) },
+            // The registry's owner draws the panel now; the drawer still routes here.
+            EvPluginPage(
+                pluginId = TOOLS_PLUGIN_ID,
+                directory = directory,
                 onBack = { ui.pages.pop() },
                 modifier = modifier,
             )

@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -11,7 +12,12 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "1.1.0"
+    }
+
+    // The tools panel is this plugin's own screen: it owns the registry, so it renders it.
+    buildFeatures {
+        compose = true
     }
 
     buildTypes {
@@ -42,6 +48,8 @@ val agentApiClasses = rootProject.file(
 dependencies {
     compileOnly(project(":plugin-api"))
     compileOnly(project(":loader"))
+    // The panel wears the shared design system; ui-kit itself is supplied by the host at runtime.
+    compileOnly(project(":ui-kit"))
     compileOnly(files(agentApiClasses))
 
     // Local unit tests cover the registration path: plain objects, no Android framework, no storage.
@@ -78,7 +86,7 @@ tasks.register("bundlePlugin") {
         val metadata = """
             {
               "id": "ev.buan.plugins.agent.tools",
-              "version": "1.0.0",
+              "version": "1.1.0",
               "entryClass": "ev.buan.plugins.agent.tools.AgentToolsPlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.api"],

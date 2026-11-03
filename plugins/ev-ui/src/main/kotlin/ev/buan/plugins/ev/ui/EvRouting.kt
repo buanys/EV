@@ -92,3 +92,6 @@ internal class EvNavigator {
 
 /** The memory plugin's id, used by both the drawer and the settings row that open its page. */
 internal const val MEMORY_PLUGIN_ID = "ev.buan.plugins.agent.memory"
+
+/** The tools plugin's id; it owns the registry and therefore the tools panel. */
+internal const val TOOLS_PLUGIN_ID = "ev.buan.plugins.agent.tools"
