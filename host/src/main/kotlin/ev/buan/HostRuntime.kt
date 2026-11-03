@@ -661,7 +661,10 @@ class HostRuntime(private val context: AndroidContext) {
      * [lastShownPluginId] for crash attribution.
      */
     fun pageFor(id: String): org.cordis.api.AgentPage? {
-        if (!isEnabled(id) || failures.containsKey(id)) return null
+        // `active` is the only proof that the plugin's apply() finished: the loader has an instance
+        // as soon as import() returns, so a page opened during activation would render against a
+        // half-initialised object (seen with agent-shell: every field still null).
+        if (!isEnabled(id) || failures.containsKey(id) || !active.containsKey(id)) return null
         val instance = runCatching { modules.peek(modules.moduleUrl(id)) }.getOrNull() as? Plugin<*>
         return (instance as? org.cordis.api.AgentPage)?.also { lastShownPluginId = id }
     }

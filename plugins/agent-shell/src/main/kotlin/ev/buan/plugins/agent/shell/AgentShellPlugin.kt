@@ -1,11 +1,15 @@
 package ev.buan.plugins.agent.shell
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import ev.buan.plugins.agent.api.ToolRegistry
 import org.cordis.Context
 import org.cordis.Dependencies
 import org.cordis.EffectScope
 import org.cordis.Plugin
+import org.cordis.api.AgentPage
 import org.cordis.api.AgentSurface
+import org.cordis.api.PluginStorage
 import org.cordis.api.ServiceDirectory
 import org.cordis.dependencies
 
@@ -22,14 +26,50 @@ import org.cordis.dependencies
  * gate before any command runs. Root is never a default capability: with the UI disabled the
  * calls fail closed, and this plugin holds no approval logic of its own.
  */
-class AgentShellPlugin : Plugin<Unit>, AgentSurface, org.cordis.api.ManifestProvider, org.cordis.api.PluginSettings {
+class AgentShellPlugin :
+    Plugin<Unit>,
+    AgentSurface,
+    AgentPage,
+    org.cordis.api.ManifestProvider,
+    org.cordis.api.PluginSettings {
     override val name = "agent-shell"
     override val title = "agent Shell"
     override val body = "run_shell：经 su 执行 root 命令。高危工具，每次执行都需人工审批；授权记录见插件管理页。"
 
     override val inject: Dependencies = dependencies(ServiceDirectory.Key, org.cordis.api.PluginStorage.Key)
 
+    /** Set during apply; the console is only reachable after activation. */
+    private var registry: ToolRegistry? = null
+
+    /**
+     * The directory this plugin was activated under.
+     *
+     * The page looks the bus up per composition instead of trusting [registry]: the plugin can be
+     * re-activated (the page is re-composed with the live instance), and a field written on the IO
+     * dispatcher is not guaranteed to be visible on the main thread without a barrier.
+     */
+    @Volatile
+    private var directory: ServiceDirectory? = null
+
+    override val pageTitle: String = "终端"
+
+    /** Opened from a menu, never the app root. */
+    override val isHomeCandidate: Boolean = false
+
+    @Composable
+    override fun Page(modifier: Modifier, onBack: () -> Unit) {
+        val bus = directory?.lookup(ToolRegistry.Key) ?: registry
+        android.util.Log.i(
+            "EV",
+            "shell page: instance=${System.identityHashCode(this)} " +
+                "directory=${directory != null} registry=${registry != null} " +
+                "bus=${bus != null} runShell=${bus?.lookup("run_shell") != null}",
+        )
+        TerminalPage(registry = bus, onBack = onBack, modifier = modifier)
+    }
+
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
+        android.util.Log.i("EV", "shell apply: entered instance=${System.identityHashCode(this)}")
         val directory = ctx.require(ServiceDirectory.Key)
         val registry = directory.lookup(ToolRegistry.Key)
         if (registry == null) {
@@ -46,6 +86,13 @@ class AgentShellPlugin : Plugin<Unit>, AgentSurface, org.cordis.api.ManifestProv
         }.getOrNull()?.coerceIn(1, ShellTools.MAX_TIMEOUT_SECONDS)
             ?: ShellTools.DEFAULT_TIMEOUT_SECONDS
         registry.register(PLUGIN_ID, ShellTools.all(ProbingShellRunner()) { defaultTimeout })
+        this.registry = registry
+        this.directory = directory
+        android.util.Log.i(
+            "EV",
+            "shell apply: instance=${System.identityHashCode(this)} " +
+                "registry=${this.registry != null} directory=${this.directory != null}",
+        )
         // Identity is unnecessary here (unregister is owner-scoped): even a stale disposer can
         // only remove this plugin's own group, which is exactly what disposal means.
         effect.collect {
@@ -80,7 +127,7 @@ class AgentShellPlugin : Plugin<Unit>, AgentSurface, org.cordis.api.ManifestProv
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.shell",
         name = "Shell",
-        version = "0.1.0",
+        version = "1.1.0",
         description = "给模型一个 shell：run_shell 是危险工具，每次调用都要人工批准。",
         capabilities = listOf(
             org.cordis.api.PluginCapability(

@@ -95,3 +95,6 @@ internal const val MEMORY_PLUGIN_ID = "ev.buan.plugins.agent.memory"
 
 /** The tools plugin's id; it owns the registry and therefore the tools panel. */
 internal const val TOOLS_PLUGIN_ID = "ev.buan.plugins.agent.tools"
+
+/** The shell plugin's id; it owns run_shell and therefore the terminal page. */
+internal const val SHELL_PLUGIN_ID = "ev.buan.plugins.agent.shell"

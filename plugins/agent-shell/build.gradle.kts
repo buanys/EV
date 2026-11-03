@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -11,7 +12,12 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "1.1.0"
+    }
+
+    // The terminal is this plugin's own screen: it owns run_shell, so it renders the console.
+    buildFeatures {
+        compose = true
     }
 
     buildTypes {
@@ -42,6 +48,8 @@ val agentApiClasses = rootProject.file(
 dependencies {
     compileOnly(project(":plugin-api"))
     compileOnly(project(":loader"))
+    // The console wears the shared design system; ui-kit itself is supplied by the host at runtime.
+    compileOnly(project(":ui-kit"))
     compileOnly(files(agentApiClasses))
 
     // Local unit tests run the tool logic against a fake shell: argument validation, timeout capping
@@ -80,7 +88,7 @@ tasks.register("bundlePlugin") {
         val metadata = """
             {
               "id": "ev.buan.plugins.agent.shell",
-              "version": "1.0.0",
+              "version": "1.1.0",
               "entryClass": "ev.buan.plugins.agent.shell.AgentShellPlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.api", "ev.buan.plugins.agent.tools"],

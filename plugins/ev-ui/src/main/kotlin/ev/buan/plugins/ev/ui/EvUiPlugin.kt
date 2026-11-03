@@ -519,9 +519,10 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
         }
 
         EvPage.Terminal -> {
-            // Same tool registry the agent uses: here a human types the command, not a model.
-            EvTerminalScreen(
-                registry = { directory?.lookup(ToolRegistry.Key) },
+            // The shell's owner draws the console; the quick tools panel still routes here.
+            EvPluginPage(
+                pluginId = SHELL_PLUGIN_ID,
+                directory = directory,
                 onBack = { ui.pages.pop() },
                 modifier = modifier,
             )
