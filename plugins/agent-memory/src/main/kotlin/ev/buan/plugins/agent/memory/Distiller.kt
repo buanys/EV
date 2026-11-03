@@ -59,7 +59,16 @@ internal class Distiller(    private val storage: UserDataStorage,
             persist(current.withLastAt(sessionId, now))
             idle && !running
         }
-        if (start) scope.launch { distill(sessionId) }
+        if (start) {
+            scope.launch {
+                // 上面那句"失败不惊动用户"是承诺，但 launch 里未捕获的异常会直接带走整个进程：
+                // 一次插件版本错位（NoSuchMethodError）就足以让宿主崩在后台推理里。兜住它。
+                // 游标没有前进，下一批照常重试，行为与"模型调用失败"一致。
+                runCatching { distill(sessionId) }.onFailure {
+                    Log.w(TAG, "提炼协程异常退出：${it.message}")
+                }
+            }
+        }
     }
 
     private suspend fun distill(sessionId: String) {
