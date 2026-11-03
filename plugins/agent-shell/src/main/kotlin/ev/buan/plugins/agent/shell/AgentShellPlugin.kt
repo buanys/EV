@@ -36,7 +36,13 @@ class AgentShellPlugin :
     override val title = "agent Shell"
     override val body = "run_shell：经 su 执行 root 命令。高危工具，每次执行都需人工审批；授权记录见插件管理页。"
 
-    override val inject: Dependencies = dependencies(ServiceDirectory.Key, org.cordis.api.PluginStorage.Key)
+    /**
+     * Only the directory is injected. Storage is deliberately **not** declared: injecting a service
+     * the sidecar does not request is a silent dead end - the fiber never leaves INACTIVE, apply()
+     * never runs, and the plugin still counts as active. The timeout setting falls back to the
+     * default when the binding is absent, which is exactly what happens without the grant.
+     */
+    override val inject: Dependencies = dependencies(ServiceDirectory.Key)
 
     /** Set during apply; the console is only reachable after activation. */
     private var registry: ToolRegistry? = null
@@ -78,7 +84,7 @@ class AgentShellPlugin :
             // model simply never saw `run_shell` - fail loudly instead, so `failures` says why.
             error("工具总线未就绪：agent-tools 必须先激活（sidecar 依赖 ev.buan.plugins.agent.tools）")
         }
-        storage = ctx.require(org.cordis.api.PluginStorage.Key)
+        storage = ctx.get(org.cordis.api.PluginStorage.Key)
         // The saved value is read once at activation; the tool asks for it per call, so a change
         // made in settings applies to the next command instead of the next process.
         defaultTimeout = runCatching {
