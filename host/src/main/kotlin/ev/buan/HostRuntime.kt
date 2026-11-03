@@ -294,6 +294,14 @@ class HostRuntime(private val context: AndroidContext) {
                     ),
                 ),
             )
+            // Pages are handed to whichever surface owns a navigation stack, so a plugin page can
+            // be composed in place instead of pushing a second Activity (and a second transition).
+            directory.publish(
+                org.cordis.api.PluginPageService.Key,
+                object : org.cordis.api.PluginPageService {
+                    override fun pageOf(pluginId: String) = this@HostRuntime.pageFor(pluginId)
+                },
+            )
             serviceDirectory = directory
             directoryHandle = cordis.provide(ServiceDirectory.Key, directory)
                 .also { runCatching { it.awaitReady() } }
@@ -633,7 +641,11 @@ class HostRuntime(private val context: AndroidContext) {
             pageFor(preferred)?.let { return it }
         }
         pageFor(DEFAULT_HOME_PLUGIN)?.let { return it }
-        return installed.keys.firstNotNullOfOrNull { pageFor(it) }
+        // Fallback: any page that did not opt out. Without the filter, a memory or tools page would
+        // silently become the launch screen whenever ev-ui is disabled or failed to load.
+        return installed.keys.firstNotNullOfOrNull { id ->
+            pageFor(id)?.takeIf { it.isHomeCandidate }
+        }
     }
 
     fun setHomePage(id: String?) {

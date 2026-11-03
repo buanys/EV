@@ -1,10 +1,13 @@
 package ev.buan.plugins.agent.memory
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import ev.buan.plugins.agent.api.MemoryService
 import org.cordis.Context
 import org.cordis.Dependencies
 import org.cordis.EffectScope
 import org.cordis.Plugin
+import org.cordis.api.AgentPage
 import org.cordis.api.AgentSurface
 import org.cordis.api.PluginStorage
 import org.cordis.api.ServiceDirectory
@@ -17,15 +20,24 @@ import org.cordis.dependencies
  *
  * A Cordis service would make every consumer a hard dependency and leave it waiting while this
  * plugin is disabled; the directory is a lookup, so an agent degrades to stateless instead.
+ *
+ * It also owns its own screen. The memory page used to live inside ev-ui, which had to import the
+ * session model and the storage layout to draw it - a UI plugin depending on another plugin's data
+ * shape. Now the page ships with the data: whoever is opened is whoever knows how to show it.
  */
-class AgentMemoryPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvider {
+class AgentMemoryPlugin :
+    Plugin<Unit>,
+    AgentSurface,
+    AgentPage,
+    org.cordis.api.ManifestProvider {
+
     /**
      * What this container gives the app, stated here rather than discovered by reading its code.
      */
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.memory",
         name = "记忆",
-        version = "0.1.0",
+        version = "1.1.0",
         description = "按会话保存事实，下次对话时取回；不是把整段聊天塞进上下文。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("agent/memory", org.cordis.api.PluginCapability.Kind.SERVICE, "读写记忆", "按会话存一条事实，按相关度取回。"),
@@ -39,19 +51,36 @@ class AgentMemoryPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
     override val inject: Dependencies =
         dependencies(ServiceDirectory.Key, PluginStorage.Key, UserDataStorage.Key)
 
+    /** Set during apply; the page is only reachable after activation, so it is always populated. */
+    private lateinit var memory: StorageMemoryService
+
+    override val pageTitle: String = "记忆"
+
+    /**
+     * Opened from a menu, never the app root: the launch screen belongs to the conversation, and a
+     * fallback that landed on the memory list would look like data loss to whoever sees it.
+     */
+    override val isHomeCandidate: Boolean = false
+
+    @Composable
+    override fun Page(modifier: Modifier, onBack: () -> Unit) {
+        MemoryPage(memory = memory, modifier = modifier, onBack = onBack)
+    }
+
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
         // Memory is the user's data, not the plugin's: it survives disabling, reinstalling and
         // re-approval. The plugin area is read only once, to migrate what was stored there before.
         val storage = ctx.require(UserDataStorage.Key)
         migrateToUserData(ctx.get(PluginStorage.Key), storage)
-        val memory = StorageMemoryService(storage)
-        directory.publish(MemoryService.Key, memory)
+        val service = StorageMemoryService(storage)
+        memory = service
+        directory.publish(MemoryService.Key, service)
         // Disabling the plugin retracts the capability in the same step that disposes it, so a
         // consumer never keeps a memory service whose storage access is already gone. The identity
         // check keeps this stale disposer from retracting a newer instance after a re-activation.
         effect.collect {
-            if (directory.lookup(MemoryService.Key) === memory) directory.retract(MemoryService.Key)
+            if (directory.lookup(MemoryService.Key) === service) directory.retract(MemoryService.Key)
         }
     }
 }

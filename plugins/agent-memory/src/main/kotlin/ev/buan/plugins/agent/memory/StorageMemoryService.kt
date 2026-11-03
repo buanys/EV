@@ -15,7 +15,10 @@ import org.cordis.api.PluginStorage
  * Every operation serialises on one JVM monitor: history/append form a read-modify-write pair and
  * both are blocking file calls, so a coroutine mutex (and the dependency it implies) is not needed.
  */
-internal class StorageMemoryService(private val storage: PluginStorage) : MemoryService {
+internal class StorageMemoryService(
+    private val storage: PluginStorage,
+    private val index: MemoryIndex = MemoryIndex(storage),
+) : MemoryService {
     private val lock = Any()
 
     override suspend fun history(sessionId: String): List<AgentMessage> = synchronized(lock) {
@@ -23,12 +26,24 @@ internal class StorageMemoryService(private val storage: PluginStorage) : Memory
     }
 
     override suspend fun append(sessionId: String, message: AgentMessage) {
-        synchronized(lock) { write(sessionId, read(sessionId) + message) }
+        synchronized(lock) {
+            val messages = read(sessionId) + message
+            write(sessionId, messages)
+            // The index is rebuilt from what was actually written, so a lost index heals itself on
+            // the next message instead of leaving the page permanently empty.
+            index.touch(sessionId, messages)
+        }
     }
 
     override suspend fun clear(sessionId: String) {
-        synchronized(lock) { storage.delete(MemoryDocuments.fileFor(sessionId)) }
+        synchronized(lock) {
+            storage.delete(MemoryDocuments.fileFor(sessionId))
+            index.remove(sessionId)
+        }
     }
+
+    /** Sessions this service has stored, most recently active first. Used by the plugin's own page. */
+    fun sessions(): List<MemorySession> = index.list()
 
     private fun read(sessionId: String): List<AgentMessage> {
         val path = MemoryDocuments.fileFor(sessionId)
