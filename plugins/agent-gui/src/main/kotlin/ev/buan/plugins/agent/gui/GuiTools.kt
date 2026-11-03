@@ -1,4 +1,4 @@
-package ev.buan.plugins.agent.device
+package ev.buan.plugins.agent.gui
 
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolSpec
@@ -20,7 +20,7 @@ import org.json.JSONObject
  * 所有操作在无障碍未开启时统一返回 `NoAccessibility`，并附上"去哪开"，
  * 而不是抛异常或假装成功。
  */
-internal object ScreenTools {
+internal object GuiTools {
 
     fun all(service: () -> ScreenService?): List<Tool> = listOf(
         DumpTool(service),
@@ -30,8 +30,10 @@ internal object ScreenTools {
         SwipeTool(service),
         KeyTool(service),
         // 闭环：等界面、按方向滚动。这两件原来要靠模型自己 dump + 算坐标 + 反复比对。
-        ScreenWaitTool(service),
-        ScreenScrollTool(service),
+        GuiWaitTool(service),
+        GuiScrollTool(service),
+        // 跨屏：一屏读不完的内容，翻页采集后一次交给模型。
+        GuiReadAllTool(service),
     )
 
     private fun missing(): String =
@@ -41,7 +43,7 @@ internal object ScreenTools {
         "无障碍未开启：在 设置 → 无障碍 → 已下载的服务 里打开 EV。" +
             "这是系统级授权，普通权限（存储、通知）不算。"
 
-    /** 统一的动作结果翻译。`internal` 是因为 [ScreenScrollTool] 也要用同一套措辞。 */
+    /** 统一的动作结果翻译。`internal` 是因为 [GuiScrollTool] 也要用同一套措辞。 */
     internal fun actionJson(action: ScreenAction): String = when (action) {
         ScreenAction.Ok -> JSONObject().put("ok", true).toString()
         ScreenAction.NoAccessibility -> error(notEnabled())

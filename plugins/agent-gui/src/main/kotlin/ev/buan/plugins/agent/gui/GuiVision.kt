@@ -1,4 +1,4 @@
-package ev.buan.plugins.agent.device
+package ev.buan.plugins.agent.gui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -20,10 +20,10 @@ import java.io.File
  * capturing is a device action (privacy, needs approval), reading is just encoding - so the model
  * can decide to look, and a user can see that it looked.
  *
- * The image never becomes a file the model reads by path: [ReadImageTool] decodes, downscales and
+ * The image never becomes a file the model reads by path: [GuiReadImageTool] decodes, downscales and
  * base64-encodes it into [ToolResult.images], and the brain carries it into the next request.
  */
-internal object ImageTools {
+internal object GuiVision {
 
     /** Long edge after downscale. Enough for UI text, cheap enough for a per-turn image. */
     private const val MAX_EDGE = 1280
@@ -33,13 +33,16 @@ internal object ImageTools {
     /** Source cap before decoding: a 100 MB RAW would OOM the host. */
     private const val MAX_SOURCE_BYTES = 12L * 1024 * 1024
 
-    fun all(root: File): List<Tool> = listOf(CaptureTool(root), ReadImageTool())
+    /** 共享存储根：截屏落在这里，`screencap` 由 root 执行之后再放开读权限。 */
+    private fun root(): File = android.os.Environment.getExternalStorageDirectory() ?: File("/sdcard")
+
+    fun all(): List<Tool> = listOf(GuiCaptureTool(root()), GuiReadImageTool())
 
     /**
      * `screencap` through root, because MediaProjection needs a consent dialog the agent cannot
      * answer mid-turn. Marked dangerous: a screenshot contains whatever the user was looking at.
      */
-    private class CaptureTool(private val root: File) : Tool {
+    private class GuiCaptureTool(private val root: File) : Tool {
         override val spec = ToolSpec(
             name = "screen_capture",
             description = "截取当前屏幕保存为图片，返回文件路径。要看到画面内容，截完必须再调用 " +
@@ -84,7 +87,7 @@ internal object ImageTools {
      * Downscaling is not an optimisation, it is the difference between one image per turn and a
      * context window eaten by a 4 MB PNG. JPEG at 1280 is legible for UI text and costs ~150 KB.
      */
-    private class ReadImageTool : Tool {
+    private class GuiReadImageTool : Tool {
         override val spec = ToolSpec(
             name = "read_image",
             description = "读取一张图片并把画面直接交给模型查看。用于刚截的屏（screen_capture 的路径）" +

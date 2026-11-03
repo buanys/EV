@@ -46,10 +46,6 @@ dependencies {
     testImplementation("org.json:json:20260814")
     testImplementation(files(agentApiClasses))
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
-    // ScreenService/ScreenDump 来自宿主契约；测试要用真的类型，不想再造一份假的。
-    testImplementation(project(":plugin-api"))
-    // screen_wait 的轮询是 suspend 的，测试用 runBlocking 驱动。
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }
 
 val pluginDist = layout.buildDirectory.dir("dist")

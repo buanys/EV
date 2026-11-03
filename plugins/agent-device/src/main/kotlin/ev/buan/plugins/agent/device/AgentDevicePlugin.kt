@@ -8,7 +8,6 @@ import org.cordis.EffectScope
 import org.cordis.Plugin
 import org.cordis.api.AgentSurface
 import org.cordis.api.DeviceContextService
-import org.cordis.api.ScreenService
 import org.cordis.api.ServiceDirectory
 import org.cordis.dependencies
 import java.io.File
@@ -19,6 +18,9 @@ import java.io.File
  * 为什么是独立插件而不是塞进 `agent-tools`：`agent-tools` 的四个工具走 [org.cordis.api.PluginStorage]，
  * 作用域是**插件自己的沙箱**；这里的工具走宿主的 `MANAGE_EXTERNAL_STORAGE`，作用域是整块共享存储。
  * 两种权限模型混在一个插件里，早晚会有人以为"read 能读 Download"。
+ *
+ * 屏幕能力（无障碍读屏、点按、截图）已拆到 `agent-gui`：那是另一套权限（系统无障碍授权）
+ * 和另一类风险（摸的是别的应用的界面），关掉它不该连带关掉文件工具。
  *
  * 拿不到 Android `Context`（插件只能从 ServiceDirectory 取服务），但这里也不需要——
  * [Environment] 的静态方法就能给出共享存储根，`isExternalStorageManager()` 还能判断权限是否真的给了。
@@ -34,7 +36,6 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
     override val inject: Dependencies = dependencies(
         ServiceDirectory.Key,
         DeviceContextService.Key,
-        ScreenService.Key,
     )
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
@@ -52,10 +53,7 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
         val files = DeviceFiles(root)
         val tools = DeviceTools.all(files, DeviceSearch(files, root)) +
             WriteTools.all(files) +
-            SystemTools.all { ctx.get(DeviceContextService.Key) } +
-            ScreenTools.all { ctx.get(ScreenService.Key) } +
-            // Looking at pixels, not the accessibility tree: screen_capture + read_image.
-            ImageTools.all(root)
+            SystemTools.all { ctx.get(DeviceContextService.Key) }
         registry.register(PLUGIN_ID, tools)
         android.util.Log.i("EV", "agent-device: 注册 ${tools.size} 个工具（${tools.joinToString(",") { it.spec.name }}）")
         effect.collect {
@@ -92,14 +90,6 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
             org.cordis.api.PluginCapability("app_list", org.cordis.api.PluginCapability.Kind.TOOL, "列出应用"),
             org.cordis.api.PluginCapability("app_current", org.cordis.api.PluginCapability.Kind.TOOL, "当前前台应用"),
             org.cordis.api.PluginCapability("app_launch", org.cordis.api.PluginCapability.Kind.TOOL, "启动应用"),
-            org.cordis.api.PluginCapability("screen_dump", org.cordis.api.PluginCapability.Kind.TOOL, "读取屏幕", "无障碍读屏。"),
-            org.cordis.api.PluginCapability("screen_tap", org.cordis.api.PluginCapability.Kind.TOOL, "点击或长按", "按节点序号，点击前重新核对。"),
-            org.cordis.api.PluginCapability("screen_tap_text", org.cordis.api.PluginCapability.Kind.TOOL, "按文字点击"),
-            org.cordis.api.PluginCapability("screen_swipe", org.cordis.api.PluginCapability.Kind.TOOL, "滑动"),
-            org.cordis.api.PluginCapability("screen_scroll", org.cordis.api.PluginCapability.Kind.TOOL, "按方向滚动", "自动计算手势。"),
-            org.cordis.api.PluginCapability("screen_wait", org.cordis.api.PluginCapability.Kind.TOOL, "等界面变化", "只读：等文字出现或消失。"),
-            org.cordis.api.PluginCapability("screen_key", org.cordis.api.PluginCapability.Kind.TOOL, "按键"),
-            org.cordis.api.PluginCapability("screen_input", org.cordis.api.PluginCapability.Kind.TOOL, "输入文本"),
             org.cordis.api.PluginCapability("clip_read", org.cordis.api.PluginCapability.Kind.TOOL, "读剪贴板"),
             org.cordis.api.PluginCapability("clip_write", org.cordis.api.PluginCapability.Kind.TOOL, "写剪贴板"),
             org.cordis.api.PluginCapability("device_list", org.cordis.api.PluginCapability.Kind.TOOL, "列目录"),

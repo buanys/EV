@@ -1,4 +1,4 @@
-package ev.buan.plugins.agent.device
+package ev.buan.plugins.agent.gui
 
 import kotlinx.coroutines.runBlocking
 import org.cordis.api.ScreenAction
@@ -16,7 +16,7 @@ import org.junit.Test
  * 解析和 diff 是这套闭环的地基：解析错了就会点到别的地方，diff 错了模型会以为没生效。
  * 所以这里测的是格式本身，不是\"流程能跑通\"。
  */
-class ScreenFlowTest {
+class GuiFlowTest {
 
     // ---------------------------------------------------------------- 解析
 
@@ -135,7 +135,7 @@ class ScreenFlowTest {
     fun `等文字出现，命中就返回当前屏幕`() = runBlocking {
         val screen = FakeScreen(dump("0 正在加载 @100,100"))
         val result = JSONObject(
-            ScreenWaitTool { screen }.invoke("""{"text":"加载完成","timeout_ms":300}"""),
+            GuiWaitTool { screen }.invoke("""{"text":"加载完成","timeout_ms":300}"""),
         )
 
         // 一直没出现，于是走到超时分支——但仍然要把现在的屏幕给模型。
@@ -149,7 +149,7 @@ class ScreenFlowTest {
     fun `等文字消失，一开始就没有就直接成功`() = runBlocking {
         val screen = FakeScreen(dump("0 首页 @100,100 c"))
         val result = JSONObject(
-            ScreenWaitTool { screen }.invoke("""{"text":"弹窗","mode":"disappear","timeout_ms":1000}"""),
+            GuiWaitTool { screen }.invoke("""{"text":"弹窗","mode":"disappear","timeout_ms":1000}"""),
         )
 
         assertTrue(result.getBoolean("ok"))
@@ -159,8 +159,66 @@ class ScreenFlowTest {
 
     @Test
     fun `没有屏幕服务时明确报错，不假装成功`() = runBlocking {
-        val result = JSONObject(ScreenWaitTool { null }.invoke("""{"text":"任意"}"""))
+        val result = JSONObject(GuiWaitTool { null }.invoke("""{"text":"任意"}"""))
         assertFalse(result.getBoolean("ok"))
         assertTrue(result.getString("error").contains("宿主"))
+    }
+
+    // ---------------------------------------------------------------- 翻页读全文
+
+    /** 每滑一次换一页，最后一页停住不动——模拟滚到底。 */
+    private class PagedScreen(private val pages: List<ScreenDump>) : ScreenService {
+        private var index = 0
+        var swipes = 0
+            private set
+
+        override val available: Boolean get() = true
+        override fun openSettings(): Boolean = true
+        override fun dump(maxNodes: Int): ScreenDump = pages[index.coerceAtMost(pages.lastIndex)]
+        override fun tap(x: Int, y: Int): ScreenAction = ScreenAction.Ok
+        override fun tapText(text: String): ScreenAction = ScreenAction.Ok
+        override fun input(text: String): ScreenAction = ScreenAction.Ok
+        override fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): ScreenAction {
+            swipes++
+            if (index < pages.lastIndex) index++
+            return ScreenAction.Ok
+        }
+
+        override fun key(key: String): ScreenAction = ScreenAction.Ok
+        override fun currentPackage(): String? = pages.first().packageName
+    }
+
+    @Test
+    fun `翻页读到没有新内容就停，正文按顺序合并`() = runBlocking {
+        val screen = PagedScreen(
+            listOf(
+                dump("0 第一段 @0,0"),
+                dump("0 第二段 @0,0"),
+                dump("0 第二段 @0,0"),
+            ),
+        )
+        val result = JSONObject(
+            GuiReadAllTool { screen }.invoke("""{"max_pages":10,"settle_ms":100}"""),
+        )
+
+        assertTrue(result.getBoolean("ok"))
+        assertEquals("bottom", result.getString("stop"))
+        assertEquals("第一段\n第二段", result.getString("text"))
+        assertEquals(3, result.getInt("pages"))
+    }
+
+    @Test
+    fun `超过字数上限就截断，并说明截断了`() = runBlocking {
+        // 30 行 × 约 19 字符 ≈ 570，超过 500 的上限。
+        val rows = (0 until 30).map { i -> "$i 内容$i${"字".repeat(15)} @0,$i" }
+        val screen = PagedScreen(listOf(dump(*rows.toTypedArray())))
+        val result = JSONObject(
+            GuiReadAllTool { screen }.invoke("""{"max_chars":500,"settle_ms":100}"""),
+        )
+
+        assertTrue(result.getBoolean("ok"))
+        assertTrue(result.getBoolean("truncated"))
+        assertEquals("max_chars", result.getString("stop"))
+        assertTrue(result.getInt("chars") <= 500)
     }
 }

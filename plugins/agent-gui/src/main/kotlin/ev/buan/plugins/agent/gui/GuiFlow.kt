@@ -1,4 +1,4 @@
-package ev.buan.plugins.agent.device
+package ev.buan.plugins.agent.gui
 
 import android.content.res.Resources
 import ev.buan.plugins.agent.api.Tool
@@ -13,7 +13,7 @@ import org.json.JSONObject
 /**
  * 屏幕动作的闭环：读屏 → 定位 → 动作 → 复查。
  *
- * 原来的 [ScreenTools] 是一次性的：dump 一次拿坐标，tap 一次就算完。模型从 dump 到点击之间
+ * 原来的 [GuiTools] 是一次性的：dump 一次拿坐标，tap 一次就算完。模型从 dump 到点击之间
  * 界面可能已经变了（动画、加载、别的应用弹窗），点错位置没有任何提示；点对了也不知道有没有
  * 生效，只能再 dump 一次自己比对。一轮对话的往返预算，大半耗在这种重复读屏上。
  *
@@ -135,7 +135,7 @@ internal object GuiScreen {
     }.getOrElse { 1080 to 2400 }
 }
 
-/** 屏幕服务的两种未就绪状态，文案在 [ScreenTools] 里已经有，这里只取用。 */
+/** 屏幕服务的两种未就绪状态，文案在 [GuiTools] 里已经有，这里只取用。 */
 internal fun missingScreenService(): String =
     "屏幕服务未启用：宿主没有发布 ScreenService（宿主版本过旧）"
 
@@ -152,7 +152,7 @@ internal fun screenError(message: String): String =
  * 只读，不是危险动作——它不改变任何应用的状态，只是反复 dump。
  * 上限 25 秒是给宿主的工具超时（30 秒）留余量。
  */
-internal class ScreenWaitTool(private val service: () -> ScreenService?) : Tool {
+internal class GuiWaitTool(private val service: () -> ScreenService?) : Tool {
 
     override val spec = ToolSpec(
         name = "screen_wait",
@@ -233,7 +233,7 @@ internal class ScreenWaitTool(private val service: () -> ScreenService?) : Tool 
  * 存在的理由是 `screen_swipe` 要求模型知道分辨率，它不知道，只能瞎写 500/1500 这种数字。
  * 方向语义跟阅读习惯一致：down = 显示下方内容。
  */
-internal class ScreenScrollTool(private val service: () -> ScreenService?) : Tool {
+internal class GuiScrollTool(private val service: () -> ScreenService?) : Tool {
 
     override val spec = ToolSpec(
         name = "screen_scroll",
@@ -277,7 +277,7 @@ internal class ScreenScrollTool(private val service: () -> ScreenService?) : Too
             else -> service.swipe(cx - dx, cy, cx + dx, cy, SWIPE_MS)
         }
 
-        val outcome = ScreenTools.actionJson(action)
+        val outcome = GuiTools.actionJson(action)
         if (action != ScreenAction.Ok) return screenError(outcome)
 
         delay(SETTLE_MS)
