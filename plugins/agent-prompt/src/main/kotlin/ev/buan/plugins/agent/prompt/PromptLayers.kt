@@ -35,7 +35,13 @@ internal object PromptLayers {
     const val PRIORITY_EXTRA = 50
     const val PRIORITY_ENV = 40
 
-    fun all(ctx: PromptContext, extra: String?, memoryBlock: String = ""): List<PromptLayer> {
+    /**
+     * [memoryBlock] is null when no memory plugin is published, and the rendered resident block
+     * (possibly empty) when one is. The distinction matters: "no memory at all" must not advertise
+     * a feature that is not there, while "nothing pinned yet" still has to explain what pinning
+     * does - otherwise the model reports two layers and forgets the third exists.
+     */
+    fun all(ctx: PromptContext, extra: String?, memoryBlock: String? = null): List<PromptLayer> {
         val layers = mutableListOf(
             PromptLayer(
                 id = "identity",
@@ -48,17 +54,27 @@ internal object PromptLayers {
                 """.trimIndent(),
             ),
         )
-        memoryBlock.trim().takeIf { it.isNotEmpty() }?.let { block ->
+        memoryBlock?.let { block ->
+            val resident = block.trim()
             layers += PromptLayer(
                 id = "memory",
-                title = "常驻记忆",
+                title = "记忆",
                 priority = PRIORITY_MEMORY,
                 // Stable and in the system message on purpose: these are facts that change once
                 // in a while, not every turn, so they belong in the cached prefix.
-                body = """
-                    你有记忆：下面是常驻区里当前生效的条目。更早的结论用 recall 查，不要凭印象猜；
-                    与当前对话冲突时以这次对话为准，并把新结论写回记事本。
-                """.trimIndent() + "\n\n" + block,
+                body = buildString {
+                    appendLine("你有三层记忆，回答关于\"你记得什么\"时按这三层说：")
+                    appendLine("- 会话上下文：这一轮对话的历史，系统自动带上；")
+                    appendLine("- 常驻记忆：下面列出的条目，每一轮都随提示词出现；")
+                    appendLine("- 记事本：跨会话保存的全部条目，平时不在上下文里，用 recall 检索、read_memory 读全文。")
+                    if (resident.isEmpty()) {
+                        append("当前常驻 0 条。想让它每次都看到某条，先 remember 写进记事本，再 pin_memory。")
+                    } else {
+                        appendLine()
+                        appendLine("【常驻记忆】")
+                        append(resident)
+                    }
+                },
             )
         }
         layers += PromptLayer(

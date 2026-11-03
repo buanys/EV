@@ -80,9 +80,12 @@ class AgentPromptPlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
  */
 private class PromptServiceImpl(private val directory: ServiceDirectory) : SystemPromptService {
     override fun layers(ctx: PromptContext): List<PromptLayer> {
+        // null = no memory plugin at all; "" = memory exists but nothing is pinned. The second
+        // case still needs the layer, otherwise the model has no idea the notebook has a
+        // resident section and will answer "I have two layers".
         val block = runCatching {
-            directory.lookup(MemoryStoreService.Key)?.residentBlock().orEmpty()
-        }.getOrDefault("")
+            directory.lookup(MemoryStoreService.Key)?.residentBlock()
+        }.getOrNull()
         return PromptLayers.all(ctx, null, block)
     }
 }
