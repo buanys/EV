@@ -2,7 +2,9 @@ package ev.buan.plugins.agent.device
 
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolSpec
+import kotlinx.coroutines.delay
 import org.cordis.api.ScreenAction
+import org.cordis.api.ScreenDump
 import org.cordis.api.ScreenService
 import org.json.JSONArray
 import org.json.JSONObject
@@ -27,6 +29,9 @@ internal object ScreenTools {
         InputTool(service),
         SwipeTool(service),
         KeyTool(service),
+        // 闭环：等界面、按方向滚动。这两件原来要靠模型自己 dump + 算坐标 + 反复比对。
+        ScreenWaitTool(service),
+        ScreenScrollTool(service),
     )
 
     private fun missing(): String =
@@ -36,8 +41,8 @@ internal object ScreenTools {
         "无障碍未开启：在 设置 → 无障碍 → 已下载的服务 里打开 EV。" +
             "这是系统级授权，普通权限（存储、通知）不算。"
 
-    /** 统一的动作结果翻译。 */
-    private fun actionJson(action: ScreenAction): String = when (action) {
+    /** 统一的动作结果翻译。`internal` 是因为 [ScreenScrollTool] 也要用同一套措辞。 */
+    internal fun actionJson(action: ScreenAction): String = when (action) {
         ScreenAction.Ok -> JSONObject().put("ok", true).toString()
         ScreenAction.NoAccessibility -> error(notEnabled())
         is ScreenAction.NotFound -> error(action.detail)
@@ -83,13 +88,18 @@ internal object ScreenTools {
     private class TapTool(private val service: () -> ScreenService?) : Tool {
         override val spec = ToolSpec(
             name = "screen_tap",
-            description = "按坐标点一下屏幕。坐标必须来自最近一次 screen_dump（界面变了坐标就失效）。" +
+            description = "点一下屏幕。优先用 node（screen_dump 里的序号）：点击前会重新读屏核对，" +
+                "界面已经变了就报错，而不是点错地方。也可以给 x / y，但坐标从 dump 到点击之间随时失效。" +
+                "duration_ms 超过 500 就是长按。返回里的 after 说明界面变没变、是跳页还是只是重排。" +
                 "高危：会改变其他应用的状态。",
             parametersJson = """
                 {"type":"object","properties":{
-                  "x":{"type":"integer","description":"横坐标"},
-                  "y":{"type":"integer","description":"纵坐标"}
-                },"required":["x","y"],"additionalProperties":false}
+                  "node":{"type":"integer","description":"screen_dump 里的序号，推荐用这个"},
+                  "expect":{"type":"string","description":"可选：核对这个序号上的文字是否包含这段内容，不符就不点"},
+                  "x":{"type":"integer","description":"横坐标（不用 node 时）"},
+                  "y":{"type":"integer","description":"纵坐标（不用 node 时）"},
+                  "duration_ms":{"type":"integer","description":"按住时长，默认 60；500 以上算长按"}
+                },"additionalProperties":false}
             """.trimIndent(),
             dangerous = true,
         )
@@ -97,10 +107,48 @@ internal object ScreenTools {
         override suspend fun invoke(argumentsJson: String): String {
             val service = service() ?: return error(missing())
             val args = runCatching { JSONObject(argumentsJson) }.getOrNull() ?: return error("请求体不是合法 JSON")
-            val x = args.optInt("x", -1)
-            val y = args.optInt("y", -1)
-            if (x < 0 || y < 0) return error("缺少 x / y")
-            return actionJson(service.tap(x, y))
+            val duration = args.optInt("duration_ms", 60).coerceIn(30, 3_000)
+
+            val node = args.optInt("node", -1)
+            var before: ScreenDump?
+
+            val (x, y) = if (node >= 0) {
+                val dump = service.dump(500)
+                dump.error?.let { return error(it) }
+                before = dump
+                val target = GuiLines.all(dump).firstOrNull { it.index == node }
+                    ?: return error("screen_dump 里没有序号 $node：界面可能已经变了，先重新 screen_dump")
+                val expect = args.optString("expect", "").trim()
+                if (expect.isNotEmpty() && !target.label.contains(expect)) {
+                    return error(
+                        "序号 $node 现在是「${target.label}」，不含「$expect」，没有点。" +
+                            "先重新 screen_dump 看看现在是什么，别照旧序号硬点。",
+                    )
+                }
+                target.x to target.y
+            } else {
+                val px = args.optInt("x", -1)
+                val py = args.optInt("y", -1)
+                if (px < 0 || py < 0) return error("要么给 node，要么给 x / y")
+                before = service.dump(300)
+                px to py
+            }
+
+            // 同点长按：单点路径 + 时长就是 Android 的长按手势，不必再单独开一个工具。
+            val action = if (duration > 500) {
+                service.swipe(x, y, x, y, duration.toLong())
+            } else {
+                service.tap(x, y)
+            }
+            val outcome = actionJson(action)
+            if (action != ScreenAction.Ok) return outcome
+
+            delay(SETTLE_MS)
+            val after = service.dump(400)
+            return JSONObject(outcome)
+                .put("tapped", JSONObject().put("x", x).put("y", y))
+                .put("after", GuiDiff.describe(before, after))
+                .toString()
         }
     }
 
@@ -195,4 +243,12 @@ internal object ScreenTools {
     }
 
     private fun error(message: String): String = JSONObject().put("ok", false).put("error", message).toString()
+
+    /**
+     * 手势返回之后到界面稳定之间的等待。
+     *
+     * 300ms 是折中：短了读到的还是旧界面（会把"点生效了"误报成 unchanged），
+     * 长了每次点击都白等。真需要长时间等待应该用 screen_wait，不是把这里调大。
+     */
+    private const val SETTLE_MS = 300L
 }
