@@ -32,8 +32,7 @@ import org.cordis.api.UserDataStorage
  * A failure never surfaces to the user and never blocks a turn: the cursor simply does not move,
  * and the next idle moment retries.
  */
-internal class Distiller(
-    private val storage: UserDataStorage,
+internal class Distiller(    private val storage: UserDataStorage,
     private val memory: StorageMemoryService,
     private val notes: NoteStore,
     private val model: () -> ModelService?,
@@ -150,6 +149,22 @@ internal class Distiller(
         }
     }
 
+    /**
+     * Read-only view for the memory page: how much of the notebook rides in every prompt, and how
+     * far the distillation cursor has got.
+     *
+     * [covered] is summed across sessions, which is what the page can honestly say: it is a count
+     * of messages already folded into notes, not a per-session progress bar.
+     */
+    fun status(): DistillStatus = synchronized(lock) {
+        val current = snapshot()
+        DistillStatus(
+            covered = current.coveredUpTo.values.sum(),
+            running = running || current.pending.isNotEmpty(),
+            lastAt = current.lastMessageAt.values.maxOrNull() ?: 0L,
+        )
+    }
+
     private fun snapshot(): DistillState = cached ?: load().also { cached = it }
 
     private fun load(): DistillState {
@@ -177,3 +192,13 @@ internal class Distiller(
         const val PENDING_TIMEOUT_MS = 10 * 60 * 1000L
     }
 }
+
+/** Snapshot for the memory page: see [Distiller.status]. */
+internal data class DistillStatus(
+    /** Messages already folded into notes, summed across sessions. */
+    val covered: Int,
+    /** A batch is in flight, or a pending cursor says one was interrupted. */
+    val running: Boolean,
+    /** When the most recently active session last stored a message. */
+    val lastAt: Long,
+)

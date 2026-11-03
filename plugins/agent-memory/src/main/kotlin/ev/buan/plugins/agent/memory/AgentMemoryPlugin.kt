@@ -65,6 +65,9 @@ class AgentMemoryPlugin :
     /** The notebook behind [MemoryStoreService]; the page shows it beside the transcripts. */
     private lateinit var notebook: NoteStore
 
+    /** Null until apply finishes; the page reads it for the "how far has it got" line. */
+    private var distiller: Distiller? = null
+
     override val pageTitle: String = "记忆"
 
     /**
@@ -75,7 +78,13 @@ class AgentMemoryPlugin :
 
     @Composable
     override fun Page(modifier: Modifier, onBack: () -> Unit) {
-        MemoryPage(memory = memory, notes = notebook, modifier = modifier, onBack = onBack)
+        MemoryPage(
+            memory = memory,
+            notes = notebook,
+            distillStatus = { distiller?.status() },
+            modifier = modifier,
+            onBack = onBack,
+        )
     }
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
@@ -88,7 +97,6 @@ class AgentMemoryPlugin :
         // Distillation gets its own scope: a slow or failing model call must never sit inside a
         // turn, and disabling the plugin cancels whatever batch is in flight with it.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        var distiller: Distiller? = null
 
         val service = StorageMemoryService(
             storage = storage,
