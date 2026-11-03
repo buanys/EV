@@ -59,7 +59,6 @@ import ev.buan.plugins.ev.ui.ui.EvModelProvidersScreen
 import ev.buan.plugins.ev.ui.ui.EvSessionSummary
 import ev.buan.plugins.ev.ui.ui.EvSettingsScreen
 import ev.buan.plugins.ev.ui.ui.EvPluginCatalogScreen
-import ev.buan.plugins.ev.ui.ui.EvSkillsScreen
 import ev.buan.plugins.ev.ui.ui.EvApprovalDialog
 import ev.buan.plugins.ev.ui.ui.EvChatBubble
 import ev.buan.plugins.ev.ui.ui.EvChatDefaults
@@ -145,9 +144,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
     /** Non-null while applied: without it the page still works, it just forgets on restart. */
     private var sessionStore: ChatSessionStore? = null
 
-    /** Non-null while applied: the skills library file, same story as [sessionStore]. */
-    private var skillStore: SkillStore? = null
-
     /**
      * The conversations this plugin instance owns - one list, not one per composition.
      *
@@ -157,12 +153,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
      * finishes has something to show; [apply] then replaces the contents with what storage restored.
      */
     private val sessions = mutableStateListOf(newSession())
-
-    /**
-     * The skills library this plugin instance owns, newest first - same scope and reasons as
-     * [characters]. A skill is only text: it never runs, it is folded into the turn's system prompt.
-     */
-    private val skills = mutableStateListOf<EvSkill>()
 
     /**
      * The session a turn is running for, shared for the same reason as [sessions]: two surfaces
@@ -191,15 +181,11 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
         migrateToUserData(ctx.get(PluginStorage.Key), storage)
         val store = ChatSessionStore(storage)
         sessionStore = store
-        val skillsStore = SkillStore(storage)
-        skillStore = skillsStore
         val restored = store.load()
         sessions.clear()
         // Newest first: `first()` is the conversation the user last talked in.
         sessions.addAll(restored.sortedByDescending { it.updatedAt })
         if (sessions.isEmpty()) sessions += newSession()
-        skills.clear()
-        skills.addAll(skillsStore.load().sortedByDescending { it.updatedAt })
 
         // The human's voice in the agent loop: the brain suspends on this gate before running any
         // dangerous tool. Disabling the UI denies everything still waiting (fail-closed) and
@@ -265,7 +251,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                 sessions = sessions,
                 store = sessionStore,
                 directory = directory,
-                skills = skills,
                 scope = scope,
                 newSession = { newSession() },
                 unconnectedPrefix = UNCONNECTED_PREFIX,
@@ -307,11 +292,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
          * snapshot must reflect the edit that the user just saw; [ChatSessionStore] swallows and
          * logs its own failures, so a full disk cannot take the page down with it.
          */
-        /** Same contract for the skills library. */
-        fun persistSkills() {
-            skillStore?.save(skills.toList())
-        }
-
         /**
          * Opens settings, optionally straight onto one of its sections.
          *
@@ -324,23 +304,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
             if (appearance == null) return
             ui.pages.push(EvPage.Settings)
             if (section != null) ui.pages.push(EvPage.SettingsSection(section))
-        }
-
-        /** Replaces the skills library contents in place, then persists. */
-        fun replaceSkills(next: List<EvSkill>) {
-            skills.clear()
-            skills.addAll(next)
-            persistSkills()
-        }
-
-        /** Removes a skill and drops every session's reference to it, for the same reasons. */
-        fun deleteSkill(skillId: String) {
-            replaceSkills(skills.without(skillId))
-            if (sessions.none { it.skillId == skillId }) return
-            sessions.clearingSkill(skillId).forEachIndexed { index, session ->
-                sessions[index] = session
-            }
-            chat.persist()
         }
 
         LaunchedEffect(activeSession.id, activeSession.messages.lastOrNull()?.id, replying) {
@@ -389,7 +352,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     onOpenModels = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Models)) },
                     onOpenTools = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Tools)) },
                     onOpenMemory = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Memory)) },
-                    onOpenSkills = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Skills)) },
                     modifier = modifier,
                 )
             }
@@ -428,17 +390,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     modifier = modifier,
                 )
 
-                SettingsChild.Skills -> EvSkillsScreen(
-                    skills = skills,
-                    selectedId = activeSession.skillId,
-                    onBack = { ui.pages.pop() },
-                    onSelect = { skillId ->
-                        chat.mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
-                    },
-                    onSave = { saved -> replaceSkills(skills.upsert(saved)) },
-                    onDelete = { skillId -> deleteSkill(skillId) },
-                    modifier = modifier,
-                )
             }
         }
 
@@ -514,20 +465,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
             )
         }
 
-        EvPage.Skills -> {
-            EvSkillsScreen(
-                skills = skills,
-                selectedId = activeSession.skillId,
-                onBack = { ui.pages.pop() },
-                // Same per-session semantics as characters: the id lives on the conversation.
-                onSelect = { skillId ->
-                    chat.mutate(activeSession.id) { session -> session.copy(skillId = skillId) }
-                },
-                onSave = { saved -> replaceSkills(skills.upsert(saved)) },
-                onDelete = { skillId -> deleteSkill(skillId) },
-                modifier = modifier,
-            )
-        }
                 null -> {
             EvDrawerScaffold(
                 open = ui.drawerOpen,

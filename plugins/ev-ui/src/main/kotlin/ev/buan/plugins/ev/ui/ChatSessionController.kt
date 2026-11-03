@@ -27,7 +27,6 @@ internal class ChatSessionController(
     private val sessions: SnapshotStateList<ChatSession>,
     private val store: ChatSessionStore?,
     private val directory: ServiceDirectory?,
-    private val skills: List<EvSkill>,
     private val scope: CoroutineScope,
     private val newSession: () -> ChatSession,
     private val unconnectedPrefix: String,
@@ -138,10 +137,7 @@ internal class ChatSessionController(
                     agent.sendStreaming(
                         sessionId = sessionId,
                         text = prompt,
-                        systemPrompt = sessionSystemPrompt(
-                            skills = skills,
-                            session = sessions.firstOrNull { it.id == sessionId },
-                        ),
+                        systemPrompt = null,
                     ).collect { progress ->
                         when (progress) {
                             is AgentProgress.RoundStarted -> {

@@ -81,13 +81,6 @@ internal fun EvChatDrawer(
         ui.drawerOpen = false
         ui.pages.push(EvPage.Memory)
     },
-    onSkills = {
-        // Skills are per session too; nothing is executed, the text only reaches the
-        // model inside this conversation's system prompt.
-        keyboard?.hide()
-        ui.drawerOpen = false
-        ui.pages.push(EvPage.Skills)
-    },
     onSettings = {
         // Ev's own settings page, inside this plugin: the host page stays reachable
         // from the drawer's "宿主设置" row on the settings screen itself.

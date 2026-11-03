@@ -106,7 +106,6 @@ fun EvDrawerContent(
     onTools: () -> Unit,
     onBrowser: () -> Unit,
     onMemory: () -> Unit,
-    onSkills: () -> Unit,
     onSettings: () -> Unit,
     onSearch: () -> Unit,
     statusLine: String = "本地 · 插件宿主",
@@ -129,7 +128,6 @@ fun EvDrawerContent(
             DrawerMore(expanded = moreExpanded, onToggle = onToggleMore) {
                 DrawerSubNav("浏览器", EvGlyphKind.World, onBrowser)
                 DrawerSubNav("记忆", EvGlyphKind.Memory, onMemory)
-                DrawerSubNav("Skills", EvGlyphKind.Skill, onSkills)
             }
         }
         Spacer(Modifier.height(10.dp))

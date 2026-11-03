@@ -61,7 +61,6 @@ class ChatSessionControllerTest {
         // No agent: requestReply takes the "not connected" branch, which is synchronous enough to
         // assert on (it appends its notice after a short delay, so tests never wait for it).
         directory = null,
-        skills = emptyList(),
         scope = scope,
         newSession = { session("new-${System.nanoTime()}") },
         unconnectedPrefix = "（未接模型）",
