@@ -78,6 +78,7 @@ internal fun MemoryPage(
     var messages by remember { mutableStateOf<List<AgentMessage>>(emptyList()) }
 
     var openedNote by remember { mutableStateOf<MemoryNote?>(null) }
+    var showPinned by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var draftTitle by remember { mutableStateOf("") }
     var draftBody by remember { mutableStateOf("") }
@@ -176,6 +177,15 @@ internal fun MemoryPage(
             items(messages) { message -> MessageBlock(message) }
         }
 
+        showPinned -> PinnedPage(
+            notes = notebook.orEmpty()
+                .filter { it.pinned && it.status == MemoryNote.STATUS_ACTIVE },
+            residentChars = Resident.render(notebook.orEmpty()).length,
+            onOpen = { openedNote = it },
+            onBack = { showPinned = false },
+            modifier = modifier,
+        )
+
         else -> {
             val active = notebook.orEmpty().filter { it.status == MemoryNote.STATUS_ACTIVE }
             val pinned = active.filter { it.pinned }
@@ -200,6 +210,7 @@ internal fun MemoryPage(
                             residentChars = pinnedChars,
                             totalMessages = list.sumOf { it.count },
                             status = distillation,
+                            onClick = { showPinned = true },
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         )
                     }
@@ -286,6 +297,7 @@ private fun MemoryHero(
     residentChars: Int,
     totalMessages: Int,
     status: DistillStatus?,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tokens = EvThemeTokens.colors
@@ -295,6 +307,7 @@ private fun MemoryHero(
     EvCard(
         modifier = modifier,
         insideMargin = PaddingValues(20.dp),
+        onClick = onClick,
         // One step above the list cards: the hero is the only block that answers "how much do you
         // remember", so it gets its own surface level instead of another identical card.
         colors = CardDefaults.defaultColors(
@@ -329,10 +342,19 @@ private fun MemoryHero(
         Spacer(Modifier.height(14.dp))
         BudgetBar(fraction)
         Spacer(Modifier.height(12.dp))
-        Text(
-            text = distillLine(totalMessages, status),
-            style = type.caption.style(tokens.textTertiary),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = distillLine(totalMessages, status),
+                style = type.caption.style(tokens.textTertiary),
+                modifier = Modifier.weight(1f),
+            )
+            // The card is a door, not a dashboard: the chevron says "there is a list behind this".
+            EvGlyph(
+                kind = EvGlyphKind.Chevron,
+                color = tokens.textTertiary,
+                modifier = Modifier.size(14.dp),
+            )
+        }
     }
 }
 
@@ -496,6 +518,59 @@ private fun SessionRow(session: MemorySession, onClick: () -> Unit) {
             color = tokens.textTertiary,
             modifier = Modifier.size(16.dp),
         )
+    }
+}
+
+/** The list behind the hero card: every note that rides in the prompt, and the room it takes. */
+@Composable
+private fun PinnedPage(
+    notes: List<MemoryNote>,
+    residentChars: Int,
+    onOpen: (MemoryNote) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = EvThemeTokens.colors
+    val type = EvThemeTokens.type
+    EvPage(
+        title = "常驻记忆",
+        subtitle = if (notes.isEmpty()) {
+            "0 条"
+        } else {
+            "${notes.size} 条 · $residentChars / ${Resident.BUDGET_CHARS} 字"
+        },
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        if (notes.isEmpty()) {
+            item {
+                EmptyCard(
+                    icon = EvGlyphKind.Memory,
+                    title = "没有常驻条目",
+                    body = "在条目详情里打开「常驻上下文」，它就会每一轮都出现在提示词里。",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        } else {
+            item {
+                EvCard(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    insideMargin = PaddingValues(0.dp),
+                ) {
+                    notes.forEachIndexed { index, note ->
+                        NoteRow(note) { onOpen(note) }
+                        if (index != notes.lastIndex) Hairline(startIndent = 32.dp)
+                    }
+                }
+            }
+            item {
+                Text(
+                    text = "这 ${notes.size} 条每轮都会进入提示词，共用 ${Resident.BUDGET_CHARS} 字预算。点一条可以改正文或移出常驻。",
+                    style = type.caption.style(tokens.textTertiary),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                )
+            }
+        }
     }
 }
 
