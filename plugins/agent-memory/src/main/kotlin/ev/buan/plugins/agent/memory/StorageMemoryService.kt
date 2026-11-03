@@ -18,6 +18,14 @@ import org.cordis.api.PluginStorage
 internal class StorageMemoryService(
     private val storage: PluginStorage,
     private val index: MemoryIndex = MemoryIndex(storage),
+    /**
+     * Called after a message is durably stored, outside the lock.
+     *
+     * The memory plugin uses it to notice "the user came back after a quiet spell", which is when
+     * distillation is allowed to run. Kept as a callback rather than a dependency so this class
+     * still works (and is still testable) without a model or a coroutine scope.
+     */
+    private val onAppend: ((String) -> Unit)? = null,
 ) : MemoryService {
     private val lock = Any()
 
@@ -33,6 +41,9 @@ internal class StorageMemoryService(
             // the next message instead of leaving the page permanently empty.
             index.touch(sessionId, messages)
         }
+        // Outside the lock: the callback reads history and may start a model call, and holding the
+        // append lock across either would block the next turn behind a summarisation.
+        onAppend?.invoke(sessionId)
     }
 
     override suspend fun clear(sessionId: String) {

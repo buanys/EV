@@ -202,7 +202,11 @@ private fun NoteRow(note: MemoryNote, pinned: Boolean) {
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "${kindLabel(note.kind)} · ${stamp(note.updatedAt)}",
+            text = buildString {
+                append(kindLabel(note.kind))
+                if (note.origin == MemoryNote.ORIGIN_DISTILLED) append(" · 自动")
+                append(" · ").append(stamp(note.updatedAt))
+            },
             style = type.caption.style(tokens.textTertiary),
         )
         if (note.body.isNotBlank() && note.body != note.title) {

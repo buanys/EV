@@ -139,6 +139,45 @@ internal class NoteStore(private val storage: UserDataStorage) : MemoryStoreServ
 
     override fun residentBlock(): String = synchronized(lock) { Resident.render(snapshot()) }
 
+    /** Every title, in storage order; the distillation prompt uses it to avoid duplicates. */
+    fun titles(): List<String> = synchronized(lock) { snapshot().map { it.title } }
+
+    /**
+     * Appends one distilled batch in a single atomic write.
+     *
+     * All-or-nothing on purpose: a half-written batch would leave notes whose `sources` point into
+     * a range the cursor has not covered yet, and a crash would keep them there forever. A title
+     * already in the notebook is skipped instead of duplicated - the model is told the existing
+     * titles, but it is not trusted to obey.
+     *
+     * Returns how many notes were actually added.
+     */
+    fun addDistilled(drafts: List<DistillDraft>, sessionId: String): Int = synchronized(lock) {
+        if (drafts.isEmpty()) return@synchronized 0
+        val merged = ArrayList<MemoryNote>(snapshot())
+        val titles = merged.mapTo(HashSet()) { normalizeTitle(it.title) }
+        val now = System.currentTimeMillis()
+        var added = 0
+        drafts.forEach { draft ->
+            if (!titles.add(normalizeTitle(draft.title))) return@forEach
+            merged += MemoryNote(
+                id = nextId(now, merged),
+                title = draft.title,
+                kind = draft.kind,
+                body = draft.body,
+                keywords = draft.keywords,
+                sources = draft.sources,
+                sessions = listOf(sessionId),
+                origin = MemoryNote.ORIGIN_DISTILLED,
+                createdAt = now,
+                updatedAt = now,
+            )
+            added++
+        }
+        if (added > 0) commit(merged)
+        added
+    }
+
     private fun index(): NoteSearch = search ?: NoteSearch(snapshot()).also { search = it }
 
     private fun snapshot(): List<MemoryNote> =
@@ -185,3 +224,12 @@ internal class NoteStore(private val storage: UserDataStorage) : MemoryStoreServ
         const val MAX_KEYWORDS = 8
     }
 }
+
+/**
+ * Title comparison shared by the store and the distillation parser: case and whitespace are not
+ * part of a title's identity, so "编译 环境" and "编译环境" are the same note.
+ */
+internal fun normalizeTitle(title: String): String =
+    title.trim().lowercase().replace(WHITESPACE, "")
+
+private val WHITESPACE = Regex("\\s+")

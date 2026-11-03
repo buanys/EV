@@ -4,7 +4,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.MemoryStoreService
+import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.cordis.Context
 import org.cordis.Dependencies
 import org.cordis.EffectScope
@@ -80,7 +85,15 @@ class AgentMemoryPlugin :
         val storage = ctx.require(UserDataStorage.Key)
         migrateToUserData(ctx.get(PluginStorage.Key), storage)
 
-        val service = StorageMemoryService(storage)
+        // Distillation gets its own scope: a slow or failing model call must never sit inside a
+        // turn, and disabling the plugin cancels whatever batch is in flight with it.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        var distiller: Distiller? = null
+
+        val service = StorageMemoryService(
+            storage = storage,
+            onAppend = { sessionId -> distiller?.onMessageStored(sessionId) },
+        )
         memory = service
         directory.publish(MemoryService.Key, service)
 
@@ -88,6 +101,16 @@ class AgentMemoryPlugin :
         val notes = NoteStore(storage)
         notebook = notes
         directory.publish(MemoryStoreService.Key, notes)
+
+        distiller = Distiller(
+            storage = storage,
+            memory = service,
+            notes = notes,
+            // Looked up per batch, not captured at activation: the model plugin can be enabled,
+            // reconfigured or replaced while memory stays running.
+            model = { directory.lookup(ModelService.Key) },
+            scope = scope,
+        )
 
         // Tools go through the published registry rather than a second one: the host holds
         // exactly one registry, and a capability plugin registers into it. A missing registry
@@ -99,6 +122,7 @@ class AgentMemoryPlugin :
         // consumer never keeps a memory service whose storage access is already gone. The identity
         // checks keep this stale disposer from retracting a newer instance after a re-activation.
         effect.collect {
+            scope.cancel()
             registry?.unregister(PLUGIN_ID)
             if (directory.lookup(MemoryStoreService.Key) === notes) {
                 directory.retract(MemoryStoreService.Key)

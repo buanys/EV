@@ -57,6 +57,11 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
     testImplementation(files(agentApiClasses))
+    // The distillation test needs the storage contracts on the test classpath: the plugin gets
+    // them from the host at runtime, but a JVM test has no host.
+    testImplementation(project(":plugin-api"))
+    // ServiceKey lives in the frozen kernel; the contracts reference it from their companion objects.
+    testImplementation(project(":core"))
     // The Compose compiler plugin runs over this module's tests too and refuses to generate IR
     // without a runtime on the classpath; the plugin itself gets one from the host at runtime.
     testImplementation("androidx.compose.runtime:runtime:1.12.0")
