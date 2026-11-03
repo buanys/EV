@@ -23,6 +23,14 @@ internal sealed interface EvPage {
     data object Tools : EvPage
     data object Browser : EvPage
 
+    /**
+     * Another plugin's own screen, composed inside this stack rather than started as an Activity.
+     *
+     * The page owns its content and its top bar; ev-ui owns the transition and the back gesture, so
+     * opening a plugin page looks exactly like opening a built-in one.
+     */
+    data class Plugin(val id: String) : EvPage
+
     /** A shell that runs commands directly, without a conversation. */
     data object Terminal : EvPage
     data object Memory : EvPage
@@ -81,3 +89,6 @@ internal class EvNavigator {
         return true
     }
 }
+
+/** The memory plugin's id, used by both the drawer and the settings row that open its page. */
+internal const val MEMORY_PLUGIN_ID = "ev.buan.plugins.agent.memory"

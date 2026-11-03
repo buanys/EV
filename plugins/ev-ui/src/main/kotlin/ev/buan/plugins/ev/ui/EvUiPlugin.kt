@@ -93,6 +93,7 @@ import org.cordis.api.AgentPage
 import org.cordis.api.AgentSurface
 import org.cordis.api.AppearanceService
 import org.cordis.api.HostNavigation
+import org.cordis.api.PluginPageService
 import org.cordis.api.PluginStorage
 import org.cordis.api.UserDataStorage
 import org.cordis.api.migrateToUserData
@@ -469,9 +470,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     modifier = modifier,
                 )
 
-                SettingsChild.Memory -> EvMemoryScreen(
-                    sessionId = activeSession.id,
-                    memory = { directory?.lookup(MemoryService.Key) },
+                SettingsChild.Memory -> EvPluginPage(
+                    pluginId = MEMORY_PLUGIN_ID,
+                    directory = directory,
                     onBack = { ui.pages.pop() },
                     modifier = modifier,
                 )
@@ -525,12 +526,24 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
             )
         }
 
+        is EvPage.Plugin -> {
+            // A page that belongs to another plugin, composed here so the transition, the back
+            // gesture and the page stack stay ev-ui's. The plugin may be disabled or reloaded while
+            // this is on screen, so the page is resolved on every composition.
+            EvPluginPage(
+                pluginId = page.id,
+                directory = directory,
+                onBack = { ui.pages.pop() },
+                modifier = modifier,
+            )
+        }
+
         EvPage.Memory -> {
-            // The memory plugin may be enabled, disabled or reconfigured while the page is open:
-            // the service is looked up on every read, and the panel has a refresh action.
-            EvMemoryScreen(
-                sessionId = activeSession.id,
-                memory = { directory?.lookup(MemoryService.Key) },
+            // Kept as an alias: the drawer still navigates here, and both routes now open the
+            // memory plugin's own page instead of ev-ui's copy of it.
+            EvPluginPage(
+                pluginId = MEMORY_PLUGIN_ID,
+                directory = directory,
                 onBack = { ui.pages.pop() },
                 modifier = modifier,
             )
@@ -703,3 +716,35 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
 }
 
 /** Clock time on a history row; the group label above it already says which day it was. */
+/**
+ * Composes another plugin's page inside ev-ui's own navigation stack.
+ *
+ * [PluginPageService] hands back the plugin's [AgentPage] instead of starting an Activity, which is
+ * what keeps the transition and the back gesture identical to a built-in page. The page is resolved
+ * on every composition on purpose: the plugin may be disabled, reloaded or fail to activate while
+ * this screen is open, and a stale instance must not keep rendering.
+ */
+@Composable
+private fun EvPluginPage(
+    pluginId: String,
+    directory: ServiceDirectory?,
+    onBack: () -> Unit,
+    modifier: Modifier,
+) {
+    val page = directory?.lookup(PluginPageService.Key)?.pageOf(pluginId)
+    if (page != null) {
+        page.Page(modifier, onBack)
+        return
+    }
+    // Fully qualified: `EvPage` in this package is the navigation sealed interface, not the
+    // design-system page composable.
+    ev.buan.ui.EvPage(title = "插件未就绪", onBack = onBack, modifier = modifier) {
+        item {
+            Text(
+                text = "这个页面属于 $pluginId，它现在没有加载。到插件中心看看它是否被禁用或加载失败。",
+                style = EvThemeTokens.type.body.style(EvThemeTokens.colors.textSecondary),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+            )
+        }
+    }
+}

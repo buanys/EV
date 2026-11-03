@@ -12,7 +12,7 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0.4"
+        versionName = "1.0.5"
     }
 
     buildFeatures {
@@ -106,7 +106,7 @@ tasks.register("bundlePlugin") {
         val metadata = """
             {
               "id": "ev.buan.plugins.ev.ui",
-              "version": "1.0.4",
+              "version": "1.0.5",
               "entryClass": "ev.buan.plugins.ev.ui.EvUiPlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.api"],
