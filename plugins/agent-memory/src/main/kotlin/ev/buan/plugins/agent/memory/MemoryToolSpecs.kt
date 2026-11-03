@@ -17,12 +17,14 @@ internal object MemoryToolSpecs {
     val remember = ToolSpec(
         name = "remember",
         description = "把一条值得跨会话保留的事实写进记事本。适合稳定的偏好、约定、长期任务；" +
-            "一次对话里的临时细节不要写。写入后可以用 pin_memory 让它常驻上下文。",
+            "一次对话里的临时细节不要写。已有几乎相同的条目时会合并进去而不是重复新增；" +
+            "要推翻一条旧结论就传 replaces。写入后可以用 pin_memory 让它常驻上下文。",
         parametersJson = """
             {"type":"object","properties":{
               "text":{"type":"string","description":"要记住的内容，一段话，写清结论而不是过程"},
               "kind":{"type":"string","enum":["preference","fact","task","convention"],"description":"条目类型，缺省 fact"},
-              "title":{"type":"string","description":"可选，一行标题；缺省从正文首句截取"}
+              "title":{"type":"string","description":"可选，一行标题；缺省从正文首句截取"},
+              "replaces":{"type":"string","description":"可选，被这条新结论取代的旧条目 id；旧条目会转为已取代"}
             },"required":["text"],"additionalProperties":false}
         """.trimIndent(),
     )

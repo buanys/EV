@@ -22,12 +22,26 @@ interface MemoryStoreService {
      * [kind] is normalised by the implementation; an unknown value is kept as-is rather than
      * rejected, so a future kind written by a newer model does not fail this call. [title] is
      * derived from the text when absent.
+     *
+     * [replaces] marks an explicit correction: the old note becomes
+     * [MemoryNote.STATUS_SUPERSEDED], the new one records it in [MemoryNote.supersedes], and the
+     * old note's `sources` are carried over so the evidence chain survives the rewrite.
      */
     fun remember(
         text: String,
         kind: String = MemoryNote.KIND_FACT,
         title: String? = null,
+        replaces: String? = null,
     ): MemoryNote
+
+    /**
+     * The active note that says almost the same thing as [text], or null.
+     *
+     * Used by the write path to merge instead of duplicating: a model that re-words the same fact
+     * every week would otherwise fill the notebook with copies that recall has to disambiguate.
+     * [excludeId] keeps an in-place edit from matching itself.
+     */
+    fun similar(text: String, kind: String, excludeId: String? = null): MemoryNote?
 
     /**
      * Changes the editable fields of [id]; a distilled note becomes [MemoryNote.ORIGIN_MODEL],

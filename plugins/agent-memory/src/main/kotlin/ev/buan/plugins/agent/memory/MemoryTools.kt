@@ -33,11 +33,36 @@ internal object MemoryTools {
     private fun remember(store: MemoryStoreService, args: JSONObject): String {
         val text = args.optString("text", "").trim()
         require(text.isNotEmpty()) { "缺少 text 参数" }
-        val note = store.remember(
-            text = text,
-            kind = args.optString("kind", MemoryNote.KIND_FACT),
-            title = args.optString("title", "").trim().ifEmpty { null },
-        )
+        val kind = args.optString("kind", MemoryNote.KIND_FACT)
+        val title = args.optString("title", "").trim().ifEmpty { null }
+        val replaces = args.optString("replaces", "").trim().ifEmpty { null }
+
+        // An explicit correction retires the old note and keeps the sources; the model asked for
+        // a replacement, so no similarity check is needed (or wanted) here.
+        if (replaces != null) {
+            val note = store.remember(text, kind, title, replaces)
+            return JSONObject()
+                .put("id", note.id)
+                .put("title", note.title)
+                .put("kind", note.kind)
+                .put("replaces", note.supersedes ?: replaces)
+                .toString()
+        }
+
+        // An implicit duplicate merges into the existing note. The model re-wording the same fact
+        // is normal; three near-identical notes in the notebook is not.
+        val twin = store.similar(text, kind)
+        if (twin != null) {
+            store.update(twin.id, body = text)
+            return JSONObject()
+                .put("id", twin.id)
+                .put("title", twin.title)
+                .put("kind", twin.kind)
+                .put("merged", true)
+                .toString()
+        }
+
+        val note = store.remember(text, kind, title)
         return JSONObject()
             .put("id", note.id)
             .put("title", note.title)

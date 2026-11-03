@@ -35,23 +35,73 @@ internal class NoteStore(private val storage: UserDataStorage) : MemoryStoreServ
         )
     }
 
-    override fun remember(text: String, kind: String, title: String?): MemoryNote =
+    override fun remember(
+        text: String,
+        kind: String,
+        title: String?,
+        replaces: String?,
+    ): MemoryNote = synchronized(lock) {
+        val body = text.trim()
+        require(body.isNotEmpty()) { "记忆内容不能为空" }
+        val now = System.currentTimeMillis()
+        val existing = snapshot()
+        val old = replaces?.let { id -> existing.firstOrNull { it.id == id } }
+        val note = MemoryNote(
+            id = nextId(now, existing),
+            title = (title?.trim()?.takeIf { it.isNotEmpty() } ?: deriveTitle(body))
+                .take(TITLE_CHARS),
+            kind = normalizeKind(kind),
+            body = body.take(MAX_BODY_CHARS),
+            // The evidence behind the old note still supports the new one: dropping it would
+            // break the traceability chain at the exact moment it matters most.
+            sources = old?.sources.orEmpty().distinct(),
+            supersedes = old?.id,
+            createdAt = now,
+            updatedAt = now,
+        )
+        val remaining = if (old == null) {
+            existing
+        } else {
+            existing.map {
+                if (it.id == old.id) {
+                    it.copy(
+                        status = MemoryNote.STATUS_SUPERSEDED,
+                        // A superseded note must not keep riding in the prompt.
+                        pinned = false,
+                        updatedAt = now,
+                    )
+                } else {
+                    it
+                }
+            }
+        }
+        commit(remaining + note)
+        note
+    }
+
+    override fun similar(text: String, kind: String, excludeId: String?): MemoryNote? =
         synchronized(lock) {
-            val body = text.trim()
-            require(body.isNotEmpty()) { "记忆内容不能为空" }
-            val now = System.currentTimeMillis()
-            val existing = snapshot()
-            val note = MemoryNote(
-                id = nextId(now, existing),
-                title = (title?.trim()?.takeIf { it.isNotEmpty() } ?: deriveTitle(body))
-                    .take(TITLE_CHARS),
-                kind = normalizeKind(kind),
-                body = body.take(MAX_BODY_CHARS),
-                createdAt = now,
-                updatedAt = now,
-            )
-            commit(existing + note)
-            note
+            val terms = NoteTerms.of(text).distinct()
+            if (terms.isEmpty()) return@synchronized null
+            val normalizedKind = normalizeKind(kind)
+            var best: MemoryNote? = null
+            var bestScore = 0.0
+            snapshot().forEach { note ->
+                if (note.status != MemoryNote.STATUS_ACTIVE) return@forEach
+                if (note.id == excludeId) return@forEach
+                // Only same-kind notes: a preference and a task can share words without saying
+                // the same thing, and merging them would lose the distinction.
+                if (note.kind != normalizedKind) return@forEach
+                val noteTerms = NoteTerms.of(note.title + "\n" + note.body).toHashSet()
+                if (noteTerms.isEmpty()) return@forEach
+                val overlap = terms.count { it in noteTerms }
+                val score = overlap.toDouble() / minOf(terms.size, noteTerms.size)
+                if (score > bestScore) {
+                    bestScore = score
+                    best = note
+                }
+            }
+            if (bestScore >= SIMILAR_THRESHOLD) best else null
         }
 
     override fun update(
@@ -222,6 +272,13 @@ internal class NoteStore(private val storage: UserDataStorage) : MemoryStoreServ
         const val MAX_BODY_CHARS = 2_000
 
         const val MAX_KEYWORDS = 8
+
+        /**
+         * How much of the shorter note's vocabulary must be covered before two notes count as the
+         * same. 0.7 tolerates re-wording ("偏好中文" vs "偏好中文回答") but not a shared topic
+         * ("偏好中文" vs "偏好简洁") - the second pair is 0/3, far below the line.
+         */
+        const val SIMILAR_THRESHOLD = 0.7
     }
 }
 
