@@ -98,3 +98,6 @@ internal const val TOOLS_PLUGIN_ID = "ev.buan.plugins.agent.tools"
 
 /** The shell plugin's id; it owns run_shell and therefore the terminal page. */
 internal const val SHELL_PLUGIN_ID = "ev.buan.plugins.agent.shell"
+
+/** The browse plugin's id; it owns web_fetch/web_search and now the browser panel too. */
+internal const val BROWSE_PLUGIN_ID = "ev.buan.plugins.agent.browse"

@@ -1,4 +1,4 @@
-package ev.buan.plugins.ev.ui.ui
+package ev.buan.plugins.agent.browse
 
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -60,7 +60,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * host's own INTERNET.
  */
 @Composable
-fun EvBrowserScreen(
+fun BrowserPage(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {

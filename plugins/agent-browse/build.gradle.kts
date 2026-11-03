@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -11,7 +12,11 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "1.1.0"
+    }
+
+    buildFeatures {
+        compose = true
     }
 
     buildTypes {
@@ -37,6 +42,8 @@ val agentApiClasses = rootProject.file(
 dependencies {
     compileOnly(project(":plugin-api"))
     compileOnly(project(":loader"))
+    compileOnly(project(":ui-kit"))
+    compileOnly("androidx.activity:activity-compose:1.13.0")
     compileOnly(files(agentApiClasses))
     // 宿主已打包 okhttp3 与 jsoup（gradle/shared-packages.txt）；这里只借用编译期签名。
     compileOnly("com.squareup.okhttp3:okhttp:5.5.0")
@@ -70,7 +77,7 @@ tasks.register("bundlePlugin") {
         val metadata = """
             {
               "id": "ev.buan.plugins.agent.browse",
-              "version": "1.0.0",
+              "version": "1.1.0",
               "entryClass": "ev.buan.plugins.agent.browse.AgentBrowsePlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.tools"]

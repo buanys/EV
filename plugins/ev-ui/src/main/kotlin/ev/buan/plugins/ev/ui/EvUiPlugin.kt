@@ -49,7 +49,6 @@ import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelProviderService
 import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolRegistry
-import ev.buan.plugins.ev.ui.ui.EvBrowserScreen
 import ev.buan.plugins.ev.ui.ui.EvCharactersScreen
 import ev.buan.plugins.ev.ui.ui.EvLinuxScreen
 import ev.buan.plugins.ev.ui.ui.EvMoreMenuPanel
@@ -512,9 +511,14 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
         }
 
         EvPage.Browser -> {
-            EvBrowserScreen(onBack = { ui.pages.pop() }, modifier = modifier)
+            // The browse plugin owns the panel now: same network stack as web_fetch.
+            EvPluginPage(
+                pluginId = BROWSE_PLUGIN_ID,
+                directory = directory,
+                onBack = { ui.pages.pop() },
+                modifier = modifier,
+            )
         }
-
         EvPage.Terminal -> {
             // The shell's owner draws the console; the quick tools panel still routes here.
             EvPluginPage(
