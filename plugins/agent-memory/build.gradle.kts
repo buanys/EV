@@ -57,6 +57,9 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
     testImplementation(files(agentApiClasses))
+    // The Compose compiler plugin runs over this module's tests too and refuses to generate IR
+    // without a runtime on the classpath; the plugin itself gets one from the host at runtime.
+    testImplementation("androidx.compose.runtime:runtime:1.12.0")
     // The plugin container must not carry a stdlib (the host provides it), but the JVM test needs one.
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
 }

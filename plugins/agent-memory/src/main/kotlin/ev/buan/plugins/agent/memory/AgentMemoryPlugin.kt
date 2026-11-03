@@ -3,6 +3,8 @@ package ev.buan.plugins.agent.memory
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import ev.buan.plugins.agent.api.MemoryService
+import ev.buan.plugins.agent.api.MemoryStoreService
+import ev.buan.plugins.agent.api.ToolRegistry
 import org.cordis.Context
 import org.cordis.Dependencies
 import org.cordis.EffectScope
@@ -41,6 +43,7 @@ class AgentMemoryPlugin :
         description = "按会话保存事实，下次对话时取回；不是把整段聊天塞进上下文。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("agent/memory", org.cordis.api.PluginCapability.Kind.SERVICE, "读写记忆", "按会话存一条事实，按相关度取回。"),
+            org.cordis.api.PluginCapability("agent/memory-store", org.cordis.api.PluginCapability.Kind.SERVICE, "跨会话记事本", "模型自己增删改的长期条目，以及常驻在提示词里的那部分。"),
         ),
     )
 
@@ -54,6 +57,9 @@ class AgentMemoryPlugin :
     /** Set during apply; the page is only reachable after activation, so it is always populated. */
     private lateinit var memory: StorageMemoryService
 
+    /** The notebook behind [MemoryStoreService]; the page shows it beside the transcripts. */
+    private lateinit var notebook: NoteStore
+
     override val pageTitle: String = "记忆"
 
     /**
@@ -64,7 +70,7 @@ class AgentMemoryPlugin :
 
     @Composable
     override fun Page(modifier: Modifier, onBack: () -> Unit) {
-        MemoryPage(memory = memory, modifier = modifier, onBack = onBack)
+        MemoryPage(memory = memory, notes = notebook, modifier = modifier, onBack = onBack)
     }
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
@@ -73,14 +79,35 @@ class AgentMemoryPlugin :
         // re-approval. The plugin area is read only once, to migrate what was stored there before.
         val storage = ctx.require(UserDataStorage.Key)
         migrateToUserData(ctx.get(PluginStorage.Key), storage)
+
         val service = StorageMemoryService(storage)
         memory = service
         directory.publish(MemoryService.Key, service)
+
+        // L2/L3: the notebook the model edits and the block rendered into its prompt.
+        val notes = NoteStore(storage)
+        notebook = notes
+        directory.publish(MemoryStoreService.Key, notes)
+
+        // Tools go through the published registry rather than a second one: the host holds
+        // exactly one registry, and a capability plugin registers into it. A missing registry
+        // (agent-tools disabled) only costs the tools, not the service.
+        val registry = directory.lookup(ToolRegistry.Key)
+        registry?.register(PLUGIN_ID, MemoryTools.all(notes))
+
         // Disabling the plugin retracts the capability in the same step that disposes it, so a
         // consumer never keeps a memory service whose storage access is already gone. The identity
-        // check keeps this stale disposer from retracting a newer instance after a re-activation.
+        // checks keep this stale disposer from retracting a newer instance after a re-activation.
         effect.collect {
+            registry?.unregister(PLUGIN_ID)
+            if (directory.lookup(MemoryStoreService.Key) === notes) {
+                directory.retract(MemoryStoreService.Key)
+            }
             if (directory.lookup(MemoryService.Key) === service) directory.retract(MemoryService.Key)
         }
+    }
+
+    private companion object {
+        const val PLUGIN_ID = "ev.buan.plugins.agent.memory"
     }
 }

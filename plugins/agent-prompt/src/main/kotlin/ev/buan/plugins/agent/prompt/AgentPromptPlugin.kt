@@ -1,5 +1,6 @@
 package ev.buan.plugins.agent.prompt
 
+import ev.buan.plugins.agent.api.MemoryStoreService
 import ev.buan.plugins.agent.api.PromptContext
 import ev.buan.plugins.agent.api.PromptLayer
 import ev.buan.plugins.agent.api.SystemPromptService
@@ -51,7 +52,7 @@ class AgentPromptPlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
-        val service = PromptServiceImpl()
+        val service = PromptServiceImpl(directory)
         directory.publish(SystemPromptService.Key, service)
         // Identity check, like the other agent plugins: a stale disposer must not retract a newer
         // instance published after a re-activation.
@@ -72,7 +73,16 @@ class AgentPromptPlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
  *
  * Stateless on purpose: `layers` has to be synchronous and deterministic, so nothing here reads
  * disk or settings. User-customised text belongs to a settings pass, not to activation.
+ *
+ * The one lookup it does is the memory store's resident block, which is an in-memory snapshot.
+ * A missing or throwing memory plugin degrades to no `memory` layer: a prompt service must never
+ * take a turn down.
  */
-private class PromptServiceImpl : SystemPromptService {
-    override fun layers(ctx: PromptContext): List<PromptLayer> = PromptLayers.all(ctx, null)
+private class PromptServiceImpl(private val directory: ServiceDirectory) : SystemPromptService {
+    override fun layers(ctx: PromptContext): List<PromptLayer> {
+        val block = runCatching {
+            directory.lookup(MemoryStoreService.Key)?.residentBlock().orEmpty()
+        }.getOrDefault("")
+        return PromptLayers.all(ctx, null, block)
+    }
 }
