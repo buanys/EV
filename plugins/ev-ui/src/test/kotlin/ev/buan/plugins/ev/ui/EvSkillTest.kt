@@ -7,8 +7,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins the skills library rules and - the part the chat page depends on - how a session's character
- * and skill are folded into one system prompt.
+ * Pins the skills library rules and - the part the chat page depends on - how a session's skill is
+ * folded into the system prompt.
+ *
+ * Characters used to live here too. They were removed on 2026-11-03: a character was a second,
+ * per-session copy of "who you are", and the prompt plugin's persona layer already owns that.
  */
 class EvSkillTest {
 
@@ -59,83 +62,41 @@ class EvSkillTest {
         val cleared = sessions.clearingSkill("gone")
 
         assertEquals(listOf(null, "kept", null), cleared.map { it.skillId })
-        assertEquals(sessions.map { it.id }, cleared.map { it.id })
+        assertEquals("gone", sessions.first().skillId)
     }
 
     @Test
-    fun `a session without a skill contributes no instruction`() {
-        assertNull(skillInstruction(listOf(skill(id = "k")), session(id = "s", skillId = null)))
-        assertNull(skillInstruction(listOf(skill(id = "k")), session = null))
-        assertNull(skillInstruction(listOf(skill(id = "k")), session(id = "s", skillId = "gone")))
-    }
+    fun `a session with no skill contributes nothing`() {
+        val skills = listOf(skill(id = "k", instruction = "先列风险"))
 
-    @Test
-    fun `a blank instruction is treated as no instruction`() {
-        assertNull(skillInstruction(listOf(skill(id = "k", instruction = "   ")), session(id = "s", skillId = "k")))
-    }
-
-    @Test
-    fun `the selected skill's instruction is trimmed`() {
-        val skills = listOf(skill(id = "k", instruction = "  先列风险 \n"))
-
+        assertNull(skillInstruction(skills, session(id = "s", skillId = null)))
+        assertNull(skillInstruction(skills, session(id = "s", skillId = "deleted")))
+        assertNull(skillInstruction(skills, null))
         assertEquals("先列风险", skillInstruction(skills, session(id = "s", skillId = "k")))
     }
 
     @Test
-    fun `no character and no skill sends no system prompt`() {
-        assertNull(sessionSystemPrompt(emptyList(), emptyList(), session(id = "s")))
-        assertNull(sessionSystemPrompt(emptyList(), emptyList(), session = null))
+    fun `no skill sends no system prompt`() {
+        assertNull(sessionSystemPrompt(emptyList(), session(id = "s")))
+        assertNull(sessionSystemPrompt(emptyList(), session = null))
     }
 
     @Test
-    fun `a character alone is sent as-is`() {
-        val characters = listOf(character(id = "c", prompt = "你是审阅者"))
-
-        assertEquals(
-            "你是审阅者",
-            sessionSystemPrompt(characters, emptyList(), session(id = "s", characterId = "c")),
-        )
-    }
-
-    @Test
-    fun `a skill alone is introduced by the heading`() {
+    fun `a skill is introduced by the heading`() {
         val skills = listOf(skill(id = "k", instruction = "先列风险"))
 
         assertEquals(
             "$SKILL_PROMPT_HEADING\n先列风险",
-            sessionSystemPrompt(emptyList(), skills, session(id = "s", skillId = "k")),
+            sessionSystemPrompt(skills, session(id = "s", skillId = "k")),
         )
         assertEquals("## Skill", SKILL_PROMPT_HEADING)
     }
 
     @Test
-    fun `a character and a skill are combined with the heading between them`() {
-        val characters = listOf(character(id = "c", prompt = "你是审阅者"))
-        val skills = listOf(skill(id = "k", instruction = "先列三个风险"))
-
-        assertEquals(
-            "你是审阅者\n\n$SKILL_PROMPT_HEADING\n先列三个风险",
-            sessionSystemPrompt(
-                characters,
-                skills,
-                session(id = "s", characterId = "c", skillId = "k"),
-            ),
-        )
-    }
-
-    @Test
-    fun `a dangling selection falls back to whatever still exists`() {
-        val characters = listOf(character(id = "c", prompt = "你是审阅者"))
+    fun `a dangling selection falls back to nothing`() {
         val skills = listOf(skill(id = "k", instruction = "先列风险"))
 
-        assertEquals(
-            "你是审阅者",
-            sessionSystemPrompt(
-                characters,
-                skills,
-                session(id = "s", characterId = "c", skillId = "deleted"),
-            ),
-        )
+        assertNull(sessionSystemPrompt(skills, session(id = "s", skillId = "deleted")))
     }
 
     private fun skill(
@@ -150,24 +111,14 @@ class EvSkillTest {
         updatedAt = 1L,
     )
 
-    private fun character(id: String, prompt: String) = EvCharacter(
-        id = id,
-        name = "角色",
-        description = "",
-        systemPrompt = prompt,
-        updatedAt = 1L,
-    )
-
     private fun session(
         id: String,
-        characterId: String? = null,
         skillId: String? = null,
     ) = ChatSession(
         id = id,
         title = "会话",
         messages = emptyList(),
         updatedAt = 1L,
-        characterId = characterId,
         skillId = skillId,
     )
 }

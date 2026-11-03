@@ -81,12 +81,6 @@ internal fun EvChatDrawer(
         ui.drawerOpen = false
         ui.pages.push(EvPage.Memory)
     },
-    onCharacters = {
-        // Roles are per session: the panel edits the selected conversation's choice.
-        keyboard?.hide()
-        ui.drawerOpen = false
-        ui.pages.push(EvPage.Characters)
-    },
     onSkills = {
         // Skills are per session too; nothing is executed, the text only reaches the
         // model inside this conversation's system prompt.

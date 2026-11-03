@@ -275,7 +275,6 @@ internal fun EvChatColumn(
                 onFocusChange = { focused -> if (focused) ui.plusPanelOpen = false },
                 onOpenBrowser = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Browser) },
                 onOpenTools = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Tools) },
-                onOpenCharacters = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Characters) },
                 onOpenSkills = { ui.plusPanelOpen = false; ui.pages.push(EvPage.Skills) },
             )
         }

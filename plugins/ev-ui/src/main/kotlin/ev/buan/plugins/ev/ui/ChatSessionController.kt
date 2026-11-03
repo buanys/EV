@@ -27,7 +27,6 @@ internal class ChatSessionController(
     private val sessions: SnapshotStateList<ChatSession>,
     private val store: ChatSessionStore?,
     private val directory: ServiceDirectory?,
-    private val characters: List<EvCharacter>,
     private val skills: List<EvSkill>,
     private val scope: CoroutineScope,
     private val newSession: () -> ChatSession,
@@ -140,7 +139,6 @@ internal class ChatSessionController(
                         sessionId = sessionId,
                         text = prompt,
                         systemPrompt = sessionSystemPrompt(
-                            characters = characters,
                             skills = skills,
                             session = sessions.firstOrNull { it.id == sessionId },
                         ),

@@ -35,7 +35,6 @@ private fun EvComposerPanels(
     plusActive: Boolean,
     onOpenBrowser: () -> Unit,
     onOpenTools: () -> Unit,
-    onOpenCharacters: () -> Unit,
     onOpenSkills: () -> Unit,
     modelSheetOpen: Boolean,
     models: List<String>,
@@ -53,7 +52,6 @@ private fun EvComposerPanels(
             actions = listOf(
                 EvComposerAction(EvGlyphKind.Globe, "浏览器", onOpenBrowser),
                 EvComposerAction(EvGlyphKind.Tool, "工具", onOpenTools),
-                EvComposerAction(EvGlyphKind.Person, "角色", onOpenCharacters),
                 EvComposerAction(EvGlyphKind.Sparkle, "Skills", onOpenSkills),
             ),
         )
@@ -85,7 +83,6 @@ internal fun EvComposerArea(
     onFocusChange: (Boolean) -> Unit,
     onOpenBrowser: () -> Unit,
     onOpenTools: () -> Unit,
-    onOpenCharacters: () -> Unit,
     onOpenSkills: () -> Unit,
     modelName: String?,
     models: List<String>,
@@ -114,7 +111,6 @@ internal fun EvComposerArea(
                 plusActive = plusActive,
                 onOpenBrowser = onOpenBrowser,
                 onOpenTools = onOpenTools,
-                onOpenCharacters = onOpenCharacters,
                 onOpenSkills = onOpenSkills,
                 modelSheetOpen = modelSheetOpen,
                 models = models,

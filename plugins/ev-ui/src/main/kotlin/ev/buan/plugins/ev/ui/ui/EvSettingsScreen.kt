@@ -28,7 +28,7 @@ import kotlin.math.roundToInt
  * underneath immediately - and the values survive a restart because the host persists them.
  *
  * Capability rows open this plugin's own second-level pages ([onOpenModels], [onOpenTools],
- * [onOpenMemory], [onOpenCharacters], [onOpenSkills]); only "插件管理" and "宿主设置" leave the
+ * [onOpenMemory], [onOpenSkills]); only "插件管理" and "宿主设置" leave the
  * plugin, because those two screens belong to the host.
  */
 @Composable
@@ -42,7 +42,6 @@ fun EvSettingsScreen(
     onOpenModels: () -> Unit,
     onOpenTools: () -> Unit,
     onOpenMemory: () -> Unit,
-    onOpenCharacters: () -> Unit,
     onOpenSkills: () -> Unit,
     onOpenThemes: () -> Unit,
     /** Name of the active theme, resolved by the caller from the host catalog. */
@@ -106,13 +105,6 @@ fun EvSettingsScreen(
         item { EvSettingsSection("角色与 Skills") }
         item {
             EvSettingsGroup {
-                EvSettingsRow(
-                    title = "角色",
-                    glyph = EvGlyphKind.Person,
-                    summary = "会话的角色设定",
-                    onClick = onOpenCharacters,
-                )
-                EvSettingsDivider()
                 EvSettingsRow(
                     title = "Skills",
                     glyph = EvGlyphKind.Skill,

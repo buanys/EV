@@ -34,7 +34,6 @@ internal sealed interface EvPage {
     /** A shell that runs commands directly, without a conversation. */
     data object Terminal : EvPage
     data object Memory : EvPage
-    data object Characters : EvPage
     data object Skills : EvPage
 
     /** The capability catalog: what every installed plugin declared about itself. */
@@ -50,7 +49,6 @@ internal enum class SettingsChild {
     Models,
     Tools,
     Memory,
-    Characters,
     Skills,
 }
 

@@ -49,7 +49,6 @@ import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelProviderService
 import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolRegistry
-import ev.buan.plugins.ev.ui.ui.EvCharactersScreen
 import ev.buan.plugins.ev.ui.ui.EvLinuxScreen
 import ev.buan.plugins.ev.ui.ui.EvMoreMenuPanel
 import ev.buan.plugins.ev.ui.ui.EvThemePickerScreen
@@ -146,9 +145,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
     /** Non-null while applied: without it the page still works, it just forgets on restart. */
     private var sessionStore: ChatSessionStore? = null
 
-    /** Non-null while applied: the character library file, same story as [sessionStore]. */
-    private var characterStore: CharacterStore? = null
-
     /** Non-null while applied: the skills library file, same story as [sessionStore]. */
     private var skillStore: SkillStore? = null
 
@@ -161,15 +157,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
      * finishes has something to show; [apply] then replaces the contents with what storage restored.
      */
     private val sessions = mutableStateListOf(newSession())
-
-    /**
-     * The character library this plugin instance owns, newest first.
-     *
-     * Plugin-scoped for the same reason as [sessions]: both surfaces must see the same library and
-     * the same per-session selection, and a character saved on one surface has to be selectable on
-     * the other without a restart.
-     */
-    private val characters = mutableStateListOf<EvCharacter>()
 
     /**
      * The skills library this plugin instance owns, newest first - same scope and reasons as
@@ -204,8 +191,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
         migrateToUserData(ctx.get(PluginStorage.Key), storage)
         val store = ChatSessionStore(storage)
         sessionStore = store
-        val charactersStore = CharacterStore(storage)
-        characterStore = charactersStore
         val skillsStore = SkillStore(storage)
         skillStore = skillsStore
         val restored = store.load()
@@ -213,8 +198,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
         // Newest first: `first()` is the conversation the user last talked in.
         sessions.addAll(restored.sortedByDescending { it.updatedAt })
         if (sessions.isEmpty()) sessions += newSession()
-        characters.clear()
-        characters.addAll(charactersStore.load().sortedByDescending { it.updatedAt })
         skills.clear()
         skills.addAll(skillsStore.load().sortedByDescending { it.updatedAt })
 
@@ -282,7 +265,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                 sessions = sessions,
                 store = sessionStore,
                 directory = directory,
-                characters = characters,
                 skills = skills,
                 scope = scope,
                 newSession = { newSession() },
@@ -325,11 +307,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
          * snapshot must reflect the edit that the user just saw; [ChatSessionStore] swallows and
          * logs its own failures, so a full disk cannot take the page down with it.
          */
-        /** Same contract for the character library: whole-file snapshot, failures logged not thrown. */
-        fun persistCharacters() {
-            characterStore?.save(characters.toList())
-        }
-
         /** Same contract for the skills library. */
         fun persistSkills() {
             skillStore?.save(skills.toList())
@@ -349,33 +326,11 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
             if (section != null) ui.pages.push(EvPage.SettingsSection(section))
         }
 
-        /** Replaces the library contents in place, so both surfaces see the new list, then persists. */
-        fun replaceCharacters(next: List<EvCharacter>) {
-            characters.clear()
-            characters.addAll(next)
-            persistCharacters()
-        }
-
         /** Replaces the skills library contents in place, then persists. */
         fun replaceSkills(next: List<EvSkill>) {
             skills.clear()
             skills.addAll(next)
             persistSkills()
-        }
-
-        /**
-         * Removes a character and drops every session's reference to it.
-         *
-         * A dangling [ChatSession.characterId] would read as "no role" anyway, but clearing it keeps
-         * the saved file honest and stops the id from resurfacing if a new character ever got it.
-         */
-        fun deleteCharacter(characterId: String) {
-            replaceCharacters(characters.without(characterId))
-            if (sessions.none { it.characterId == characterId }) return
-            sessions.clearingCharacter(characterId).forEachIndexed { index, session ->
-                sessions[index] = session
-            }
-            chat.persist()
         }
 
         /** Removes a skill and drops every session's reference to it, for the same reasons. */
@@ -434,7 +389,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     onOpenModels = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Models)) },
                     onOpenTools = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Tools)) },
                     onOpenMemory = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Memory)) },
-                    onOpenCharacters = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Characters)) },
                     onOpenSkills = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Skills)) },
                     modifier = modifier,
                 )
@@ -471,18 +425,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     pluginId = MEMORY_PLUGIN_ID,
                     directory = directory,
                     onBack = { ui.pages.pop() },
-                    modifier = modifier,
-                )
-
-                SettingsChild.Characters -> EvCharactersScreen(
-                    characters = characters,
-                    selectedId = activeSession.characterId,
-                    onBack = { ui.pages.pop() },
-                    onSelect = { characterId ->
-                        chat.mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
-                    },
-                    onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
-                    onDelete = { characterId -> deleteCharacter(characterId) },
                     modifier = modifier,
                 )
 
@@ -548,22 +490,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                 pluginId = MEMORY_PLUGIN_ID,
                 directory = directory,
                 onBack = { ui.pages.pop() },
-                modifier = modifier,
-            )
-        }
-
-        EvPage.Characters -> {
-            EvCharactersScreen(
-                characters = characters,
-                selectedId = activeSession.characterId,
-                onBack = { ui.pages.pop() },
-                // Selecting stores the id on the session, so one conversation can talk to one
-                // role while another talks to none. `mutate` persists sessions.json by itself.
-                onSelect = { characterId ->
-                    chat.mutate(activeSession.id) { session -> session.copy(characterId = characterId) }
-                },
-                onSave = { saved -> replaceCharacters(characters.upsert(saved)) },
-                onDelete = { characterId -> deleteCharacter(characterId) },
                 modifier = modifier,
             )
         }

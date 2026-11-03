@@ -63,20 +63,14 @@ internal fun skillInstruction(skills: List<EvSkill>, session: ChatSession?): Str
     ?.takeIf { it.isNotEmpty() }
 
 /**
- * The system prompt for [session]'s next turn: the character's persona first, then the selected
- * skill's instruction under [SKILL_PROMPT_HEADING]. Null when the session has neither, so a plain
- * conversation still sends no prompt at all (the brain then behaves exactly as before).
+ * The system prompt for [session]'s next turn: the selected skill's instruction under
+ * [SKILL_PROMPT_HEADING]. Null when the session has no skill, so a plain conversation still sends
+ * no prompt at all (the brain then behaves exactly as before).
+ *
+ * Characters used to come first here. They were removed on 2026-11-03: a character was a second,
+ * per-session copy of "who you are", and the persona layer of the prompt plugin already owns that.
  */
 internal fun sessionSystemPrompt(
-    characters: List<EvCharacter>,
     skills: List<EvSkill>,
     session: ChatSession?,
-): String? {
-    val character = characterPrompt(characters, session)
-    val skillBlock = skillInstruction(skills, session)?.let { "$SKILL_PROMPT_HEADING\n$it" }
-    return when {
-        character == null -> skillBlock
-        skillBlock == null -> character
-        else -> "$character\n\n$skillBlock"
-    }
-}
+): String? = skillInstruction(skills, session)?.let { "$SKILL_PROMPT_HEADING\n$it" }
