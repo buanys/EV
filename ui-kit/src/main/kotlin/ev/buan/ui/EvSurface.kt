@@ -170,17 +170,23 @@ fun Modifier.evBackdropSource(backdrop: EvBackdrop): Modifier =
  * visible at all times and lets the blur arrive a frame later.
  */
 @Composable
-fun Modifier.evGlassLayer(shape: Shape): Modifier {
+fun Modifier.evGlassLayer(
+    shape: Shape,
+    /** Overrides the theme tint opacity for this surface; null keeps the theme value. */
+    tintAlpha: Float? = null,
+    /** Scales the theme blur radius: 1f is the theme value, 0.3f is a third of it. */
+    blurScale: Float = 1f,
+): Modifier {
     val sky = LocalEvSky.current
     val enabled = LocalBlurEnabled.current
     val glass = EvThemeTokens.glass
     val tokens = EvThemeTokens.colors
     val density = androidx.compose.ui.platform.LocalDensity.current
     // Always paint the tint: it is what makes the surface readable before the first capture.
-    val base = this.background(tokens.surface1.copy(alpha = glass.tintAlpha), shape)
+    val base = this.background(tokens.surface1.copy(alpha = tintAlpha ?: glass.tintAlpha), shape)
     if (!enabled) return base.evHairline(glass.borderAlpha, shape)
     if (sky == null) return base.evFloatingSurface(shape)
-    val radius = with(density) { glass.blurRadius.toPx() }.toInt()
+    val radius = with(density) { (glass.blurRadius * blurScale).toPx() }.toInt()
     return base
         .cloudy(sky = sky, radius = radius, shape = shape)
         .evFloatingSurface(shape)

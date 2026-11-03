@@ -102,7 +102,13 @@ internal fun EvComposerArea(
         bottomEnd = EvThemeTokens.radii.large,
     )
     Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
-        Box(Modifier.matchParentSize().evGlassLayer(sheetShape))
+        // The field floats over the transcript, so it needs more body than the drawer's glass:
+        // 30% of the theme blur (a hint of what is underneath, not a readable copy of it) and a
+        // denser tint, so the placeholder and the cursor never compete with a message scrolling by.
+        Box(
+            Modifier.matchParentSize()
+                .evGlassLayer(sheetShape, tintAlpha = 0.72f, blurScale = 0.3f),
+        )
         Column {
             EvComposerPanels(
                 plusActive = plusActive,

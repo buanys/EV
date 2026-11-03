@@ -61,9 +61,10 @@ internal fun EvMessageList(
             start = EvChatDefaults.PagePadding,
             end = EvChatDefaults.PagePadding,
             top = 8.dp,
-            // The composer is laid out beside the list, not over it, so this is
-            // only breathing room - no reserved composer height.
-            bottom = 16.dp,
+            // The composer floats over the last stretch of the list, so this is the space that
+            // keeps the final message readable above it while still letting earlier content
+            // slide underneath the field.
+            bottom = 116.dp,
         ),
     ) {
         // Top-aligned, oldest first: a short conversation grows down from under

@@ -91,9 +91,14 @@ internal fun EvChatColumn(
         modifier.fillMaxSize().background(MiuixTheme.colorScheme.background),
     ) {
         // 1) The source: the conversation, inset so a message is never permanently hidden.
+        //
+        // The list runs all the way to the bottom edge: the composer floats over it, so content
+        // scrolls underneath and the glass has something to blur. The bottom breathing room lives
+        // in the list's own content padding, not in this Column - a Column padding would cut the
+        // transcript off ~96dp above the composer and leave a slab of dead black behind it.
         Column(
             Modifier.fillMaxSize()
-                .padding(top = 52.dp, bottom = 96.dp),
+                .padding(top = 52.dp),
         ) {
             Box(
                 Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
@@ -217,7 +222,27 @@ internal fun EvChatColumn(
             }
         }
 
-        // 3) Composer: the area owns its own glass (only the field, not the panels above it).
+        // 3) Bottom scrim: the transcript now reaches the bottom edge, so it needs a gradient to
+        // fade out under the composer. Without it the last line is cut by a hard edge and the
+        // strip behind the field reads as a slab of dead black rather than as glass.
+        val bottomScrimBase = EvThemeTokens.colors.surface0
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(132.dp)
+                .drawBehind {
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to bottomScrimBase.copy(alpha = 0f),
+                            0.45f to bottomScrimBase.copy(alpha = 0.88f),
+                            1f to bottomScrimBase,
+                        ),
+                    )
+                },
+        )
+
+        // 4) Composer: the area owns its own glass (only the field, not the panels above it).
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             EvComposerArea(
                 modelName = currentModel,
