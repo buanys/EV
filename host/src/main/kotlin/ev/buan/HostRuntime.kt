@@ -661,8 +661,15 @@ class HostRuntime(private val context: AndroidContext) {
      * [lastShownPluginId] for crash attribution.
      */
     fun pageFor(id: String): org.cordis.api.AgentPage? {
-        if (!isEnabled(id) || failures.containsKey(id)) return null
-        val instance = runCatching { modules.peek(modules.moduleUrl(id)) }.getOrNull() as? Plugin<*>
+        val enabled = isEnabled(id)
+        val failure = failures[id]
+        val instance = runCatching { modules.peek(modules.moduleUrl(id)) }.getOrNull()
+        android.util.Log.i(
+            "EV",
+            "pageFor($id): enabled=$enabled failure=$failure instance=${instance?.javaClass?.name} " +
+                "isPage=${instance is org.cordis.api.AgentPage}",
+        )
+        if (!enabled || failure != null) return null
         return (instance as? org.cordis.api.AgentPage)?.also { lastShownPluginId = id }
     }
 

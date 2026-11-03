@@ -84,7 +84,10 @@ class AgentShellPlugin :
             // model simply never saw `run_shell` - fail loudly instead, so `failures` says why.
             error("工具总线未就绪：agent-tools 必须先激活（sidecar 依赖 ev.buan.plugins.agent.tools）")
         }
-        storage = ctx.get(org.cordis.api.PluginStorage.Key)
+        // `ctx.get` refuses a key that is not in the inject list - it throws rather than returning
+        // null - so the optional binding has to be probed defensively. Storage only persists the
+        // timeout setting; without it the default applies.
+        storage = runCatching { ctx.get(org.cordis.api.PluginStorage.Key) }.getOrNull()
         // The saved value is read once at activation; the tool asks for it per call, so a change
         // made in settings applies to the next command instead of the next process.
         defaultTimeout = runCatching {
