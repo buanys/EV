@@ -53,7 +53,9 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
         val tools = DeviceTools.all(files, DeviceSearch(files, root)) +
             WriteTools.all(files) +
             SystemTools.all { ctx.get(DeviceContextService.Key) } +
-            ScreenTools.all { ctx.get(ScreenService.Key) }
+            ScreenTools.all { ctx.get(ScreenService.Key) } +
+            // Looking at pixels, not the accessibility tree: screen_capture + read_image.
+            ImageTools.all(root)
         registry.register(PLUGIN_ID, tools)
         android.util.Log.i("EV", "agent-device: 注册 ${tools.size} 个工具（${tools.joinToString(",") { it.spec.name }}）")
         effect.collect {

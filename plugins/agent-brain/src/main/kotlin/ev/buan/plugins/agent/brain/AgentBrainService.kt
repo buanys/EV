@@ -1,6 +1,7 @@
 package ev.buan.plugins.agent.brain
 
 import ev.buan.plugins.agent.api.AgentEvent
+import ev.buan.plugins.agent.api.AgentImage
 import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentProgress
 import ev.buan.plugins.agent.api.AgentReply
@@ -276,7 +277,7 @@ class AgentBrainService internal constructor(
                 )
                 val fingerprint = call.name + '\u0000' + call.argumentsJson
                 val prior = seenResults.put(fingerprint, result)
-                outcomes += Outcome.ToolResult(call, result, executed.state)
+                outcomes += Outcome.ToolResult(call, result, executed.state, executed.images)
                 if (prior != null && prior == result) {
                     repeatStreak++
                     if (repeatStreak >= REPEAT_LIMIT) {
@@ -312,6 +313,20 @@ class AgentBrainService internal constructor(
                     toolName = outcome.call.name,
                     toolCallId = outcome.call.id,
                 )
+            }
+            // Images travel after every tool message and before any nudge: a picture read by a
+            // tool belongs to this tool round, and strict servers reject a user message inserted
+            // between tool results. Only the caption is stored - the base64 never reaches disk.
+            val producedImages = outcomes.filterIsInstance<Outcome.ToolResult>()
+                .flatMap { it.images }
+            if (producedImages.isNotEmpty()) {
+                val imageMessage = AgentMessage(
+                    role = AgentRole.USER,
+                    content = "以下是工具读取的 ${producedImages.size} 张图片，请直接查看。",
+                    images = producedImages,
+                )
+                inputs += imageMessage
+                remember(memory, sessionId, imageMessage)
             }
             // One nudge per round is enough: several identical reminders would just eat context.
             outcomes.filterIsInstance<Outcome.Reflection>().firstOrNull()?.let { nudge ->
@@ -545,9 +560,15 @@ class AgentBrainService internal constructor(
 
         val timeout = timeoutFor(tool.spec.name)
         var failed = false
+        var images: List<AgentImage> = emptyList()
         val result = try {
-            withTimeoutOrNull(timeout) { tool.invoke(call.argumentsJson) }
-                ?: "工具 ${call.name} 超时（${timeout / 1000}s），本次未完成"
+            val produced = withTimeoutOrNull(timeout) { tool.invokeResult(call.argumentsJson) }
+            if (produced == null) {
+                "工具 ${call.name} 超时（${timeout / 1000}s），本次未完成"
+            } else {
+                images = produced.images
+                produced.text
+            }
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Throwable) {
@@ -555,7 +576,7 @@ class AgentBrainService internal constructor(
             "工具调用失败：${error.message ?: error::class.simpleName}"
         }
         if (result.startsWith("工具 ${call.name} 超时")) failed = true
-        return Executed(result, approvalNanos, if (failed) StepState.Failed else StepState.Ok)
+        return Executed(result, approvalNanos, if (failed) StepState.Failed else StepState.Ok, images)
     }
 
     private fun degraded(model: ModelRef?, reason: String, usage: AgentUsage? = null): AgentReply =
@@ -595,12 +616,18 @@ class AgentBrainService internal constructor(
             val call: AgentToolCall,
             val result: String,
             val state: StepState,
+            val images: List<AgentImage> = emptyList(),
         ) : Outcome
 
         data class Reflection(val text: String) : Outcome
     }
 
-    private data class Executed(val result: String, val approvalNanos: Long, val state: StepState)
+    private data class Executed(
+        val result: String,
+        val approvalNanos: Long,
+        val state: StepState,
+        val images: List<AgentImage> = emptyList(),
+    )
 
     private companion object {
         const val MODEL_PLUGIN = "ev.buan.plugins.agent.model"

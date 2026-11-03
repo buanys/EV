@@ -140,12 +140,29 @@ object OpenAiProtocol {
 
     private fun messageJson(message: AgentMessage): JsonObject = buildJsonObject {
         put("role", message.role.wireName())
-        // An assistant turn that only calls tools carries no text; strict servers want explicit
-        // null content alongside tool_calls rather than an empty string.
-        if (message.content.isBlank() && message.toolCalls.isNotEmpty()) {
-            put("content", JsonNull)
-        } else {
-            put("content", message.content)
+        when {
+            // An assistant turn that only calls tools carries no text; strict servers want explicit
+            // null content alongside tool_calls rather than an empty string.
+            message.content.isBlank() && message.toolCalls.isNotEmpty() -> put("content", JsonNull)
+            message.images.isEmpty() -> put("content", message.content)
+            else -> putJsonArray("content") {
+                add(
+                    buildJsonObject {
+                        put("type", "text")
+                        put("text", message.content)
+                    },
+                )
+                message.images.forEach { image ->
+                    add(
+                        buildJsonObject {
+                            put("type", "image_url")
+                            putJsonObject("image_url") {
+                                put("url", "data:${image.mimeType};base64,${image.base64}")
+                            }
+                        },
+                    )
+                }
+            }
         }
         message.name?.takeIf { it.isNotBlank() }?.let { put("name", it) }
         message.toolCallId?.takeIf { it.isNotBlank() }?.let { put("tool_call_id", it) }

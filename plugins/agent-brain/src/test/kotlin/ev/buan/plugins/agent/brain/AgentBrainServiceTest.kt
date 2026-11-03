@@ -1,6 +1,7 @@
 package ev.buan.plugins.agent.brain
 
 import ev.buan.plugins.agent.api.AgentEvent
+import ev.buan.plugins.agent.api.AgentImage
 import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentProgress
 import ev.buan.plugins.agent.api.StepState
@@ -19,6 +20,7 @@ import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.agent.api.ToolSpec
+import ev.buan.plugins.agent.api.ToolResult
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -133,6 +135,36 @@ class AgentBrainServiceTest {
             reply.events.map { it.kind },
         )
         assertEquals("call_1", reply.events.last().toolCallId)
+    }
+
+    @Test
+    fun `images produced by a tool ride the next request as a user message`() {
+        val model = ScriptedModel(
+            mutableListOf(
+                AgentReply(
+                    message = AgentMessage(AgentRole.ASSISTANT, ""),
+                    events = listOf(toolCall("read_image", arguments = """{"path":"/tmp/a.jpg"}""")),
+                ),
+                textReply("看到了"),
+            ),
+        )
+        val registry = FakeRegistry(
+            listOf(
+                FakeTool(
+                    spec = ToolSpec("read_image", "读图", "{}"),
+                    result = """{"image":true}""",
+                    images = listOf(AgentImage(mimeType = "image/jpeg", base64 = "QUJD")),
+                ),
+            ),
+        )
+
+        runBlocking { brain(model = model, tools = registry).send("session", "看图") }
+
+        val messages = model.requests[1].messages
+        val imageMessage = messages.last()
+        assertEquals(AgentRole.USER, imageMessage.role)
+        assertEquals("image/jpeg", imageMessage.images.single().mimeType)
+        assertEquals("QUJD", imageMessage.images.single().base64)
     }
 
     @Test
@@ -1036,6 +1068,7 @@ class AgentBrainServiceTest {
     private class FakeTool(
         override val spec: ToolSpec,
         private val result: String,
+        private val images: List<AgentImage> = emptyList(),
     ) : Tool {
         var invocations = 0
             private set
@@ -1044,6 +1077,9 @@ class AgentBrainServiceTest {
             invocations++
             return result
         }
+
+        override suspend fun invokeResult(argumentsJson: String): ToolResult =
+            ToolResult(text = invoke(argumentsJson), images = images)
     }
 
     /** Returns a different result per invocation, in order; the last one repeats. */

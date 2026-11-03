@@ -28,4 +28,11 @@ data class AgentMessage(
      * the assistant's call turn travels ahead of the [AgentRole.TOOL] results that answer it.
      */
     val toolCalls: List<AgentToolCall> = emptyList(),
+    /**
+     * Images the model should see alongside this message, already encoded.
+     *
+     * Empty for ordinary turns. Only a tool that reads a picture fills this in; the brain carries
+     * it into the next request and deliberately does not persist it (see [AgentImage]).
+     */
+    val images: List<AgentImage> = emptyList(),
 )

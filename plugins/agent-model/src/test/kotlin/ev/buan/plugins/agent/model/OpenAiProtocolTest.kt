@@ -1,6 +1,7 @@
 package ev.buan.plugins.agent.model
 
 import ev.buan.plugins.agent.api.AgentEvent
+import ev.buan.plugins.agent.api.AgentImage
 import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentRole
 import ev.buan.plugins.agent.api.AgentToolCall
@@ -99,6 +100,34 @@ class OpenAiProtocolTest {
         assertEquals("read_file", function["name"]!!.jsonPrimitive.content)
         assertEquals("""{"path":"a.txt"}""", function["arguments"]!!.jsonPrimitive.content)
         assertEquals("call_1", messages[2].jsonObject["tool_call_id"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `a message with images serializes content as text plus data uris`() {
+        val body = OpenAiProtocol.requestBody(
+            model = "gpt-test",
+            messages = listOf(
+                AgentMessage(
+                    role = AgentRole.USER,
+                    content = "看看这张图",
+                    images = listOf(
+                        AgentImage(mimeType = "image/jpeg", base64 = "QUJD", name = "screen.jpg"),
+                    ),
+                ),
+            ),
+        )
+
+        val message = Json.parseToJsonElement(body).jsonObject["messages"]!!.jsonArray.single().jsonObject
+        val parts = message["content"]!!.jsonArray
+        assertEquals(2, parts.size)
+        assertEquals("text", parts[0].jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("看看这张图", parts[0].jsonObject["text"]!!.jsonPrimitive.content)
+        val image = parts[1].jsonObject
+        assertEquals("image_url", image["type"]!!.jsonPrimitive.content)
+        assertEquals(
+            "data:image/jpeg;base64,QUJD",
+            image["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content,
+        )
     }
 
     @Test
