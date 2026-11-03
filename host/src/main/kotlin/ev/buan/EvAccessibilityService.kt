@@ -41,10 +41,28 @@ class EvAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        hudOrNull?.dispose()
+        hudOrNull = null
         if (instance === this) instance = null
         connected = false
         super.onDestroy()
     }
+
+    // ---------------------------------------------------------------- 提示层
+
+    /**
+     * 边缘跑马灯 + 进度胶囊。
+     *
+     * 懒创建：没人用它的时候不该有窗口存在。销毁必须显式——overlay 窗口不会跟着服务
+     * 自动消失，漏一个就留在屏幕上变成幽灵。
+     */
+    private var hudOrNull: HudOverlay? = null
+
+    private fun hud(): HudOverlay = hudOrNull ?: HudOverlay(this).also { hudOrNull = it }
+
+    internal fun showHud(state: org.cordis.api.HudState) = hud().show(state)
+
+    internal fun hideHud() = hudOrNull?.hide()
 
     // ---------------------------------------------------------------- 读屏
 
@@ -261,6 +279,15 @@ class EvAccessibilityService : AccessibilityService() {
         }.getOrDefault(false)
 
         fun currentPackage(): String? = foregroundPackage
+
+        /** 提示层的门面：服务不在时静默失败——它只是可见性，不是功能。 */
+        fun showHud(state: org.cordis.api.HudState) {
+            instance?.showHud(state)
+        }
+
+        fun hideHud() {
+            instance?.hideHud()
+        }
 
         /** 给宿主服务用的门面：服务不在时所有操作统一返回 NoAccessibility。 */
         fun delegate(): ScreenService = object : ScreenService {

@@ -105,7 +105,14 @@ class AgentBrainService internal constructor(
         val collector = object : FlowCollector<AgentProgress> {
             override suspend fun emit(value: AgentProgress) { send(value) }
         }
-        collector.turn(sessionId, text, model, systemPrompt)
+        val hud = capabilities.current().hud
+        try {
+            collector.turn(sessionId, text, model, systemPrompt)
+        } finally {
+            // 胶囊跟着这一轮走：正常结束、报错、被取消，任何一条路径都要收掉。
+            // 留一颗胶囊挂在屏幕顶上是最难看的失败模式。
+            hud?.hide()
+        }
     }.flowOn(Dispatchers.IO)
 
     /**
@@ -261,6 +268,10 @@ class AgentBrainService internal constructor(
                     continue
                 }
                 toolCalls++
+                // 屏幕上的进度：用户看不见审批弹窗了，得在胶囊上看见"现在在跑哪个工具"。
+                current.hud?.show(
+                    org.cordis.api.HudState(step = toolCalls, tool = call.name),
+                )
                 val executed = executeGuarded(tools, call, current.approval) {
                     emit(AgentProgress.ToolAwaitingApproval(call.id))
                 }

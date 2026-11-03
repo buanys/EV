@@ -12,10 +12,13 @@ import org.json.JSONObject
 /**
  * 屏幕操作工具：读屏 + 点按 + 输入 + 滑动 + 系统键。
  *
- * 危险等级的划法：
- *  - `screen_dump`：只读，不需要门。它看到的是当前界面上的文字（用户自己屏幕上的内容）。
- *  - 其余四条**全是 dangerous**：它们改变别的应用的状态，而且用户看不见 agent 在做什么。
- *    特别是 `screen_input` —— 它能在任何输入框里打字，包括聊天框和搜索框。
+ * **免审批，故意的。** 这一组的用途就是自动化：点一下弹一次确认，等于把自动化退化成
+ * 手动遥控，用户已经开了无障碍，授权发生在系统设置那一步。所以：
+ *  - 只读的 `screen_dump` / `screen_wait` 本来就不审；
+ *  - 有后果的点击、输入、滑动、滚动也不审。
+ *
+ * 免审批的前提是**用户看得见**：宿主会在这些动作期间点亮屏幕边缘的跑马灯、在顶部挂一颗
+ * 胶囊说明当前在做什么。没有那层可见性，这里就变成了用户看不见的暗中操作。
  *
  * 所有操作在无障碍未开启时统一返回 `NoAccessibility`，并附上"去哪开"，
  * 而不是抛异常或假装成功。
@@ -103,7 +106,6 @@ internal object GuiTools {
                   "duration_ms":{"type":"integer","description":"按住时长，默认 60；500 以上算长按"}
                 },"additionalProperties":false}
             """.trimIndent(),
-            dangerous = true,
         )
 
         override suspend fun invoke(argumentsJson: String): String {
@@ -164,7 +166,6 @@ internal object GuiTools {
                   "text":{"type":"string","description":"要点的文字，例如「发送」「确定」"}
                 },"required":["text"],"additionalProperties":false}
             """.trimIndent(),
-            dangerous = true,
         )
 
         override suspend fun invoke(argumentsJson: String): String {
@@ -185,7 +186,6 @@ internal object GuiTools {
                   "text":{"type":"string","description":"要输入的内容"}
                 },"required":["text"],"additionalProperties":false}
             """.trimIndent(),
-            dangerous = true,
         )
 
         override suspend fun invoke(argumentsJson: String): String {
@@ -210,7 +210,6 @@ internal object GuiTools {
                   "duration_ms":{"type":"integer","description":"滑动时长，默认 300 毫秒"}
                 },"required":["x1","y1","x2","y2"],"additionalProperties":false}
             """.trimIndent(),
-            dangerous = true,
         )
 
         override suspend fun invoke(argumentsJson: String): String {
@@ -233,7 +232,6 @@ internal object GuiTools {
                   "key":{"type":"string","enum":["back","home","recents","notifications"],"description":"要按的键"}
                 },"required":["key"],"additionalProperties":false}
             """.trimIndent(),
-            dangerous = true,
         )
 
         override suspend fun invoke(argumentsJson: String): String {

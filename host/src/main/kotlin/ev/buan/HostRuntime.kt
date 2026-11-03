@@ -190,6 +190,7 @@ class HostRuntime(private val context: AndroidContext) {
     private var restartHandle: org.cordis.EffectHandle? = null
     private var deviceContextHandle: org.cordis.EffectHandle? = null
     private var screenHandle: org.cordis.EffectHandle? = null
+    private var hudHandle: org.cordis.EffectHandle? = null
 
     /** Start-pass bookkeeping; the public answer is [hasStarted]. */
     private val lifecycle = HostLifecycle()
@@ -313,6 +314,8 @@ class HostRuntime(private val context: AndroidContext) {
             deviceContextHandle = cordis.provide(DeviceContextService.Key, DeviceContextServiceImpl(context))
                 .also { runCatching { it.awaitReady() } }
             screenHandle = cordis.provide(ScreenService.Key, ScreenServiceImpl(context))
+                .also { runCatching { it.awaitReady() } }
+            hudHandle = cordis.provide(org.cordis.api.HudService.Key, HudServiceImpl())
                 .also { runCatching { it.awaitReady() } }
             restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context))
                 .also { runCatching { it.awaitReady() } }

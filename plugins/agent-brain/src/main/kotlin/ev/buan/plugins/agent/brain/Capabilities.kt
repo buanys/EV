@@ -1,6 +1,7 @@
 package ev.buan.plugins.agent.brain
 
 import ev.buan.plugins.agent.api.ApprovalService
+import org.cordis.api.HudService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.SystemPromptService
@@ -21,6 +22,8 @@ data class BrainCapabilities(
     val memory: MemoryService?,
     val approval: ApprovalService? = null,
     val prompt: SystemPromptService? = null,
+    /** 屏幕上的进度提示层。null 表示宿主没有提供——那只是少了一层可见性，不影响执行。 */
+    val hud: HudService? = null,
 )
 
 /**

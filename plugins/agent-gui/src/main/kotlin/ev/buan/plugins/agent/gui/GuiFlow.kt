@@ -246,7 +246,6 @@ internal class GuiScrollTool(private val service: () -> ScreenService?) : Tool {
               "amount":{"type":"string","enum":["page","small"],"description":"page=整屏（默认），small=小幅度，用来把目标挪进视野"}
             },"required":["direction"],"additionalProperties":false}
         """.trimIndent(),
-        dangerous = true,
     )
 
     override suspend fun invoke(argumentsJson: String): String {

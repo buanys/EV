@@ -51,6 +51,7 @@ class AgentBrainPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
                 memory = directory.lookup(MemoryService.Key),
                     approval = directory.lookup(ApprovalService.Key),
                     prompt = directory.lookup(SystemPromptService.Key),
+                    hud = directory.lookup(org.cordis.api.HudService.Key),
                 )
             },
         )

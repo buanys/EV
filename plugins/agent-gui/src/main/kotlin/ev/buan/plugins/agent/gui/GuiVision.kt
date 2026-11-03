@@ -40,7 +40,9 @@ internal object GuiVision {
 
     /**
      * `screencap` through root, because MediaProjection needs a consent dialog the agent cannot
-     * answer mid-turn. Marked dangerous: a screenshot contains whatever the user was looking at.
+     * answer mid-turn. No approval gate: the screenshot is how the agent sees a canvas-drawn
+     * screen, and the HUD already tells the user it is working. See GuiTools for why this group
+     * is unguarded.
      */
     private class GuiCaptureTool(private val root: File) : Tool {
         override val spec = ToolSpec(
@@ -50,7 +52,6 @@ internal object GuiVision {
             parametersJson = """
                 {"type":"object","properties":{},"additionalProperties":false}
             """.trimIndent(),
-            dangerous = true,
         )
 
         override suspend fun invoke(argumentsJson: String): String {
