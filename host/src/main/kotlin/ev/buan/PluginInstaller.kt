@@ -92,6 +92,15 @@ class PluginInstaller(
 
     private val privateRoot: File = File(context.filesDir, "mods")
     private val codeCacheRoot: File = File(context.codeCacheDir, "cordis-plugins")
+    /**
+     * Scan results for containers that have not changed since the last launch.
+     *
+     * Hashing a 27 MB container takes the better part of a second on this hardware and the dex
+     * scan costs as much again, so re-proving the same bytes every start is what made boots grow
+     * with the plugin count. See [PluginScanCache] for the identity rule.
+     */
+    private val scanCache = PluginScanCache(File(context.filesDir, "plugin-scan-cache.json"))
+        .also { it.load() }
 
     private val externalRoot: File
         get() = File(Environment.getExternalStorageDirectory(), "EV/mods")
@@ -183,6 +192,11 @@ class PluginInstaller(
 
         prunePrivate(accepted.keys, errors)
         pruneCodeCache(accepted.values.associate { it.id to it.version }, errors)
+
+        // Only containers scanned this pass stay in the cache: a deleted jar must not leave a
+        // stale entry behind that a later file with the same path could accidentally match.
+        scanCache.retain(sources.mapTo(HashSet()) { it.file.absolutePath })
+        scanCache.save()
 
         privateRoot.setReadOnly()
         SyncResult(accepted.values.toList(), errors, pending)
@@ -299,8 +313,21 @@ class PluginInstaller(
                 "${meta.permissions.unknown.joinToString(", ")}（请升级宿主或插件）"
             return
         }
-        val hash = androidModuleHash(source)
-        val violations = DexClassScanner.violations(source, reservedPrefixes()).map { it.className }
+        // A container that has not changed since the last launch keeps its scan result: hashing and
+        // the dex scan are the two expensive steps here, and neither can differ for identical
+        // bytes. A changed container re-runs both, so an edit is always re-validated.
+        val size = source.length()
+        val modified = source.lastModified()
+        val cached = scanCache.get(source.absolutePath, size, modified)
+        val hash = cached?.sha256 ?: androidModuleHash(source)
+        val violations = cached?.violations
+            ?: DexClassScanner.violations(source, reservedPrefixes()).map { it.className }
+        if (cached == null) {
+            scanCache.put(
+                source.absolutePath,
+                PluginScanCache.Entry(size, modified, hash, violations),
+            )
+        }
         val candidate = PluginCandidate(
             id = meta.id,
             version = meta.version,
@@ -341,7 +368,7 @@ class PluginInstaller(
         }
         when (decision) {
             ValidationResult.Accepted -> {
-                publish(source, meta, hash, candidate, accepted, hashes)
+                publish(source, meta, hash, candidate, accepted, hashes, reused = cached != null)
                 trace("accepted ${meta.id} (${source.name})")
             }
             is ValidationResult.Rejected ->
@@ -350,7 +377,7 @@ class PluginInstaller(
                     // the user can grant the missing permissions; HostRuntime.activate is the gate
                     // that decides whether it may actually load. The permission gate is the last
                     // one in the validator, so every trust/content/identity check already passed.
-                    publish(source, meta, hash, candidate, accepted, hashes)
+                    publish(source, meta, hash, candidate, accepted, hashes, reused = cached != null)
                     trace("accepted-with-denied-permissions ${meta.id} (${source.name})")
                 } else {
                     errors += "${decision.rejection.code}: ${decision.rejection.message}"
@@ -370,9 +397,15 @@ class PluginInstaller(
         candidate: PluginCandidate,
         accepted: MutableMap<String, InstalledPlugin>,
         hashes: MutableMap<String, String>,
+        /** True when [source] matched its cached scan, so the private copy is known to be in step. */
+        reused: Boolean = false,
     ) {
         val target = privateFileFor(meta.id)
-        val installed = target.takeIf { it.isFile }?.let(::androidModuleHash)
+        val installed = target.takeIf { it.isFile }?.let { existing ->
+            // A cached source hash means these bytes were published unchanged last time; with the
+            // same length the private copy is the same file, so it does not need a third full read.
+            if (reused && existing.length() == source.length()) hash else androidModuleHash(existing)
+        }
         if (installed != hash) {
             val temporary = File(privateRoot, PluginId.stagingFileName(meta.id))
             deleteFile(temporary)

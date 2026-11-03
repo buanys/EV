@@ -700,7 +700,11 @@ class HostRuntime(private val context: AndroidContext) {
             failures[plugin.id] = PermissionGate.denialMessage(plugin.id, missing)
             return
         }
-        val hash = androidModuleHash(plugin.file)
+        // The sync pass already hashed these bytes and the private copy is verified across the copy
+        // and locked read-only afterwards, so re-reading every container here (27 MB twice over)
+        // only added to startup time. A private copy that somehow changed still fails the loader's
+        // own expectedSha256 check, because it is compared against this value.
+        val hash = plugin.sha256
         val descriptor = AndroidModuleDescriptor(
             id = plugin.id,
             version = plugin.version,
