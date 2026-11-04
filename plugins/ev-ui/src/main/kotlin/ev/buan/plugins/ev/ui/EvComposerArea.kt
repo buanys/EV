@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -100,6 +102,16 @@ internal fun EvComposerArea(
         bottomStart = EvThemeTokens.radii.large,
         bottomEnd = EvThemeTokens.radii.large,
     )
+
+    // 排障：三个 inset 一起打。ime=0 只说明键盘没弹（或者没传进来），
+    // 但 nav/systemBars 也是 0 的话，就是整条 inset 分发链断了——那时改 padding 组合全都没用。
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val navBottom = WindowInsets.navigationBars.getBottom(density)
+    val sysBottom = WindowInsets.systemBars.getBottom(density)
+    androidx.compose.runtime.LaunchedEffect(imeBottom, navBottom, sysBottom) {
+        android.util.Log.i("EV", "insets: ime=$imeBottom nav=$navBottom sys=$sysBottom px")
+    }
     Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
         // The field floats over the transcript, so it needs more body than the drawer's glass:
         // 30% of the theme blur (a hint of what is underneath, not a readable copy of it) and a
@@ -135,9 +147,13 @@ internal fun EvComposerArea(
             // 串联（.imePadding().navigationBarsPadding()）在键盘弹出时会把两个高度加起来，
             // 输入框被顶到半空；单独 imePadding 在键盘收起时又是 0，输入框直接贴着屏幕底边。
             // union 让"当前该避开多少"始终是两者中更大的那个。
+            //
+            // 注意 navigationBars 在这里会被上一个父级（首页的 evSystemBarsPadding）消费成 0，
+            // 所以键盘收起时真正起作用的只有下面这个 14dp——那是视觉呼吸，不是安全区。
+            // 只给 6dp 时看起来仍然是贴边的。
             modifier = Modifier
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-                .padding(bottom = 6.dp),
+                .padding(bottom = 14.dp),
         )
         }
     }
