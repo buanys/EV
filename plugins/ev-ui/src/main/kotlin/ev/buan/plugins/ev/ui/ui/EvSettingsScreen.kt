@@ -1,6 +1,11 @@
 package ev.buan.plugins.ev.ui.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import ev.buan.ui.EvAccentColor
 import ev.buan.ui.EvGlyphKind
@@ -16,6 +21,8 @@ import ev.buan.ui.MAX_INTERFACE_SCALE
 import ev.buan.ui.MIN_INTERFACE_SCALE
 import ev.buan.ui.normalizeInterfaceScale
 import org.cordis.api.AppearanceService
+import org.cordis.api.HudService
+import org.cordis.api.HudState
 import org.cordis.api.PLUGIN_API_VERSION
 import kotlin.math.roundToInt
 
@@ -45,9 +52,21 @@ fun EvSettingsScreen(
     onOpenThemes: () -> Unit,
     /** Name of the active theme, resolved by the caller from the host catalog. */
     themeName: String,
+    /** 宿主提供的屏幕提示层；null 表示宿主版本旧或无障碍没开——那这行只是不可用，不是坏掉。 */
+    hud: HudService? = null,
     modifier: Modifier = Modifier,
 ) {
     val current = appearance.current
+
+    // 调试开关：把胶囊和跑马灯常驻点亮，好在不动 agent 的情况下看亮度对不对。
+    // 状态不持久化——它是一次性的视觉检查，不该在下次开机时莫名其妙亮着。
+    var hudPreview by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        onDispose {
+            // 离开这一页必须收起：预览是临时的，遗留一颗胶囊挂在别人桌面上是最糟的结果。
+            if (hudPreview) hud?.hide()
+        }
+    }
     EvPage(
         title = "设置",
         modifier = modifier,
@@ -135,6 +154,34 @@ fun EvSettingsScreen(
                     glyph = EvGlyphKind.Gear,
                     summary = "打开 EV 宿主设置页",
                     onClick = onOpenHostSettings,
+                )
+            }
+        }
+
+        item { EvSettingsSection("调试") }
+        item {
+            EvSettingsGroup {
+                EvSettingsRow(
+                    title = "显示屏幕操作提示",
+                    glyph = EvGlyphKind.Screen,
+                    summary = when {
+                        hud == null -> "宿主未提供提示层（需要无障碍已开启）"
+                        hudPreview -> "已点亮：胶囊与跑马灯常驻显示"
+                        else -> "常驻显示进度胶囊与边缘跑马灯，用来检查亮度"
+                    },
+                    trailing = EvSettingsTrailing.Switch,
+                    checked = hudPreview,
+                    onCheckedChange = { on ->
+                        hudPreview = on
+                        // 这一行日志是排障用的：null 说明宿主没发布 HudService（版本旧），
+                        // 非 null 还不显示就是窗口那一层的问题，两者查法完全不同。
+                        android.util.Log.i("EV", "HUD 调试开关 → $on，hud=${hud != null}")
+                        if (on) {
+                            hud?.show(HudState(step = 3, tool = "screen_tap", note = "调试预览"))
+                        } else {
+                            hud?.hide()
+                        }
+                    },
                 )
             }
         }

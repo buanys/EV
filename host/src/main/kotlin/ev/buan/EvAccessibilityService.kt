@@ -280,9 +280,14 @@ class EvAccessibilityService : AccessibilityService() {
 
         fun currentPackage(): String? = foregroundPackage
 
-        /** 提示层的门面：服务不在时静默失败——它只是可见性，不是功能。 */
+        /** 提示层的门面：服务不在时只是少一层可见性，但必须留痕，否则"没显示"无从查起。 */
         fun showHud(state: org.cordis.api.HudState) {
-            instance?.showHud(state)
+            val service = instance
+            if (service == null) {
+                android.util.Log.w("EV", "HUD: 无障碍服务实例不在，跳过显示")
+                return
+            }
+            service.showHud(state)
         }
 
         fun hideHud() {

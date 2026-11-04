@@ -133,6 +133,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
             PluginStorage.Key,
             UserDataStorage.Key,
             AppearanceService.Key,
+            // 屏幕提示层。声明在这里才允许用 ctx.get 做可选查询：宿主旧版本时它是 null，
+            // 设置页那一行会显示"未提供"，插件照常起。
+            org.cordis.api.HudService.Key,
         )
 
     private var navigation: HostNavigation? = null
@@ -140,6 +143,9 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
 
     /** Host-owned appearance; the settings screen reads and updates it through this service. */
     private var appearance: AppearanceService? = null
+
+    /** 屏幕提示层。走 ctx.get 而不是 directory.lookup：后者查不到 cordis.provide 发布的服务。 */
+    private var hud: org.cordis.api.HudService? = null
 
     /** Non-null while applied: without it the page still works, it just forgets on restart. */
     private var sessionStore: ChatSessionStore? = null
@@ -177,6 +183,7 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
         navigation = ctx.require(HostNavigation.Key)
         directory = ctx.require(ServiceDirectory.Key)
         appearance = ctx.require(AppearanceService.Key)
+        hud = ctx.get(org.cordis.api.HudService.Key)
         val storage = ctx.require(UserDataStorage.Key)
         migrateToUserData(ctx.get(PluginStorage.Key), storage)
         val store = ChatSessionStore(storage)
@@ -352,6 +359,8 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     onOpenModels = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Models)) },
                     onOpenTools = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Tools)) },
                     onOpenMemory = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Memory)) },
+                    // 宿主没发布提示层时是 null，设置页那一行只会显示"不可用"，不会崩。
+                    hud = hud,
                     modifier = modifier,
                 )
             }

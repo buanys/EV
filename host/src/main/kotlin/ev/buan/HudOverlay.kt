@@ -11,6 +11,7 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.SweepGradient
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -20,40 +21,89 @@ import org.cordis.api.HudState
 /**
  * 屏幕操作期间的可见性层：一圈边缘跑马灯 + 一颗进度胶囊。
  *
- * 为什么挂在无障碍服务上而不是普通悬浮窗：`TYPE_ACCESSIBILITY_OVERLAY` 由无障碍服务直接
- * 添加，不需要 `SYSTEM_ALERT_WINDOW`（那要用户再去设置里点一次），也不会被当成可点击窗口
- * 挡住别人——两个窗口都带 `FLAG_NOT_TOUCHABLE`，手指穿过去。
+ * **两个窗口，不是一个。** 一开始做成一个全屏窗口，结果 `FLAG_BLUR_BEHIND` 把整块屏幕
+ * 背后都糊了——模糊是加在**窗口矩形**上的，跟画了什么无关。要的只是胶囊那块玻璃，所以：
  *
- * 亮度是调出来的，不是随便给的：[MARQUEE_ALPHA] 0.3 在深色壁纸上刚好看得见、在浅色壁纸上
- * 不刺眼；胶囊用深玻璃而不是纯白，因为白色在全屏视频上跳得厉害。
+ *  - 跑马灯：全屏、透明、**不带模糊**；
+ *  - 胶囊：`WRAP_CONTENT` 的小窗口，模糊半径只覆盖它自己，那才是液态玻璃。
  *
- * 所有绘制在 UI 线程，调用方（brain 的协程）可能在任何线程，所以 [show]/[hide] 都先切主线程。
+ * 两个都用 `TYPE_ACCESSIBILITY_OVERLAY`：无障碍服务直接添加，不需要 `SYSTEM_ALERT_WINDOW`。
+ * 都带 `FLAG_NOT_TOUCHABLE`，手指穿过去。
  */
 internal class HudOverlay(private val service: AccessibilityService) {
 
+    private val density = service.resources.displayMetrics.density
     private val windowManager: WindowManager? = service.getSystemService(WindowManager::class.java)
 
-    private var view: HudView? = null
-    private var attached = false
+    private var marquee: MarqueeView? = null
+    private var pill: PillView? = null
 
     fun show(state: HudState) = onMain {
-        val v = ensureView() ?: return@onMain
-        v.render(state)
+        val target = ensurePill()
+        if (target == null) {
+            android.util.Log.w("EV", "HUD show 放弃：胶囊窗口没挂上")
+            return@onMain
+        }
+        ensureMarquee()
+        target.render(state)
     }
 
-    fun hide() = onMain { detach() }
+    fun hide() = onMain { detachAll() }
 
     /** 服务销毁时调用：窗口必须自己拆，否则会留在屏幕上变成幽灵。 */
-    fun dispose() = onMain { detach() }
+    fun dispose() = onMain { detachAll() }
 
     private fun onMain(action: () -> Unit) {
-        runCatching { service.mainExecutor.execute(action) }
+        val posted = runCatching { service.mainExecutor.execute(action) }
+        if (posted.isFailure) {
+            android.util.Log.w("EV", "HUD 切主线程失败：${posted.exceptionOrNull()?.message}")
+        }
     }
 
-    private fun ensureView(): HudView? {
-        if (attached) view?.let { return it }
+    // ---------------------------------------------------------------- 胶囊
+
+    private fun ensurePill(): PillView? {
+        pill?.let { return it }
         val manager = windowManager ?: return null
-        val created = HudView(service)
+        val created = PillView(service)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            // gravity 里的 TOP + 这个偏移，比在 View 里留空白更准：窗口从状态栏下沿开始，
+            // 模糊区域也正好从那里开始。
+            y = statusBarHeight() + (14 * density).toInt()
+            title = "EV 屏幕操作提示"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                runCatching {
+                    flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                    // 尺寸小、半径也得小：20dp 足够把背后的图标糊成色块，再大就把胶囊边缘也化了。
+                    blurBehindRadius = (18 * density).toInt()
+                }
+            }
+        }
+        val added = runCatching { manager.addView(created, params) }
+        if (added.isFailure) {
+            android.util.Log.w("EV", "HUD 胶囊窗口挂不上去：${added.exceptionOrNull()?.message}")
+            return null
+        }
+        pill = created
+        android.util.Log.i("EV", "HUD 胶囊窗口已挂上")
+        return created
+    }
+
+    // ---------------------------------------------------------------- 跑马灯
+
+    private fun ensureMarquee(): MarqueeView? {
+        marquee?.let { return it }
+        val manager = windowManager ?: return null
+        val created = MarqueeView(service)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -65,57 +115,153 @@ internal class HudOverlay(private val service: AccessibilityService) {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            title = "EV 屏幕操作提示"
-            // 真·背景模糊：Android 12 起 LayoutParams 才认这个字段，而且要看系统有没有开
-            // 跨窗口模糊（ColorOS 上 mBlurEnabled=true）。不支持就是一句 no-op，窗口退化成
-            // 半透明——那正是 HUD 的兜底形态，所以不必先探测。
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                runCatching {
-                    flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                    blurBehindRadius = (26 * service.resources.displayMetrics.density).toInt()
-                }
-            }
+            title = "EV 屏幕操作边框"
+            // 这里**故意不加** FLAG_BLUR_BEHIND。
         }
         val added = runCatching { manager.addView(created, params) }
         if (added.isFailure) {
-            // 静默失败是最糟的：用户以为在跑，其实什么都没有。
-            android.util.Log.w("EV", "HUD 窗口挂不上去：${added.exceptionOrNull()?.message}")
+            android.util.Log.w("EV", "HUD 跑马灯窗口挂不上去：${added.exceptionOrNull()?.message}")
             return null
         }
-        view = created
-        attached = true
+        marquee = created
         created.start()
+        android.util.Log.i("EV", "HUD 跑马灯窗口已挂上")
         return created
     }
 
-    private fun detach() {
-        val current = view ?: return
-        current.stop()
-        runCatching { windowManager?.removeView(current) }
-        view = null
-        attached = false
+    private fun detachAll() {
+        pill?.let { runCatching { windowManager?.removeView(it) } }
+        marquee?.let {
+            it.stop()
+            runCatching { windowManager?.removeView(it) }
+        }
+        pill = null
+        marquee = null
+    }
+
+    private fun statusBarHeight(): Int {
+        val id = service.resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) {
+            service.resources.getDimensionPixelSize(id)
+        } else {
+            (24 * density).toInt()
+        }
     }
 }
 
 /**
- * 一整个屏幕大的透明视图，只画两样东西：边缘的光、顶部的胶囊。
+ * 边缘的一圈光。
  *
- * 一个窗口而不是两个：两层要同步出现/收起，分成两个窗口只会多一处可能不同步的地方。
+ * 比第一版做的三件事：
+ *  - 光带从 2.2dp 加到 3.2dp，并**往里缩 5dp**：贴物理边缘看起来像屏幕漏光，不像"正在操作"；
+ *  - 加一层 10dp 的柔光垫底，光带不再是硬边的一条线；
+ *  - 圆角跟着屏幕走，底部和顶部一样能看见。
  */
-private class HudView(context: Context) : View(context) {
+private class MarqueeView(context: Context) : View(context) {
 
     private val density = resources.displayMetrics.density
 
-    private var state: HudState? = null
-    private var marqueePhase = 0f
-    private var breathPhase = 0f
-
-    private val marqueePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = STROKE_DP * density
+        strokeWidth = GLOW_DP * density
+    }
+    private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = CORE_DP * density
     }
 
-    private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val rect = RectF()
+    private val matrix = Matrix()
+    private var phase = 0f
+    private var shader: SweepGradient? = null
+    private var shaderWidth = 0
+    private var shaderHeight = 0
+
+    private val animator = ValueAnimator.ofFloat(0f, 360f).apply {
+        duration = PERIOD_MS
+        repeatCount = ValueAnimator.INFINITE
+        interpolator = LinearInterpolator()
+        addUpdateListener {
+            phase = it.animatedValue as Float
+            invalidate()
+        }
+    }
+
+    fun start() {
+        if (!animator.isStarted) animator.start()
+    }
+
+    fun stop() = animator.cancel()
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+
+        val gradient = shaderFor(w, h) ?: return
+        matrix.setRotate(phase, w / 2f, h / 2f)
+        gradient.setLocalMatrix(matrix)
+
+        // 两遍画同一圈：外圈是柔光，内圈是主体。只有一圈的话边缘是硬的，像贴了条胶带。
+        val inset = INSET_DP * density
+        rect.set(inset, inset, w - inset, h - inset)
+        val radius = CORNER_DP * density
+
+        glowPaint.shader = gradient
+        glowPaint.alpha = (GLOW_ALPHA * 255).toInt()
+        canvas.drawRoundRect(rect, radius, radius, glowPaint)
+
+        corePaint.shader = gradient
+        corePaint.alpha = (CORE_ALPHA * 255).toInt()
+        canvas.drawRoundRect(rect, radius, radius, corePaint)
+
+        glowPaint.shader = null
+        corePaint.shader = null
+    }
+
+    private fun shaderFor(w: Float, h: Float): SweepGradient? {
+        if (shaderWidth == w.toInt() && shaderHeight == h.toInt()) return shader
+        val glow = GLOW_COLOR
+        val transparent = Color.argb(0, Color.red(glow), Color.green(glow), Color.blue(glow))
+        val solid = Color.argb(255, Color.red(glow), Color.green(glow), Color.blue(glow))
+        // 光带占整圈的核心只有 0.05，再往两侧各收一段渐变做拖尾。
+        val created = SweepGradient(
+            w / 2f,
+            h / 2f,
+            intArrayOf(transparent, transparent, solid, transparent, transparent),
+            floatArrayOf(0f, 0.62f, 0.72f, 0.86f, 1f),
+        )
+        shader = created
+        shaderWidth = w.toInt()
+        shaderHeight = h.toInt()
+        return created
+    }
+
+    private companion object {
+        const val GLOW_DP = 10f
+        const val CORE_DP = 3.2f
+        const val INSET_DP = 5f
+        const val CORNER_DP = 30f
+        const val GLOW_ALPHA = 0.10f
+        const val CORE_ALPHA = 0.34f
+        const val PERIOD_MS = 3600L
+        val GLOW_COLOR: Int = Color.parseColor("#7CD8FF")
+    }
+}
+
+/**
+ * 进度胶囊。
+ *
+ * 窗口就是胶囊本身（`WRAP_CONTENT`），所以系统给的背景模糊正好落在玻璃上，不会波及全屏。
+ */
+private class PillView(context: Context) : View(context) {
+
+    private val density = resources.displayMetrics.density
+
+    private var label = "正在思考"
+    private var breath = 0f
+
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 1f * density
@@ -127,201 +273,103 @@ private class HudView(context: Context) : View(context) {
         typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
     }
 
-    private val pillRect = RectF()
-    private val glowRect = RectF()
+    private val rect = RectF()
 
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = MARQUEE_PERIOD_MS
+        duration = 1600
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
-            val t = it.animatedValue as Float
-            marqueePhase = t * 360f
-            // 呼吸比跑马灯快一倍多一点，两者不同步才不像同一个动画在重复。
-            breathPhase = t
+            breath = it.animatedValue as Float
             invalidate()
         }
     }
 
-    fun start() {
+    fun render(state: HudState) {
+        val next = labelFor(state)
+        if (next != label) {
+            label = next
+            requestLayout()
+        }
         if (!animator.isStarted) animator.start()
+        invalidate()
     }
 
-    fun stop() {
-        animator.cancel()
-    }
-
-    fun render(next: HudState) {
-        val changed = next != state
-        state = next
-        if (changed) invalidate()
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val textWidth = textPaint.measureText(label)
+        val wanted = PADDING_DP * 2 * density + DOT_DP * density + GAP_DP * density + textWidth
+        val width = wanted.coerceIn(MIN_WIDTH_DP * density, MAX_WIDTH_DP * density).toInt()
+        setMeasuredDimension(width, (HEIGHT_DP * density).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
-        val current = state ?: return
-        drawMarquee(canvas)
-        drawPill(canvas, current)
-    }
-
-    // ---------------------------------------------------------------- 跑马灯
-
-    /**
-     * 一条沿屏幕边缘绕圈的光。
-     *
-     * 用 `SweepGradient` + 旋转矩阵而不是四次 `LinearGradient`：四段独立渐变在圆角处会断，
-     * 看起来像四条分开的线，一圈扫过去的光才像"正在运行"。
-     */
-    private fun drawMarquee(canvas: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
+        rect.set(0f, 0f, w, h)
+        val radius = h / 2f
 
-        val shader = shaderFor(w, h) ?: return
-        shader.setLocalMatrix(Matrix().apply { setRotate(marqueePhase, w / 2f, h / 2f) })
-        marqueePaint.shader = shader
-
-        val inset = STROKE_DP * density / 2f
-        glowRect.set(inset, inset, w - inset, h - inset)
-        val radius = CORNER_DP * density
-        canvas.drawRoundRect(glowRect, radius, radius, marqueePaint)
-        marqueePaint.shader = null
-    }
-
-    private var cachedShader: SweepGradient? = null
-    private var cachedWidth = 0
-    private var cachedHeight = 0
-
-    private fun shaderFor(w: Float, h: Float): SweepGradient? {
-        val cached = cachedShader
-        if (cached != null && cachedWidth == w.toInt() && cachedHeight == h.toInt()) return cached
-        val glow = MARQUEE_COLOR
-        val transparent = Color.argb(0, Color.red(glow), Color.green(glow), Color.blue(glow))
-        val peak = Color.argb((MARQUEE_ALPHA * 255).toInt(), Color.red(glow), Color.green(glow), Color.blue(glow))
-        // 光带只占整圈的一小段：0.06 圈约等于 20°，太长就成了整圈发光的边框。
-        val shader = SweepGradient(
-            w / 2f,
-            h / 2f,
-            intArrayOf(transparent, transparent, peak, transparent, transparent),
-            floatArrayOf(0f, 0.66f, 0.72f, 0.78f, 1f),
-        )
-        cachedShader = shader
-        cachedWidth = w.toInt()
-        cachedHeight = h.toInt()
-        return shader
-    }
-
-    // ---------------------------------------------------------------- 胶囊
-
-    private fun drawPill(canvas: Canvas, current: HudState) {
-        val label = labelFor(current)
-        val textWidth = textPaint.measureText(label)
-        val dotSize = DOT_DP * density
-        val gap = GAP_DP * density
-        val padding = PADDING_DP * density
-        val heightPx = HEIGHT_DP * density
-
-        val widthPx = (padding * 2 + dotSize + gap + textWidth)
-            .coerceAtLeast(MIN_WIDTH_DP * density)
-            .coerceAtMost(maxOf(MIN_WIDTH_DP * density, width - 32f * density))
-
-        val top = statusBarHeight() + TOP_MARGIN_DP * density
-        val left = (width - widthPx) / 2f
-        pillRect.set(left, top, left + widthPx, top + heightPx)
-        val radius = heightPx / 2f
-
-        // 阴影先画：setShadowLayer 只影响随后那一次绘制。
-        pillPaint.shader = null
-        pillPaint.setShadowLayer(10f * density, 0f, 3f * density, 0x55000000)
-        pillPaint.color = PILL_BASE
-        canvas.drawRoundRect(pillRect, radius, radius, pillPaint)
-        pillPaint.clearShadowLayer()
-
-        // 玻璃本体：上浅下深，模拟光从上面打下来的折射。
-        pillPaint.shader = LinearGradient(
-            pillRect.left, pillRect.top, pillRect.left, pillRect.bottom,
+        // 底：不透明一点，玻璃才压得住背后的内容；模糊由系统在窗口下面做。
+        fillPaint.shader = LinearGradient(
+            0f, 0f, 0f, h,
             PILL_TOP, PILL_BOTTOM, android.graphics.Shader.TileMode.CLAMP,
         )
-        canvas.drawRoundRect(pillRect, radius, radius, pillPaint)
-        pillPaint.shader = null
+        canvas.drawRoundRect(rect, radius, radius, fillPaint)
+        fillPaint.shader = null
 
-        // 顶部内高光：一条细窄的白色渐变，是"玻璃"和"纯色块"之间唯一的区别。
-        val highlight = RectF(pillRect.left + radius * 0.6f, pillRect.top + 1f * density,
-            pillRect.right - radius * 0.6f, pillRect.top + heightPx * 0.42f)
-        pillPaint.shader = LinearGradient(
+        // 顶部内高光：玻璃和色块的区别就在这一条。
+        val highlight = RectF(radius * 0.6f, 1f * density, w - radius * 0.6f, h * 0.42f)
+        fillPaint.shader = LinearGradient(
             highlight.left, highlight.top, highlight.left, highlight.bottom,
             0x38FFFFFF, 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP,
         )
-        canvas.drawRoundRect(highlight, radius * 0.7f, radius * 0.7f, pillPaint)
-        pillPaint.shader = null
+        canvas.drawRoundRect(highlight, radius * 0.7f, radius * 0.7f, fillPaint)
+        fillPaint.shader = null
 
-        // 外描边：上亮下暗，边缘才不会糊进背景。
+        // 描边：上亮下暗，边缘才不会糊进背景。
         strokePaint.shader = LinearGradient(
-            pillRect.left, pillRect.top, pillRect.left, pillRect.bottom,
+            0f, 0f, 0f, h,
             0x40FFFFFF, 0x0DFFFFFF, android.graphics.Shader.TileMode.CLAMP,
         )
-        canvas.drawRoundRect(pillRect, radius, radius, strokePaint)
+        canvas.drawRoundRect(rect, radius, radius, strokePaint)
         strokePaint.shader = null
 
-        // 呼吸圆点：位置固定，只变透明度。
-        val dotCenterX = pillRect.left + padding + dotSize / 2f
-        val dotCenterY = pillRect.centerY()
-        val alpha = (DOT_MIN_ALPHA + (DOT_MAX_ALPHA - DOT_MIN_ALPHA) * ((kotlin.math.sin(breathPhase * 2 * Math.PI) + 1) / 2)).toInt()
+        // 呼吸圆点。
+        val dotRadius = DOT_DP * density / 2f
+        val dotX = PADDING_DP * density + dotRadius
+        val dotY = h / 2f
+        val alpha = (DOT_MIN_ALPHA + (255 - DOT_MIN_ALPHA) * ((kotlin.math.sin(breath * 2 * Math.PI) + 1) / 2)).toInt()
         dotPaint.color = Color.argb(alpha, Color.red(DOT_COLOR), Color.green(DOT_COLOR), Color.blue(DOT_COLOR))
-        canvas.drawCircle(dotCenterX, dotCenterY, dotSize / 2f, dotPaint)
+        canvas.drawCircle(dotX, dotY, dotRadius, dotPaint)
 
         val metrics = textPaint.fontMetrics
-        val baseline = pillRect.centerY() - (metrics.ascent + metrics.descent) / 2f
-        canvas.drawText(label, dotCenterX + dotSize / 2f + gap, baseline, textPaint)
+        val baseline = dotY - (metrics.ascent + metrics.descent) / 2f
+        canvas.drawText(label, dotX + dotRadius + GAP_DP * density, baseline, textPaint)
     }
 
-    private fun labelFor(current: HudState): String {
-        val subject = current.note ?: current.tool
+    private fun labelFor(state: HudState): String {
+        val subject = state.note ?: state.tool
         return when {
-            current.step > 0 && subject != null -> "第 ${current.step} 步 · $subject"
-            current.step > 0 -> "第 ${current.step} 步"
+            state.step > 0 && subject != null -> "第 ${state.step} 步 · $subject"
+            state.step > 0 -> "第 ${state.step} 步"
             subject != null -> subject
             else -> "正在思考"
         }
     }
 
-    private var statusBarHeightCache = 0
-
-    private fun statusBarHeight(): Int {
-        if (statusBarHeightCache > 0) return statusBarHeightCache
-        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
-        statusBarHeightCache = if (id > 0) {
-            resources.getDimensionPixelSize(id)
-        } else {
-            (24 * density).toInt()
-        }
-        return statusBarHeightCache
-    }
-
     private companion object {
-        /** 光带宽度：比系统手势条粗一点，但远不到"边框"的程度。 */
-        const val STROKE_DP = 2.2f
-        const val CORNER_DP = 26f
-
-        /** 峰值不透明度。0.3 在深色壁纸上清晰、在浅色上不刺眼。 */
-        const val MARQUEE_ALPHA = 0.30f
-        val MARQUEE_COLOR: Int = Color.parseColor("#7CD8FF")
-
-        const val MARQUEE_PERIOD_MS = 3600L
-
         const val HEIGHT_DP = 38f
         const val MIN_WIDTH_DP = 104f
+        const val MAX_WIDTH_DP = 300f
         const val PADDING_DP = 15f
         const val GAP_DP = 9f
         const val DOT_DP = 7f
-        const val TOP_MARGIN_DP = 14f
+        const val DOT_MIN_ALPHA = 90f
 
-        /** 玻璃底色：不是纯黑，带一点冷调，掠在视频上不会显得像一块补丁。 */
-        val PILL_BASE: Int = Color.parseColor("#CC14181D")
-        val PILL_TOP: Int = Color.parseColor("#E01F242B")
-        val PILL_BOTTOM: Int = Color.parseColor("#CC101318")
+        /** 半透明深色：系统模糊在它下面，玻璃才有"透过来的色"而不是一块塑料。 */
+        val PILL_TOP: Int = Color.parseColor("#B8222830")
+        val PILL_BOTTOM: Int = Color.parseColor("#A6161A1F")
 
         val DOT_COLOR: Int = Color.parseColor("#8FE3FF")
-        const val DOT_MIN_ALPHA = 90f
-        const val DOT_MAX_ALPHA = 255f
     }
 }

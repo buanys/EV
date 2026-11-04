@@ -39,7 +39,9 @@ class AgentBrainPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
     override val title = "对话大脑"
     override val body = "组合 agent-model / agent-tools / agent-memory；缺失的依赖按未连接或纯文本降级。"
 
-    override val inject: Dependencies = dependencies(ServiceDirectory.Key)
+    // HudService 走 host 的 cordis.provide 发布，不在 ServiceDirectory 里，所以要用 ctx.get
+    // 取；声明在 inject 里才允许做这种可选查询，宿主旧版本时它是 null。
+    override val inject: Dependencies = dependencies(ServiceDirectory.Key, org.cordis.api.HudService.Key)
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
@@ -51,7 +53,7 @@ class AgentBrainPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
                 memory = directory.lookup(MemoryService.Key),
                     approval = directory.lookup(ApprovalService.Key),
                     prompt = directory.lookup(SystemPromptService.Key),
-                    hud = directory.lookup(org.cordis.api.HudService.Key),
+                    hud = ctx.get(org.cordis.api.HudService.Key),
                 )
             },
         )
