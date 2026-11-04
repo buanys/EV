@@ -13,6 +13,8 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
+import kotlin.math.sin
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
@@ -235,19 +237,34 @@ private fun ComposerEdgeLight(
         if (length <= 0f) return@Canvas
 
         val head = phase * length
-        val step = 2.dp.toPx()
-        val dots = (EDGE_TRAIL_DP.dp.toPx() / step).toInt().coerceAtLeast(1)
+        val trail = EDGE_TRAIL_DP.dp.toPx()
+        val segments = EDGE_SEGMENTS
+        val stepPx = trail / segments
 
-        for (i in 0 until dots) {
-            val fade = 1f - i / dots.toFloat()
-            val alpha = fade * fade
-            val distance = (head - i * step + length) % length
-            // Compose 的 PathMeasure 只有 getPosition/getTangent，不暴露 getPosTan 的数组重载。
-            val position = measure.getPosition(distance)
-            drawCircle(
-                color = ComposerEdgeBlue.copy(alpha = alpha),
-                radius = 1.1.dp.toPx() * (0.35f + 0.65f * fade),
-                center = position,
+        // 逐段画**线**，不是画一串圆点。
+        //
+        // 圆点无论多小，连起来都是一条有厚度的带子——看着"粗"。线可以把端点收成尖：
+        // 每段的宽度和亮度都按 sin(π·t) 包络走，t=0 是头部、t=1 是尾部，
+        // 两端都是 0。整条光因此是一枚梭形：两头尖、中段细长，像刀刃上的一道反光。
+        for (i in 0 until segments) {
+            val tStart = i / segments.toFloat()
+            val tEnd = (i + 1) / segments.toFloat()
+            // 中段取 tStart 和 tEnd 的中点算包络，段与段之间才不会出现忽明忽暗的台阶。
+            val envelope = sin(Math.PI * ((tStart + tEnd) / 2f)).toFloat()
+            if (envelope <= 0.01f) continue
+
+            val from = (head - tStart * trail + length * 2f) % length
+            val to = (head - tEnd * trail + length * 2f) % length
+            val a = measure.getPosition(from)
+            val b = measure.getPosition(to)
+
+            drawLine(
+                color = ComposerEdgeBlue.copy(alpha = envelope * 0.95f),
+                start = a,
+                end = b,
+                // 最粗 0.85dp，最细尖到 0.1dp——"锋芒"就靠这个比例差。
+                strokeWidth = (0.1f + 0.75f * envelope) * density,
+                cap = StrokeCap.Round,
             )
         }
     }
@@ -257,6 +274,9 @@ private fun ComposerEdgeLight(
 private const val EDGE_PERIOD_MS = 6000
 
 private const val EDGE_TRAIL_DP = 96f
+
+/** 拖尾切成多少段。96dp / 48 = 2dp 一段，足够让包络平滑，又不至于画 200 条线。 */
+private const val EDGE_SEGMENTS = 48
 
 /** 冷蓝，和 HUD 胶囊的边缘光同源，两个浮层看起来才像一套东西。 */
 private val ComposerEdgeBlue = Color(0xFF5AAEFF)
