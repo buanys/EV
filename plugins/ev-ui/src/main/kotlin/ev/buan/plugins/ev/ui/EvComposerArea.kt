@@ -119,16 +119,19 @@ internal fun EvComposerArea(
             .fillMaxWidth()
             // 键盘和底部手势条取并集，不是串联：串联会把两个高度加起来。
             // navigationBars 在这里已被父级的 evSystemBarsPadding 消费成 0，
-            // 所以键盘收起时真正起作用的是下面的 14dp——视觉呼吸，不是安全区。
+            // 所以键盘收起时真正起作用的是下面的 6dp——视觉呼吸，不是安全区。
             .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-            .padding(start = 10.dp, end = 10.dp, bottom = 14.dp),
+            .padding(start = 10.dp, end = 10.dp, bottom = 6.dp),
     ) {
         // The field floats over the transcript, so it needs more body than the drawer's glass:
         // 30% of the theme blur (a hint of what is underneath, not a readable copy of it) and a
         // denser tint, so the placeholder and the cursor never compete with a message scrolling by.
         Box(
             Modifier.matchParentSize()
-                .evGlassLayer(sheetShape, tintAlpha = 0.72f, blurScale = 0.3f),
+                // 之前是 tintAlpha=0.72 / blurScale=0.3：模糊只有主题的三成，底色又太透，
+                // 结果后面滚过去的消息能直接读出来，输入的文字反而看不清。
+                // 输入框是"正在写字的地方"，可读性优先于通透——模糊拉满，底色压到接近实心。
+                .evGlassLayer(sheetShape, tintAlpha = 0.94f, blurScale = 1f),
         )
         Column {
             EvComposerPanels(
