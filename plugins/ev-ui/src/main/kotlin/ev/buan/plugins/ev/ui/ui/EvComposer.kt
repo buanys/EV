@@ -91,6 +91,17 @@ object EvComposerDefaults {
      * 3.5 × 26 = 91，取 92 留 1dp 余量，免得最后半行被裁掉一个像素。
      */
     val FieldMaxActive = 92.dp
+
+    /**
+     * 输入框最多画几行，超过之后在内部滚动。
+     *
+     * 这个值必须和 [FieldMaxActive] 对齐：光靠外层 `heightIn` 是管不住 `BasicTextField` 的，
+     * 它默认 `maxLines = Int.MAX_VALUE`，会按全文测量再把行画到容器外面去——容器没 clip，
+     * 于是五行的草稿会把工具栏顶开、把消息压在下面。
+     *
+     * 92dp 减去内边距约 4 行（正文行高 ~22dp），取 4 正好在边界内。
+     */
+    const val FieldMaxLines = 4
     val PanelIconSize = 44.dp
     val PanelGlyph = 20.dp
 }
@@ -222,6 +233,9 @@ fun EvComposer(
                     onValueChange = onValueChange,
                     textStyle = EvThemeTokens.type.body.style(tokens.textPrimary),
                     cursorBrush = SolidColor(tokens.accent),
+                    // 超过 4 行就在这里滚动，而不是继续往外长：外层 heightIn 只是盒子，
+                    // 没有 maxLines 的话文本会照画不误，把工具栏和消息一起顶掉。
+                    maxLines = EvComposerDefaults.FieldMaxLines,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 4.dp)
