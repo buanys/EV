@@ -166,23 +166,26 @@ class GuiHudRenderer : HudRenderer {
         const val DOT_MIN_ALPHA = 90f
         const val BREATH_MS = 1600L
 
-        const val INSET_DP = 22f
+        const val INSET_DP = 15f
         const val CORNER_DP = 30f
 
         /**
-         * 六层同心描边。宽的那个极淡，窄的那个最亮。
+         * 六层同心描边。
          *
-         * 加起来的观感是"屏幕边缘在发光"而不是"屏幕被框了一圈"：外侧的 40dp 里
-         * 只贡献了一层几乎看不见的雾，真正认得出的核心只有最里面那 2.2dp。
-         * 之所以要这么多层，是因为单层再粗也是条硬边，中间得有渐变过渡才像光。
+         * **注意这些 alpha 是叠加的**，不是取最大：核心位置六层全压在一起，
+         * 1 - Π(1-a) 才是真正看到的不透明度。上一版 0.03+0.045+0.07+0.11+0.19+0.32
+         * 叠加出来是 0.63，直接变成一条 RGB 灯带。
+         *
+         * 这一组叠出来约 0.26：够看清是一道光，又不至于在深色界面上抢戏。
+         * 改任何一层都要重新算这条曲线，只调最内层会骗人。
          */
         val EDGE_LAYERS: List<EdgeLayer> = listOf(
-            EdgeLayer(44f, 0.030f),
-            EdgeLayer(28f, 0.045f),
-            EdgeLayer(17f, 0.070f),
-            EdgeLayer(9.5f, 0.110f),
-            EdgeLayer(4.8f, 0.190f),
-            EdgeLayer(2.2f, 0.320f),
+            EdgeLayer(28f, 0.012f),
+            EdgeLayer(18f, 0.018f),
+            EdgeLayer(11f, 0.028f),
+            EdgeLayer(6.5f, 0.045f),
+            EdgeLayer(3.6f, 0.075f),
+            EdgeLayer(2.0f, 0.120f),
         )
 
         const val PERIOD_MS = 3400L
