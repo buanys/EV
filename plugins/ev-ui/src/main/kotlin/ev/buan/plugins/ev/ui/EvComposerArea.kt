@@ -205,7 +205,7 @@ private fun ComposerEdgeLight(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(3600, easing = LinearEasing),
+            animation = tween(EDGE_PERIOD_MS, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "composerEdgePhase",
@@ -235,7 +235,7 @@ private fun ComposerEdgeLight(
         if (length <= 0f) return@Canvas
 
         val head = phase * length
-        val step = 1.5.dp.toPx()
+        val step = 2.dp.toPx()
         val dots = (EDGE_TRAIL_DP.dp.toPx() / step).toInt().coerceAtLeast(1)
 
         for (i in 0 until dots) {
@@ -253,8 +253,10 @@ private fun ComposerEdgeLight(
     }
 }
 
-/** 拖尾长度（dp）。整圈周长在这块屏上约 1100px，取 40dp 大约占 12%。 */
-private const val EDGE_TRAIL_DP = 40f
+/** 拖尾长度（dp）。整圈周长在这块屏上约 1100px，取 96dp 大约占 27%：短了像一颗子弹在屏幕上跑。 */
+private const val EDGE_PERIOD_MS = 6000
+
+private const val EDGE_TRAIL_DP = 96f
 
 /** 冷蓝，和 HUD 胶囊的边缘光同源，两个浮层看起来才像一套东西。 */
 private val ComposerEdgeBlue = Color(0xFF5AAEFF)
