@@ -54,19 +54,15 @@ fun EvSettingsScreen(
     themeName: String,
     /** 宿主提供的屏幕提示层；null 表示宿主版本旧或无障碍没开——那这行只是不可用，不是坏掉。 */
     hud: HudService? = null,
+    /**
+     * 预览是否已开。状态由上层（[EvUiPlugin]）持有，不放在这里：
+     * 离开设置页就把灯关掉，那就不叫"常驻"了。
+     */
+    hudPreview: Boolean = false,
+    onToggleHudPreview: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val current = appearance.current
-
-    // 调试开关：把胶囊和跑马灯常驻点亮，好在不动 agent 的情况下看亮度对不对。
-    // 状态不持久化——它是一次性的视觉检查，不该在下次开机时莫名其妙亮着。
-    var hudPreview by remember { mutableStateOf(false) }
-    DisposableEffect(Unit) {
-        onDispose {
-            // 离开这一页必须收起：预览是临时的，遗留一颗胶囊挂在别人桌面上是最糟的结果。
-            if (hudPreview) hud?.hide()
-        }
-    }
     EvPage(
         title = "设置",
         modifier = modifier,
@@ -172,15 +168,10 @@ fun EvSettingsScreen(
                     trailing = EvSettingsTrailing.Switch,
                     checked = hudPreview,
                     onCheckedChange = { on ->
-                        hudPreview = on
                         // 这一行日志是排障用的：null 说明宿主没发布 HudService（版本旧），
                         // 非 null 还不显示就是窗口那一层的问题，两者查法完全不同。
                         android.util.Log.i("EV", "HUD 调试开关 → $on，hud=${hud != null}")
-                        if (on) {
-                            hud?.show(HudState(step = 3, tool = "screen_tap", note = "调试预览"))
-                        } else {
-                            hud?.hide()
-                        }
+                        onToggleHudPreview(on)
                     },
                 )
             }

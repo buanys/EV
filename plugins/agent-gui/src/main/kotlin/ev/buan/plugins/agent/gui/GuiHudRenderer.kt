@@ -42,11 +42,11 @@ class GuiHudRenderer : HudRenderer {
 
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 10f * density
+        strokeWidth = GLOW_DP * density
     }
     private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 3.2f * density
+        strokeWidth = CORE_DP * density
     }
 
     private val rect = RectF()
@@ -137,16 +137,20 @@ class GuiHudRenderer : HudRenderer {
 
     private fun shaderFor(w: Float, h: Float): SweepGradient? {
         if (shaderWidth == w.toInt() && shaderHeight == h.toInt()) return shader
-        val create = GLOW_COLOR
-        val transparent = Color.argb(0, Color.red(create), Color.green(create), Color.blue(create))
-        val solid = Color.argb(255, Color.red(create), Color.green(create), Color.blue(create))
-        // 核心只占 0.10 圈，两侧各收一段渐变做拖尾；再宽就成了"整圈描边"，不像在跑。
-        val created = SweepGradient(
-            w / 2f,
-            h / 2f,
-            intArrayOf(transparent, transparent, solid, transparent, transparent),
-            floatArrayOf(0f, 0.62f, 0.72f, 0.86f, 1f),
+        // 彩虹光带：中间一段是七色，两侧留白。整圈都上色就成了 RGB 灯条，边缘一圈都在响，
+        // 正是"遮蔽内容"的那种亮。所以只让一小段有颜色，其余全透明。
+        val colors = intArrayOf(
+            Color.TRANSPARENT, Color.TRANSPARENT,
+            RAINBOW[0], RAINBOW[1], RAINBOW[2], RAINBOW[3], RAINBOW[4], RAINBOW[5], RAINBOW[6],
+            Color.TRANSPARENT, Color.TRANSPARENT,
         )
+        val positions = floatArrayOf(
+            0f, BAND_START,
+            BAND_START + 0.06f, BAND_START + 0.10f, BAND_START + 0.14f, BAND_START + 0.18f,
+            BAND_START + 0.22f, BAND_START + 0.26f, BAND_START + 0.30f,
+            BAND_END, 1f,
+        )
+        val created = SweepGradient(w / 2f, h / 2f, colors, positions)
         shader = created
         shaderWidth = w.toInt()
         shaderHeight = h.toInt()
@@ -168,12 +172,38 @@ class GuiHudRenderer : HudRenderer {
 
         const val INSET_DP = 5f
         const val CORNER_DP = 30f
-        const val GLOW_ALPHA = 0.10f
-        const val CORE_ALPHA = 0.34f
-        const val PERIOD_MS = 3600L
+
+        /**
+         * 亮度是调下来的：单色时 0.34 就够，换成七色之后同样的值会显得很吵——颜色多了，
+         * 同样的 alpha 在视觉上更"响"。0.24 + 柔光 0.07 在深色壁纸上清楚，在浅色壁纸上
+         * 只是一层淡淡的彩边，不会压过内容。
+         */
+        const val GLOW_ALPHA = 0.07f
+        const val CORE_ALPHA = 0.24f
+        const val GLOW_DP = 9f
+        const val CORE_DP = 2.8f
+
+        const val PERIOD_MS = 4200L
+
+        /** 光带占整圈的比例：从 [BAND_START] 开始，到 [BAND_END] 收尾。 */
+        const val BAND_START = 0.62f
+        const val BAND_END = 0.96f
+
+        /**
+         * 七色，都往浅里调了一档（混入一点白）：纯饱和的 #FF0000 在 0.24 透明度下依然刺眼，
+         * 而 #FF8A8A 这种"洗过"的红才是光带该有的颜色。
+         */
+        val RAINBOW: IntArray = intArrayOf(
+            Color.parseColor("#FF8A8A"),
+            Color.parseColor("#FFC46B"),
+            Color.parseColor("#FFE98A"),
+            Color.parseColor("#9FE89F"),
+            Color.parseColor("#8FE3FF"),
+            Color.parseColor("#9FB4FF"),
+            Color.parseColor("#D0A0FF"),
+        )
 
         val PILL_BLACK: Int = Color.parseColor("#FF000000")
         val DOT_COLOR: Int = Color.parseColor("#8FE3FF")
-        val GLOW_COLOR: Int = Color.parseColor("#7CD8FF")
     }
 }
