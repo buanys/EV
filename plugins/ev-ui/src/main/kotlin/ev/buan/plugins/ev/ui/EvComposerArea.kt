@@ -208,8 +208,10 @@ private fun ComposerEdgeLight(
     val phase by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
+        // 一个完整周期 = 走完全程 + 停顿。停顿那段什么都不画，靠时间线切出来，
+        // 不是靠"跑完了再从头开始"——那样右下角还没收干净，左上角就又冒出来了。
         animationSpec = infiniteRepeatable(
-            animation = tween(EDGE_PERIOD_MS, easing = LinearEasing),
+            animation = tween(EDGE_MOVE_MS + EDGE_GAP_MS, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "composerEdgePhase",
@@ -238,22 +240,32 @@ private fun ComposerEdgeLight(
         val length = measure.length
         if (length <= 0f) return@Canvas
 
+        // 时间线：先走完，再停顿，然后才重来。
+        // phase 是一整个周期（走 + 停）的进度，所以这里换算出"现在处于哪一段"。
+        val elapsed = phase * (EDGE_MOVE_MS + EDGE_GAP_MS)
+        if (elapsed >= EDGE_MOVE_MS) return@Canvas
+        val p = elapsed / EDGE_MOVE_MS
+
         // 两条光带都从**左上角**出发，各走一条边，到**右下角**汇合。
         //
         // 圆角矩形的半周长恰好是 w + h：从左上顺时针走一半就到右下，逆时针走一半也是。
         // 所以不需要两条独立的 Path——同一个 PathMeasure 上取两段相反方向的间距就行。
         val half = length / 2f
-        val headForward = phase * half
-        val headBackward = length - phase * half
         val trail = EDGE_TRAIL_DP.dp.toPx()
 
-        // 拖尾长度不能超过"已经走过的距离"。
-        //
-        // 之前用取模回绕，结果光带的尾巴越过起点接到了另一侧：视觉上右下角还没走到，
-        // 左上角已经又冒出来一截——就是"左上角直接出来一半"。现在出界就截断，
-        // 光带只会从起点**长出来**，不会凭空出现在起点后面。
-        drawBolt(measure, length, head = headForward, direction = -1f, trailLimit = min(trail, headForward))
-        drawBolt(measure, length, head = headBackward, direction = 1f, trailLimit = min(trail, length - headBackward))
+        val headForward = p * half
+        val headBackward = length - p * half
+
+        // 拖尾长度同时受三个约束：
+        //  1. 不超过全长；
+        //  2. 不超过"已经走过的距离"——否则尾巴会越过起点，从另一条边上冒出来；
+        //  3. 不超过"到终点的剩余距离"——光带在右下角是被**吸走**的，不是硬生生截断。
+        // 第 2、3 条让它在起点慢慢长出来、在终点慢慢收掉，两端都是渐变的。
+        val limitForward = min(trail, min(headForward, half - headForward))
+        val limitBackward = min(trail, min(length - headBackward, headBackward - half))
+
+        drawBolt(measure, length, head = headForward, direction = -1f, trailLimit = limitForward)
+        drawBolt(measure, length, head = headBackward, direction = 1f, trailLimit = limitBackward)
     }
 }
 
@@ -304,7 +316,11 @@ private fun wrap(value: Float, length: Float): Float {
 }
 
 /** 拖尾长度（dp）。整圈周长在这块屏上约 1100px，取 96dp 大约占 27%：短了像一颗子弹在屏幕上跑。 */
-private const val EDGE_PERIOD_MS = 9000
+/** 走完半圈用多久。550dp 的行程，6.5s 约 85dp/s，视线跟得住。 */
+private const val EDGE_MOVE_MS = 6500
+
+/** 走完之后停多久再重来。没有这一段，右下角还没收干净左上角就又冒出来了。 */
+private const val EDGE_GAP_MS = 1000
 
 private const val EDGE_TRAIL_DP = 132f
 
