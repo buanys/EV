@@ -32,7 +32,12 @@ class AgentGuiPlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
         "让 agent 看见并操作界面：读屏、点按、滑动、输入、截图。" +
             "依赖系统的无障碍授权，没有它这组工具只会如实报错。"
 
-    override val inject: Dependencies = dependencies(ServiceDirectory.Key, ScreenService.Key)
+    override val inject: Dependencies = dependencies(
+        ServiceDirectory.Key,
+        ScreenService.Key,
+        // 工具的落点提示：涟漪走这条通道。宿主旧版本时它是 null，工具照常工作。
+        org.cordis.api.HudService.Key,
+    )
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
@@ -49,7 +54,10 @@ class AgentGuiPlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
         if (registry == null) {
             Log.w("EV", "agent-gui: 等不到 ToolRegistry，本插件没有注册任何工具")
         } else {
-            val tools = GuiTools.all { ctx.get(ScreenService.Key) } + GuiVision.all()
+            val tools = GuiTools.all(
+                { ctx.get(ScreenService.Key) },
+                { ctx.get(org.cordis.api.HudService.Key) },
+            ) + GuiVision.all()
             registry.register(PLUGIN_ID, tools)
             Log.i("EV", "agent-gui: 注册 ${tools.size} 个工具（${tools.joinToString(",") { it.spec.name }}）")
         }

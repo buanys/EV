@@ -9,39 +9,48 @@ import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import org.cordis.api.HudPulse
 import org.cordis.api.HudRenderer
 import org.cordis.api.HudSize
 import org.cordis.api.HudState
 
 /**
- * 提示层的**窗口**部分：挂两个窗口、摆好位置、把画布递给 [HudRenderer]。
+ * 提示层的**窗口**部分：挂窗口、摆位置、把画布递给 [HudRenderer]。
  *
  * 这里一行绘制代码都没有——画什么归插件（agent-gui）。宿主只负责插件搬不动的事：
  * `TYPE_ACCESSIBILITY_OVERLAY` 只有 `AccessibilityService` 能加。
  *
- * 两个窗口而不是一个：`FLAG_BLUR_BEHIND` 一类的窗口属性是按**矩形**生效的，全屏窗口上
- * 开特效会糊整屏。边框光要全屏，胶囊要刚好包住自己，尺寸需求不同，只能分开。
+ * 两个窗口：
+ *  - 胶囊：`WRAP_CONTENT`，尺寸由渲染器算，只放一颗胶囊；
+ *  - 涟漪：全屏、透明，放过场的事件反馈。
  */
 internal class HudOverlay(private val service: AccessibilityService) {
 
     private val density = service.resources.displayMetrics.density
     private val windowManager: WindowManager? = service.getSystemService(WindowManager::class.java)
 
-    private var frameView: FrameView? = null
+    private var pulseView: PulseView? = null
     private var pillView: PillView? = null
     private var renderer: HudRenderer? = null
 
     fun show(state: HudState, painter: HudRenderer?) = onMain {
         if (painter == null) {
-            // 没有视觉实现（agent-gui 没装或被禁用）就不显示，不要留一颗空白窗口在屏幕上。
             detachAll()
             return@onMain
         }
         renderer = painter
         val pill = ensurePill() ?: return@onMain
-        ensureFrame()
         pill.render(state)
-        frameView?.render(state)
+    }
+
+    /** 一次操作刚发生。涟漪和胶囊互不干扰，所以这里不碰 [show] 的状态。 */
+    fun pulse(pulse: HudPulse, painter: HudRenderer?) = onMain {
+        // 正常情况下 brain 已经在工具调用前 show 过一次，renderer 就绪；
+        // 但工具也可能在没有胶囊的情况下单独打涟漪，这时候用它带上来的那个。
+        val active = renderer ?: painter ?: return@onMain
+        if (renderer == null) renderer = active
+        val frame = ensurePulseLayer(active) ?: return@onMain
+        frame.add(pulse)
     }
 
     fun hide() = onMain { detachAll() }
@@ -88,12 +97,12 @@ internal class HudOverlay(private val service: AccessibilityService) {
         return created
     }
 
-    // ---------------------------------------------------------------- 边框光
+    // ---------------------------------------------------------------- 涟漪
 
-    private fun ensureFrame(): FrameView? {
-        frameView?.let { return it }
+    private fun ensurePulseLayer(painter: HudRenderer): PulseView? {
+        pulseView?.let { return it }
         val manager = windowManager ?: return null
-        val created = FrameView()
+        val created = PulseView()
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -105,9 +114,9 @@ internal class HudOverlay(private val service: AccessibilityService) {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            title = "EV 屏幕操作边框"
+            title = "EV 屏幕操作涟漪"
             // FLAG_LAYOUT_NO_LIMITS 只允许窗口超出屏幕，**不阻止**系统按 inset 裁剪：
-            // 默认 fitTypes 含状态栏和导航栏，窗口会从 y=140 开始，顶边永远没光。
+            // 默认 fitTypes 含状态栏和导航栏，窗口会从 y=140 开始，屏幕顶部的涟漪就画不到。
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 setFitInsetsTypes(0)
                 setFitInsetsIgnoringVisibility(true)
@@ -119,22 +128,22 @@ internal class HudOverlay(private val service: AccessibilityService) {
         }
         val added = runCatching { manager.addView(created, params) }
         if (added.isFailure) {
-            android.util.Log.w("EV", "HUD 跑马灯窗口挂不上去：${added.exceptionOrNull()?.message}")
+            android.util.Log.w("EV", "HUD 涟漪窗口挂不上去：${added.exceptionOrNull()?.message}")
             return null
         }
-        frameView = created
-        created.start()
+        android.util.Log.i("EV", "HUD 涟漪层已挂上（${painter.javaClass.simpleName}）")
+        pulseView = created
         return created
     }
 
     private fun detachAll() {
         pillView?.let { runCatching { windowManager?.removeView(it) } }
-        frameView?.let {
+        pulseView?.let {
             it.stop()
             runCatching { windowManager?.removeView(it) }
         }
         pillView = null
-        frameView = null
+        pulseView = null
         renderer = null
     }
 
@@ -147,26 +156,20 @@ internal class HudOverlay(private val service: AccessibilityService) {
         }
     }
 
-    /** 全屏那层，只画边框。 */
-    private inner class FrameView : View(service) {
+    /** 全屏那层：只画涟漪。 */
+    private inner class PulseView : View(service) {
 
-        private var state: HudState? = null
-        private var startedAt = 0L
+        private val pulses = mutableListOf<HudPulse>()
 
-        fun render(next: HudState) {
-            state = next
-            if (startedAt == 0L) startedAt = SystemClock.elapsedRealtime()
+        fun add(pulse: HudPulse) {
+            pulses.add(pulse)
             schedule()
             invalidate()
         }
 
-        fun start() {
-            if (startedAt == 0L) startedAt = SystemClock.elapsedRealtime()
-            schedule()
-        }
-
         fun stop() {
             removeCallbacks(tick)
+            pulses.clear()
         }
 
         private val tick = object : Runnable {
@@ -185,9 +188,13 @@ internal class HudOverlay(private val service: AccessibilityService) {
 
         override fun onDraw(canvas: Canvas) {
             val painter = renderer ?: return
-            val current = state ?: return
-            painter.drawFrame(canvas, current, SystemClock.elapsedRealtime() - startedAt)
+            val now = SystemClock.elapsedRealtime()
+            // 过期的丢掉：涟漪是有限寿命的，没人清理就会一直画下去。
+            pulses.removeAll { now - it.startedAt > PULSE_LIFETIME_MS }
+            if (pulses.isEmpty()) return
+            painter.drawPulses(canvas, pulses.toList(), now)
         }
+
     }
 
     /** 胶囊那层，尺寸由渲染器决定。 */
@@ -203,10 +210,6 @@ internal class HudOverlay(private val service: AccessibilityService) {
             if (relayout) requestLayout()
             schedule()
             invalidate()
-        }
-
-        fun stop() {
-            removeCallbacks(tick)
         }
 
         private val tick = object : Runnable {
@@ -226,22 +229,18 @@ internal class HudOverlay(private val service: AccessibilityService) {
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val painter = renderer
             val current = state
-            val size = if (painter != null && current != null) {
+            val size: HudSize? = if (painter != null && current != null) {
                 runCatching {
                     painter.measurePill(current, resources.displayMetrics.widthPixels)
                 }.getOrNull()
             } else {
                 null
             }
-            applySize(size)
-        }
-
-        private fun applySize(size: HudSize?) {
             if (size == null || size.width <= 0 || size.height <= 0) {
                 setMeasuredDimension(0, 0)
-                return
+            } else {
+                setMeasuredDimension(size.width, size.height)
             }
-            setMeasuredDimension(size.width, size.height)
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -251,3 +250,9 @@ internal class HudOverlay(private val service: AccessibilityService) {
         }
     }
 }
+
+/**
+ * 涟漪活多久。900ms 比动画本身长，留出余量：渲染器自己按年龄算透明度，
+ * 宿主只负责在明显过期后把对象丢掉。
+ */
+private const val PULSE_LIFETIME_MS = 900L

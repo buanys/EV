@@ -65,6 +65,9 @@ class EvAccessibilityService : AccessibilityService() {
 
     internal fun hideHud() = hudOrNull?.hide()
 
+    internal fun pulse(pulse: org.cordis.api.HudPulse, renderer: org.cordis.api.HudRenderer?) =
+        hud().pulse(pulse, renderer)
+
     // ---------------------------------------------------------------- 读屏
 
     /**
@@ -289,6 +292,10 @@ class EvAccessibilityService : AccessibilityService() {
                 return
             }
             service.showHud(state, renderer)
+        }
+
+        fun pulse(pulse: org.cordis.api.HudPulse, renderer: org.cordis.api.HudRenderer?) {
+            instance?.pulse(pulse, renderer)
         }
 
         fun hideHud() {

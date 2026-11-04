@@ -233,7 +233,10 @@ internal class GuiWaitTool(private val service: () -> ScreenService?) : Tool {
  * 存在的理由是 `screen_swipe` 要求模型知道分辨率，它不知道，只能瞎写 500/1500 这种数字。
  * 方向语义跟阅读习惯一致：down = 显示下方内容。
  */
-internal class GuiScrollTool(private val service: () -> ScreenService?) : Tool {
+internal class GuiScrollTool(
+    private val service: () -> ScreenService?,
+    private val hud: () -> org.cordis.api.HudService?,
+) : Tool {
 
     override val spec = ToolSpec(
         name = "screen_scroll",
@@ -267,6 +270,18 @@ internal class GuiScrollTool(private val service: () -> ScreenService?) : Tool {
 
         val before = service.dump(400)
         before.error?.let { return screenError(it) }
+
+        hud()?.let { painter ->
+            runCatching {
+                painter.pulse(
+                    org.cordis.api.HudPulse(
+                        x = cx,
+                        y = if (direction == "up") cy - dy else cy + dy,
+                        startedAt = android.os.SystemClock.elapsedRealtime(),
+                    ),
+                )
+            }
+        }
 
         val action = when (direction) {
             // 看下面 = 手指从下往上推。

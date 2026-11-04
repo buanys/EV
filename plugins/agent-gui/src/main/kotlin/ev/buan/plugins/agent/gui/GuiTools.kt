@@ -2,6 +2,7 @@ package ev.buan.plugins.agent.gui
 
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolSpec
+import org.cordis.api.HudService
 import kotlinx.coroutines.delay
 import org.cordis.api.ScreenAction
 import org.cordis.api.ScreenDump
@@ -25,19 +26,29 @@ import org.json.JSONObject
  */
 internal object GuiTools {
 
-    fun all(service: () -> ScreenService?): List<Tool> = listOf(
+    fun all(service: () -> ScreenService?, hud: () -> HudService?): List<Tool> = listOf(
         DumpTool(service),
-        TapTool(service),
-        TapTextTool(service),
+        TapTool(service, hud),
+        TapTextTool(service, hud),
         InputTool(service),
-        SwipeTool(service),
+        SwipeTool(service, hud),
         KeyTool(service),
         // 闭环：等界面、按方向滚动。这两件原来要靠模型自己 dump + 算坐标 + 反复比对。
         GuiWaitTool(service),
-        GuiScrollTool(service),
+        GuiScrollTool(service, hud),
         // 跨屏：一屏读不完的内容，翻页采集后一次交给模型。
         GuiReadAllTool(service),
     )
+
+    /** 一次操作的落点提示。可丢：没有提示层时什么都不发生。 */
+    private fun pulse(hud: () -> HudService?, x: Int, y: Int) {
+        val service = hud() ?: return
+        runCatching {
+            service.pulse(
+                org.cordis.api.HudPulse(x = x, y = y, startedAt = android.os.SystemClock.elapsedRealtime()),
+            )
+        }
+    }
 
     private fun missing(): String =
         "屏幕服务未启用：宿主没有发布 ScreenService（宿主版本过旧）"
@@ -90,7 +101,10 @@ internal object GuiTools {
         }
     }
 
-    private class TapTool(private val service: () -> ScreenService?) : Tool {
+    private class TapTool(
+        private val service: () -> ScreenService?,
+        private val hud: () -> HudService?,
+    ) : Tool {
         override val spec = ToolSpec(
             name = "screen_tap",
             description = "点一下屏幕。优先用 node（screen_dump 里的序号）：点击前会重新读屏核对，" +
@@ -138,6 +152,9 @@ internal object GuiTools {
                 px to py
             }
 
+            // 落点先亮：pulse 是异步的，不会拖慢点击，用户看到的是"这里被按了一下"。
+            pulse(hud, x, y)
+
             // 同点长按：单点路径 + 时长就是 Android 的长按手势，不必再单独开一个工具。
             val action = if (duration > 500) {
                 service.swipe(x, y, x, y, duration.toLong())
@@ -156,7 +173,10 @@ internal object GuiTools {
         }
     }
 
-    private class TapTextTool(private val service: () -> ScreenService?) : Tool {
+    private class TapTextTool(
+        private val service: () -> ScreenService?,
+        private val hud: () -> HudService?,
+    ) : Tool {
         override val spec = ToolSpec(
             name = "screen_tap_text",
             description = "按屏幕上的文字点击，比坐标可靠（界面滚动后坐标失效，文字不会）。" +
@@ -196,7 +216,10 @@ internal object GuiTools {
         }
     }
 
-    private class SwipeTool(private val service: () -> ScreenService?) : Tool {
+    private class SwipeTool(
+        private val service: () -> ScreenService?,
+        private val hud: () -> HudService?,
+    ) : Tool {
         override val spec = ToolSpec(
             name = "screen_swipe",
             description = "在屏幕上滑动（滚动列表、翻页）。从 (x1,y1) 滑到 (x2,y2)。" +
@@ -219,6 +242,7 @@ internal object GuiTools {
             val x2 = args.optInt("x2", -1); val y2 = args.optInt("y2", -1)
             if (x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0) return error("缺少坐标")
             val duration = args.optLong("duration_ms", 300L)
+            pulse(hud, x1, y1)
             return actionJson(service.swipe(x1, y1, x2, y2, duration))
         }
     }

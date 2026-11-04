@@ -3,12 +3,9 @@ package ev.buan.plugins.agent.gui
 import android.content.res.Resources
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
-import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.RectF
-import android.graphics.SweepGradient
 import android.graphics.Typeface
+import org.cordis.api.HudPulse
 import org.cordis.api.HudRenderer
 import org.cordis.api.HudSize
 import org.cordis.api.HudState
@@ -17,16 +14,16 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * 屏幕提示层的全部视觉：一圈边缘跑马灯 + 一颗胶囊。
+ * 屏幕提示层的全部视觉：一颗状态胶囊 + 事件涟漪。
  *
  * 放在这个插件里，是因为它就是屏幕操作的一部分——"agent 正在动你的界面"这件事，和
- * "它能动界面"是同一件事的两面。分出去只会让两边都缺一半。
+ * "它能动界面"是同一件事的两面。
  *
- * 宿主只提供窗口和画布，这里没有任何 Android 服务依赖：`Resources.getSystem()` 拿密度，
- * 其余全是 Canvas。
+ * **没有全屏跑马灯。** 边框上绕圈的光看着像"正在运行"，但它回答不了用户真正的问题：
+ * 刚才动的是哪里。业界做法（AgentLens 的 spotlight、Siri 的辐射光）都是把光绑在**事件和位置**上，
+ * 而不是让光自己在边框上走。所以这里只有两样东西：一条持续的状态，和每一次操作的落点。
  *
- * 动画算成时间的函数（[elapsedMs]），不靠"上一帧加一点"：这样丢帧不会让相位漂移，也方便
- * 对着任意时间点复现某一帧。
+ * 时间算成时间的函数（[elapsedMs]），丢帧不会让相位漂移，任意一帧都能复现。
  */
 class GuiHudRenderer : HudRenderer {
 
@@ -39,17 +36,8 @@ class GuiHudRenderer : HudRenderer {
         color = 0xF2FFFFFF.toInt()
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
-
-    /** 边缘辉光的一层：多宽、多亮。 */
-    private data class EdgeLayer(val widthDp: Float, val alpha: Float)
-
-    private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-
-    private val rect = RectF()
-    private val matrix = Matrix()
-    private var shader: SweepGradient? = null
-    private var shaderWidth = 0
-    private var shaderHeight = 0
+    private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val spotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
     // ---------------------------------------------------------------- 胶囊
 
@@ -67,12 +55,9 @@ class GuiHudRenderer : HudRenderer {
         val h = canvas.height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        rect.set(0f, 0f, w, h)
         val radius = h / 2f
-
-        // 纯黑，没有渐变也没有描边：胶囊是一块实心黑，和背后是什么无关。
         fillPaint.color = PILL_BLACK
-        canvas.drawRoundRect(rect, radius, radius, fillPaint)
+        canvas.drawRoundRect(0f, 0f, w, h, radius, radius, fillPaint)
 
         val dotRadius = DOT_DP * density / 2f
         val dotX = PADDING_DP * density + dotRadius
@@ -102,58 +87,74 @@ class GuiHudRenderer : HudRenderer {
         }
     }
 
-    // ---------------------------------------------------------------- 边框光
+    // ---------------------------------------------------------------- 涟漪
 
-    override fun drawFrame(canvas: Canvas, state: HudState, elapsedMs: Long) {
-        val w = canvas.width.toFloat()
-        val h = canvas.height.toFloat()
-        if (w <= 0f || h <= 0f) return
+    /**
+     * 一次操作的落点：一圈从原点扩散、逐渐变细变淡的环，加一个很快消失的实心点。
+     *
+     * 环是"我动了这里"，实心点是"落点"。两者一起才读得出方向——只有环像涟漪，
+     * 只有点像笔迹，叠在一起才像"手指在这里按了一下"。
+     */
+    override fun drawPulses(canvas: Canvas, pulses: List<HudPulse>, elapsedMs: Long) {
+        if (pulses.isEmpty()) return
+        for (pulse in pulses) {
+            val age = (elapsedMs - pulse.startedAt).coerceAtLeast(0L)
+            if (age > PULSE_MS) continue
+            val progress = age / PULSE_MS.toFloat()
+            val eased = 1f - (1f - progress) * (1f - progress) * (1f - progress)
 
-        val gradient = shaderFor(w, h) ?: return
-        val phase = (elapsedMs % PERIOD_MS) / PERIOD_MS.toFloat() * 360f
-        matrix.setRotate(phase, w / 2f, h / 2f)
-        gradient.setLocalMatrix(matrix)
+            val cx = if (pulse.width > 0) pulse.x + pulse.width / 2f else pulse.x.toFloat()
+            val cy = if (pulse.height > 0) pulse.y + pulse.height / 2f else pulse.y.toFloat()
 
-        // 六层同心的描边叠成一道辉光：外层宽而极淡，越往里越窄越亮。
-        // 一条固定宽度的线不管多粗都是"线"；有厚度的是这种从边缘向内衰减的过渡。
-        // 最外面那层看不见，但它决定了整圈光的"底子"，去掉之后内侧几层会显得生硬。
-        val inset = INSET_DP * density
-        rect.set(inset, inset, w - inset, h - inset)
-        val radius = CORNER_DP * density
+            // 有目标的矩形就描个框：知道自己点的是什么，比只知道点了哪里更有用。
+            if (pulse.width > 0 && pulse.height > 0) {
+                val boxProgress = (progress / 0.5f).coerceAtMost(1f)
+                val boxAlpha = ((1f - boxProgress) * SPOT_ALPHA * 255).toInt()
+                if (boxAlpha > 0) {
+                    ripplePaint.color = Color.argb(
+                        boxAlpha,
+                        Color.red(PULSE_COLOR),
+                        Color.green(PULSE_COLOR),
+                        Color.blue(PULSE_COLOR),
+                    )
+                    ripplePaint.strokeWidth = SPOT_STROKE_DP * density
+                    val half = SPOT_PADDING_DP * density
+                    val left = pulse.x - half
+                    val top = pulse.y - half
+                    val right = pulse.x + pulse.width + half
+                    val bottom = pulse.y + pulse.height + half
+                    canvas.drawRoundRect(left, top, right, bottom, half, half, ripplePaint)
+                }
+            }
 
-        edgePaint.shader = gradient
-        for (layer in EDGE_LAYERS) {
-            edgePaint.strokeWidth = layer.widthDp * density
-            edgePaint.alpha = (layer.alpha * 255).toInt()
-            canvas.drawRoundRect(rect, radius, radius, edgePaint)
+            val ringRadius = RIPPLE_MIN_DP * density + (RIPPLE_MAX_DP - RIPPLE_MIN_DP) * density * eased
+            val ringAlpha = ((1f - progress) * RIPPLE_ALPHA * 255).toInt()
+            if (ringAlpha > 0) {
+                ripplePaint.color = Color.argb(
+                    ringAlpha,
+                    Color.red(PULSE_COLOR),
+                    Color.green(PULSE_COLOR),
+                    Color.blue(PULSE_COLOR),
+                )
+                ripplePaint.strokeWidth = (RIPPLE_WIDTH_DP * (1f - progress * 0.6f)) * density
+                canvas.drawCircle(cx, cy, ringRadius, ripplePaint)
+            }
+
+            // 落点：前 35% 的时间里从 6dp 收到 2dp，然后消失。
+            val dotProgress = (progress / 0.35f).coerceAtMost(1f)
+            if (dotProgress < 1f) {
+                spotPaint.color = Color.argb(
+                    ((1f - dotProgress) * 220).toInt(),
+                    Color.red(PULSE_COLOR),
+                    Color.green(PULSE_COLOR),
+                    Color.blue(PULSE_COLOR),
+                )
+                canvas.drawCircle(cx, cy, (DOT_START_DP - DOT_END_DP * dotProgress) * density, spotPaint)
+            }
         }
-        edgePaint.shader = null
-        edgePaint.alpha = 255
     }
 
-    private fun shaderFor(w: Float, h: Float): SweepGradient? {
-        if (shaderWidth == w.toInt() && shaderHeight == h.toInt()) return shader
-        // 彩虹光带：中间一段是七色，两侧留白。整圈都上色就成了 RGB 灯条，边缘一圈都在响，
-        // 正是"遮蔽内容"的那种亮。所以只让一小段有颜色，其余全透明。
-        val colors = intArrayOf(
-            Color.TRANSPARENT, Color.TRANSPARENT,
-            RAINBOW[0], RAINBOW[1], RAINBOW[2], RAINBOW[3], RAINBOW[4], RAINBOW[5], RAINBOW[6],
-            Color.TRANSPARENT, Color.TRANSPARENT,
-        )
-        val positions = floatArrayOf(
-            0f, BAND_START,
-            BAND_START + 0.06f, BAND_START + 0.10f, BAND_START + 0.14f, BAND_START + 0.18f,
-            BAND_START + 0.22f, BAND_START + 0.26f, BAND_START + 0.30f,
-            BAND_END, 1f,
-        )
-        val created = SweepGradient(w / 2f, h / 2f, colors, positions)
-        shader = created
-        shaderWidth = w.toInt()
-        shaderHeight = h.toInt()
-        return created
-    }
-
-    /** 跑马灯要连续，16ms 是上限；再快对一条光带没有意义。 */
+    /** 胶囊的呼吸点需要连续动画；没有涟漪时这个是唯一的重绘理由。 */
     override fun refreshIntervalMs(): Long = 16L
 
     private companion object {
@@ -166,49 +167,25 @@ class GuiHudRenderer : HudRenderer {
         const val DOT_MIN_ALPHA = 90f
         const val BREATH_MS = 1600L
 
-        /**
-         * 光带的中心线离屏幕边缘多远。描边是居中的，所以这个值大约是最宽层的一半——
-         * 再大光带就飘进内容区（看起来"在屏幕中间跑"），再小最外层会被屏幕切掉。
-         */
-        const val INSET_DP = 6f
-        const val CORNER_DP = 30f
+        /** 涟漪总时长。600ms 足够看完一圈扩散，又不至于等下一个事件时还挂在那里。 */
+        const val PULSE_MS = 600L
 
-        /**
-         * 五层同心描边，**alpha 是叠加的**：核心处 1 - Π(1-a) ≈ 0.34 才是看到的不透明度。
-         *
-         * 上一版外层给到 0.012~0.045，深色桌面上已经低于可见阈值，结果只剩最内 2dp
-         * 那条线可见——"有厚度"只写在代码里，屏幕上没发生。这次外层抬到 0.025/0.04，
-         * 保证整条 20dp 的带子都真的看得见，同时峰值压在 0.34，不回到 0.63 那种灯带。
-         */
-        val EDGE_LAYERS: List<EdgeLayer> = listOf(
-            EdgeLayer(20f, 0.025f),
-            EdgeLayer(13f, 0.040f),
-            EdgeLayer(8f, 0.065f),
-            EdgeLayer(4.5f, 0.100f),
-            EdgeLayer(2.5f, 0.160f),
-        )
+        const val RIPPLE_MIN_DP = 6f
+        const val RIPPLE_MAX_DP = 46f
+        const val RIPPLE_WIDTH_DP = 2.5f
+        const val RIPPLE_ALPHA = 0.55f
 
-        const val PERIOD_MS = 3400L
+        const val DOT_START_DP = 6f
+        const val DOT_END_DP = 2f
 
-        /** 光带占整圈的比例：从 [BAND_START] 开始，到 [BAND_END] 收尾。 */
-        const val BAND_START = 0.62f
-        const val BAND_END = 0.96f
-
-        /**
-         * 七色，都往浅里调了一档（混入一点白）：纯饱和的 #FF0000 在 0.24 透明度下依然刺眼，
-         * 而 #FF8A8A 这种"洗过"的红才是光带该有的颜色。
-         */
-        val RAINBOW: IntArray = intArrayOf(
-            Color.parseColor("#FF8A8A"),
-            Color.parseColor("#FFC46B"),
-            Color.parseColor("#FFE98A"),
-            Color.parseColor("#9FE89F"),
-            Color.parseColor("#8FE3FF"),
-            Color.parseColor("#9FB4FF"),
-            Color.parseColor("#D0A0FF"),
-        )
+        const val SPOT_STROKE_DP = 1.6f
+        const val SPOT_PADDING_DP = 6f
+        const val SPOT_ALPHA = 0.45f
 
         val PILL_BLACK: Int = Color.parseColor("#FF000000")
         val DOT_COLOR: Int = Color.parseColor("#8FE3FF")
+
+        /** 涟漪的颜色：和胶囊呼吸点同源，一整屏只有一种冷色在动，不花。 */
+        val PULSE_COLOR: Int = Color.parseColor("#8FE3FF")
     }
 }

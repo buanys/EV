@@ -7,6 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import ev.buan.ui.EvAccentColor
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
@@ -21,6 +24,7 @@ import ev.buan.ui.MAX_INTERFACE_SCALE
 import ev.buan.ui.MIN_INTERFACE_SCALE
 import ev.buan.ui.normalizeInterfaceScale
 import org.cordis.api.AppearanceService
+import org.cordis.api.HudPulse
 import org.cordis.api.HudService
 import org.cordis.api.HudState
 import org.cordis.api.PLUGIN_API_VERSION
@@ -63,6 +67,10 @@ fun EvSettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val current = appearance.current
+    // 调试开关用它把涟漪打在屏幕正中：没有屏幕尺寸就只能猜一个坐标，那在多分辨率上必错。
+    val configuration = LocalConfiguration.current
+    val screenWidthPx = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
+    val screenHeightPx = with(LocalDensity.current) { configuration.screenHeightDp.dp.toPx() }
     EvPage(
         title = "设置",
         modifier = modifier,
@@ -172,6 +180,17 @@ fun EvSettingsScreen(
                         // 非 null 还不显示就是窗口那一层的问题，两者查法完全不同。
                         android.util.Log.i("EV", "HUD 调试开关 → $on，hud=${hud != null}")
                         onToggleHudPreview(on)
+                        if (on) {
+                            // 顺手在屏幕中间打一个涟漪，不然这个开关只验证了胶囊，
+                            // 用户还得专门让 agent 点一下才能看到另一半。
+                            hud?.pulse(
+                                HudPulse(
+                                    x = (screenWidthPx / 2).toInt(),
+                                    y = (screenHeightPx / 2).toInt(),
+                                    startedAt = android.os.SystemClock.elapsedRealtime(),
+                                ),
+                            )
+                        }
                     },
                 )
             }

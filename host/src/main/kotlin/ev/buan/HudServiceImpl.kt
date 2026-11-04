@@ -1,5 +1,6 @@
 package ev.buan
 
+import org.cordis.api.HudPulse
 import org.cordis.api.HudRenderer
 import org.cordis.api.HudService
 import org.cordis.api.HudState
@@ -21,11 +22,16 @@ internal class HudServiceImpl(
     override val available: Boolean get() = EvAccessibilityService.isConnected()
 
     override fun show(state: HudState) {
-        val renderer: HudRenderer? = runCatching {
-            directory()?.lookup(HudRenderer.Key)
-        }.getOrNull()
-        EvAccessibilityService.showHud(state, renderer)
+        EvAccessibilityService.showHud(state, renderer())
+    }
+
+    override fun pulse(pulse: HudPulse) {
+        EvAccessibilityService.pulse(pulse, renderer())
     }
 
     override fun hide() = EvAccessibilityService.hideHud()
+
+    private fun renderer(): HudRenderer? = runCatching {
+        directory()?.lookup(HudRenderer.Key)
+    }.getOrNull()
 }
