@@ -166,26 +166,26 @@ class GuiHudRenderer : HudRenderer {
         const val DOT_MIN_ALPHA = 90f
         const val BREATH_MS = 1600L
 
-        const val INSET_DP = 15f
+        /**
+         * 光带的中心线离屏幕边缘多远。描边是居中的，所以这个值大约是最宽层的一半——
+         * 再大光带就飘进内容区（看起来"在屏幕中间跑"），再小最外层会被屏幕切掉。
+         */
+        const val INSET_DP = 6f
         const val CORNER_DP = 30f
 
         /**
-         * 六层同心描边。
+         * 五层同心描边，**alpha 是叠加的**：核心处 1 - Π(1-a) ≈ 0.34 才是看到的不透明度。
          *
-         * **注意这些 alpha 是叠加的**，不是取最大：核心位置六层全压在一起，
-         * 1 - Π(1-a) 才是真正看到的不透明度。上一版 0.03+0.045+0.07+0.11+0.19+0.32
-         * 叠加出来是 0.63，直接变成一条 RGB 灯带。
-         *
-         * 这一组叠出来约 0.26：够看清是一道光，又不至于在深色界面上抢戏。
-         * 改任何一层都要重新算这条曲线，只调最内层会骗人。
+         * 上一版外层给到 0.012~0.045，深色桌面上已经低于可见阈值，结果只剩最内 2dp
+         * 那条线可见——"有厚度"只写在代码里，屏幕上没发生。这次外层抬到 0.025/0.04，
+         * 保证整条 20dp 的带子都真的看得见，同时峰值压在 0.34，不回到 0.63 那种灯带。
          */
         val EDGE_LAYERS: List<EdgeLayer> = listOf(
-            EdgeLayer(28f, 0.012f),
-            EdgeLayer(18f, 0.018f),
-            EdgeLayer(11f, 0.028f),
-            EdgeLayer(6.5f, 0.045f),
-            EdgeLayer(3.6f, 0.075f),
-            EdgeLayer(2.0f, 0.120f),
+            EdgeLayer(20f, 0.025f),
+            EdgeLayer(13f, 0.040f),
+            EdgeLayer(8f, 0.065f),
+            EdgeLayer(4.5f, 0.100f),
+            EdgeLayer(2.5f, 0.160f),
         )
 
         const val PERIOD_MS = 3400L
