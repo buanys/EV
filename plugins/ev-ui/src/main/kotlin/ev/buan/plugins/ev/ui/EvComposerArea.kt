@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
+import kotlin.math.min
 import kotlin.math.sin
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -244,9 +245,15 @@ private fun ComposerEdgeLight(
         val half = length / 2f
         val headForward = phase * half
         val headBackward = length - phase * half
+        val trail = EDGE_TRAIL_DP.dp.toPx()
 
-        drawBolt(measure, length, head = headForward, direction = -1f)
-        drawBolt(measure, length, head = headBackward, direction = 1f)
+        // 拖尾长度不能超过"已经走过的距离"。
+        //
+        // 之前用取模回绕，结果光带的尾巴越过起点接到了另一侧：视觉上右下角还没走到，
+        // 左上角已经又冒出来一截——就是"左上角直接出来一半"。现在出界就截断，
+        // 光带只会从起点**长出来**，不会凭空出现在起点后面。
+        drawBolt(measure, length, head = headForward, direction = -1f, trailLimit = min(trail, headForward))
+        drawBolt(measure, length, head = headBackward, direction = 1f, trailLimit = min(trail, length - headBackward))
     }
 }
 
@@ -261,18 +268,22 @@ private fun DrawScope.drawBolt(
     length: Float,
     head: Float,
     direction: Float,
+    trailLimit: Float,
 ) {
-    val trail = EDGE_TRAIL_DP.dp.toPx()
-    val stepPx = trail / EDGE_SEGMENTS
+    if (trailLimit <= 1f) return
+    val segments = EDGE_SEGMENTS
 
-    for (i in 0 until EDGE_SEGMENTS) {
-        val tStart = i / EDGE_SEGMENTS.toFloat()
-        val tEnd = (i + 1) / EDGE_SEGMENTS.toFloat()
+    for (i in 0 until segments) {
+        val tStart = i / segments.toFloat()
+        val tEnd = (i + 1) / segments.toFloat()
         val envelope = sin(Math.PI * ((tStart + tEnd) / 2f)).toFloat()
         if (envelope <= 0.01f) continue
 
-        val from = wrap(head + direction * tStart * trail, length)
-        val to = wrap(head + direction * tEnd * trail, length)
+        val from = head + direction * tStart * trailLimit
+        val to = head + direction * tEnd * trailLimit
+        // 出界就丢，不回绕：回绕会让尾巴跨过起点出现在另一条边上。
+        if (from < 0f || from > length || to < 0f || to > length) continue
+
         val a = measure.getPosition(from)
         val b = measure.getPosition(to)
 
@@ -293,7 +304,7 @@ private fun wrap(value: Float, length: Float): Float {
 }
 
 /** 拖尾长度（dp）。整圈周长在这块屏上约 1100px，取 96dp 大约占 27%：短了像一颗子弹在屏幕上跑。 */
-private const val EDGE_PERIOD_MS = 6000
+private const val EDGE_PERIOD_MS = 9000
 
 private const val EDGE_TRAIL_DP = 132f
 
