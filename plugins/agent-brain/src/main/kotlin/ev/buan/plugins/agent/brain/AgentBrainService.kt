@@ -153,6 +153,48 @@ class AgentBrainService internal constructor(
         runCatching { capabilities.current().hud?.show(state) }
     }
 
+    /**
+     * 把人看不懂的工具名翻成一句话。
+     *
+     * `screen_tap` 是给开发者看的：用户要知道的是"它在点哪儿"。参数里带文字的（点按文字、
+     * 启动应用）就带上，带不出的退回到一个动词——比原样显示函数名有用得多。
+     */
+    private fun describe(call: AgentToolCall): String {
+        val arg = runCatching {
+            org.json.JSONObject(call.argumentsJson.ifBlank { "{}" })
+        }.getOrNull()
+
+        fun text(vararg keys: String): String? = keys.firstNotNullOfOrNull { key ->
+            arg?.optString(key, "")?.trim()?.takeIf { it.isNotEmpty() }
+        }
+
+        return when (call.name) {
+            "screen_tap" -> "点按"
+            "screen_tap_text" -> text("text")?.let { "点「$it」" } ?: "点按"
+            "screen_input" -> "输入文字"
+            "screen_scroll" -> if (text("direction") == "up") "向上翻" else "向下翻"
+            "screen_read_all" -> "读完整页"
+            "screen_wait" -> text("text")?.let { "等「$it」" } ?: "等界面"
+            "screen_dump" -> "读屏"
+            "screen_capture" -> "截图"
+            "read_image" -> "看图"
+            "screen_key" -> when (text("key")) {
+                "back" -> "返回"
+                "home" -> "回桌面"
+                "recents" -> "任务列表"
+                "notifications" -> "拉通知栏"
+                else -> "按键"
+            }
+            "app_launch" -> text("package", "name", "app")?.let { "启动「$it」" } ?: "启动应用"
+            "app_current" -> "看当前应用"
+            "run_shell" -> "执行命令"
+            "web_search" -> "搜索"
+            "web_fetch" -> "打开网页"
+            "remember", "recall", "read_memory" -> "翻记事本"
+            else -> call.name
+        }
+    }
+
     /** 用户按了停止。单独一个类型，好和真正的异常区分开。 */
     private class AgentStopped : RuntimeException("用户停止了这一轮")
 
@@ -292,6 +334,15 @@ class AgentBrainService internal constructor(
             checkpoint()
             rounds++
             emit(AgentProgress.RoundStarted(rounds))
+            // 等模型写答案这段时间也要有声：胶囊不能只在调工具时亮，
+            // 否则"它到底在不在动"这个问题在最长的一段等待里反而没有答案。
+            publishHud(
+                org.cordis.api.HudState(
+                    step = toolCalls,
+                    status = if (toolCalls == 0) "思考中" else "整理结果",
+                    phase = org.cordis.api.HudPhase.RUNNING,
+                ),
+            )
             val reply = try {
                 // Streaming is the default path: deltas reach the UI while the model is still
                 // writing, and a provider that cannot stream degrades to a single delta through
@@ -368,7 +419,8 @@ class AgentBrainService internal constructor(
                     org.cordis.api.HudState(
                         step = toolCalls,
                         tool = call.name,
-                        status = "操作中",
+                        note = describe(call),
+                        status = if (call.name.startsWith("screen_")) "操作中" else "执行中",
                         phase = org.cordis.api.HudPhase.RUNNING,
                     ),
                 )
@@ -376,6 +428,10 @@ class AgentBrainService internal constructor(
                     emit(AgentProgress.ToolAwaitingApproval(call.id))
                 }
                 approvalNanos += executed.approvalNanos
+                // 失败要在胶囊上留痕：否则用户只看到进度停在原地，不知道是卡住了还是做完了。
+                if (executed.state == StepState.Failed) {
+                    publishHud(lastHud.copy(status = "这一步失败了", note = null))
+                }
                 val elapsedToolNanos = System.nanoTime() - toolStartedAt - executed.approvalNanos
                 val result = truncateUtf16Safe(executed.result, MAX_TOOL_RESULT_CHARS)
                 emit(

@@ -71,7 +71,7 @@ class GuiHudRenderer : HudRenderer {
 
         val content = max(
             textPaint.measureText(stepText),
-            subPaint.measureText(state.status),
+            subPaint.measureText(state.note ?: state.status),
         )
         val fixed = (PADDING_DP * 2 + DOT_DP * 2 + DOT_GAP_DP * 2) * density
         val wanted = fixed + content
@@ -121,7 +121,7 @@ class GuiHudRenderer : HudRenderer {
         canvas.drawText(stepLabel(state), textX, stepBaseline, textPaint)
 
         val statusBaseline = centerY + (STATUS_TEXT_DP + 3f) * density
-        canvas.drawText(state.status, textX, statusBaseline, subPaint)
+        canvas.drawText(state.note ?: state.status, textX, statusBaseline, subPaint)
     }
 
     private fun stepLabel(state: HudState): String =
