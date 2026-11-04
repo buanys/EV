@@ -51,10 +51,6 @@ class GuiHudRenderer : HudRenderer {
         color = 0x99FFFFFF.toInt()
     }
     private val buttonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = 0xFFFFFFFF.toInt()
-    }
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
     private val rippleDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -70,15 +66,14 @@ class GuiHudRenderer : HudRenderer {
 
     override fun measurePill(state: HudState, maxWidthPx: Int): HudSize {
         val stepText = stepLabel(state)
-        val statusText = state.status
         textPaint.textSize = STEP_TEXT_DP * density
         subPaint.textSize = STATUS_TEXT_DP * density
 
         val content = max(
             textPaint.measureText(stepText),
-            subPaint.measureText(statusText),
+            subPaint.measureText(state.status),
         )
-        val fixed = (PADDING_DP * 2 + BUTTON_DP * 2 + BUTTON_GAP_DP * 2) * density
+        val fixed = (PADDING_DP * 2 + DOT_DP * 2 + DOT_GAP_DP * 2) * density
         val wanted = fixed + content
         val ceiling = min(MAX_WIDTH_DP * density, maxWidthPx - 32f * density)
         val width = wanted.coerceIn(MIN_WIDTH_DP * density, max(ceiling, MIN_WIDTH_DP * density))
@@ -92,101 +87,46 @@ class GuiHudRenderer : HudRenderer {
 
         val radius = h / 2f
         pillRect.set(0f, 0f, w, h)
-
-        // 底：纯黑。不做玻璃，胶囊是一块实心黑，和背后是什么无关。
         fillPaint.color = PILL_BLACK
         canvas.drawRoundRect(pillRect, radius, radius, fillPaint)
 
         drawEdgeLight(canvas, w, h, radius, elapsedMs)
 
-        val buttonY = h / 2f
-        val leftX = (PADDING_DP + BUTTON_DP / 2f) * density
-        val rightX = w - (PADDING_DP + BUTTON_DP / 2f) * density
+        val centerY = h / 2f
+        val dotRadius = DOT_DP / 2f * density
+        val leftX = PADDING_DP * density + dotRadius
+        val rightX = w - PADDING_DP * density - dotRadius
 
-        // 左键：运行中是黄，暂停后变绿。点击它是"暂停 ⇄ 继续"。
+        // 两颗纯色圆点，没有图标：颜色本身就是语义（黄=可暂停、绿=已暂停、红=停止）。
+        // 画上暂停/播放/方块之后，它们看起来像从播放器上抠下来的按钮，廉价。
         val paused = state.phase == HudPhase.PAUSED
-        drawButton(canvas, leftX, buttonY, if (paused) PAUSE_TO_GREEN else PAUSE_YELLOW, paused)
-        // 右键：停止。已停止时画成灰的，表示已经停了。
         val stopped = state.phase == HudPhase.STOPPED
-        drawButton(canvas, rightX, buttonY, if (stopped) STOP_DISABLED else STOP_RED, true)
+        fillPaint.color = when {
+            paused -> PAUSE_GREEN
+            else -> PAUSE_YELLOW
+        }
+        canvas.drawCircle(leftX, centerY, dotRadius, fillPaint)
 
-        // 中间两行：上一步骤，下状态。
-        val textLeft = leftX + (BUTTON_DP / 2f + BUTTON_GAP_DP) * density
-        val textRight = rightX - (BUTTON_DP / 2f + BUTTON_GAP_DP) * density
-        val centerX = (textLeft + textRight) / 2f
+        fillPaint.color = if (stopped) STOP_MUTED else STOP_RED
+        canvas.drawCircle(rightX, centerY, dotRadius, fillPaint)
 
+        // 文字左对齐，贴着左点；居中的话两侧会留出两块不对称的空白，看起来像没对齐。
+        val textX = leftX + dotRadius + DOT_GAP_DP * density
         textPaint.textSize = STEP_TEXT_DP * density
-        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.textAlign = Paint.Align.LEFT
         subPaint.textSize = STATUS_TEXT_DP * density
-        subPaint.textAlign = Paint.Align.CENTER
+        subPaint.textAlign = Paint.Align.LEFT
 
-        val stepBaseline = h / 2f - 1.5f * density
-        canvas.drawText(stepLabel(state), centerX, stepBaseline, textPaint)
+        val stepBaseline = centerY - 1f * density
+        canvas.drawText(stepLabel(state), textX, stepBaseline, textPaint)
 
-        val statusBaseline = h / 2f + (STATUS_TEXT_DP + 3f) * density
-        canvas.drawText(state.status, centerX, statusBaseline, subPaint)
+        val statusBaseline = centerY + (STATUS_TEXT_DP + 3f) * density
+        canvas.drawText(state.status, textX, statusBaseline, subPaint)
     }
 
     private fun stepLabel(state: HudState): String =
         if (state.step > 0) "第 ${state.step} 步" else "准备中"
 
-    /**
-     * 按钮：一个实心圆 + 白色小图标。
-     *
-     * 暂停时是绿色、图标是三角（继续）；运行时是黄色、图标是两条竖线（暂停）。
-     * 停止永远是方块。
-     */
-    private fun drawButton(canvas: Canvas, cx: Float, cy: Float, color: Int, drawGlyph: Boolean) {
-        val radius = BUTTON_DP / 2f * density
-        buttonPaint.color = color
-        canvas.drawCircle(cx, cy, radius, buttonPaint)
-        if (!drawGlyph) return
-
-        val glyph = radius * 0.42f
-        val pausedStyle = color == PAUSE_TO_GREEN
-        when {
-            color == STOP_RED || color == STOP_DISABLED -> {
-                // 方块
-                canvas.drawRoundRect(
-                    cx - glyph, cy - glyph, cx + glyph, cy + glyph,
-                    glyph * 0.25f, glyph * 0.25f, glyphPaint,
-                )
-            }
-
-            pausedStyle -> {
-                // 三角（继续）
-                val path = Path().apply {
-                    moveTo(cx - glyph * 0.7f, cy - glyph)
-                    lineTo(cx + glyph * 0.9f, cy)
-                    lineTo(cx - glyph * 0.7f, cy + glyph)
-                    close()
-                }
-                canvas.drawPath(path, glyphPaint)
-            }
-
-            else -> {
-                // 两条竖线（暂停）
-                val barWidth = glyph * 0.5f
-                canvas.drawRoundRect(
-                    cx - glyph * 0.75f, cy - glyph, cx - glyph * 0.75f + barWidth, cy + glyph,
-                    barWidth * 0.4f, barWidth * 0.4f, glyphPaint,
-                )
-                canvas.drawRoundRect(
-                    cx + glyph * 0.25f, cy - glyph, cx + glyph * 0.25f + barWidth, cy + glyph,
-                    barWidth * 0.4f, barWidth * 0.4f, glyphPaint,
-                )
-            }
-        }
-    }
-
-    /**
-     * 边缘的蓝色光带。
-     *
-     * 用 [PathMeasure] 沿胶囊的实际轮廓取点，而不是 `SweepGradient`：胶囊长宽比接近 5:1，
-     * 角度渐变会让光在两端跑得飞快、在上下边慢得发闷。沿路径取点才是匀速的。
-     *
-     * 光带由一串渐隐的圆点组成——单点像光标，连线像描边，只有渐隐的点串才像"光在流"。
-     */
     private fun drawEdgeLight(canvas: Canvas, w: Float, h: Float, radius: Float, elapsedMs: Long) {
         if (w.toInt() != pathWidth || h.toInt() != pathHeight) {
             pillPath.reset()
@@ -207,6 +147,7 @@ class GuiHudRenderer : HudRenderer {
         val position = FloatArray(2)
         for (i in 0 until EDGE_DOTS) {
             val fade = 1f - i / EDGE_DOTS.toFloat()
+            // 平方衰减：拖尾后段掉得比线性快，光带才有"头重脚轻"的方向感。
             val alpha = (fade * fade * EDGE_ALPHA * 255).toInt()
             if (alpha <= 0) continue
             val distance = (head - i * EDGE_DOT_SPACING_DP * density + length) % length
@@ -217,17 +158,24 @@ class GuiHudRenderer : HudRenderer {
                 Color.green(EDGE_COLOR),
                 Color.blue(EDGE_COLOR),
             )
-            canvas.drawCircle(position[0], position[1], EDGE_DOT_RADIUS_DP * density * fade, rippleDotPaint)
+            // 点的半径也跟着收缩，光带两端才会收尖，而不是突然断掉。
+            canvas.drawCircle(
+                position[0],
+                position[1],
+                EDGE_DOT_RADIUS_DP * density * (0.4f + 0.6f * fade),
+                rippleDotPaint,
+            )
         }
     }
 
     override fun hitTest(x: Float, y: Float, state: HudState, size: HudSize): HudHit {
         val h = size.height.toFloat()
-        // 触摸热区比按钮本身大一圈：20dp 的圆点用手点太苛刻。
-        val reach = (BUTTON_DP / 2f + 8f) * density
         val cy = h / 2f
-        val leftX = (PADDING_DP + BUTTON_DP / 2f) * density
-        val rightX = size.width - (PADDING_DP + BUTTON_DP / 2f) * density
+        val dotRadius = DOT_DP / 2f * density
+        val leftX = PADDING_DP * density + dotRadius
+        val rightX = size.width - PADDING_DP * density - dotRadius
+        // 触摸热区比圆点大得多：12dp 的点用手点太苛刻，28dp 才接近系统的最小触控目标。
+        val reach = TOUCH_TARGET_DP / 2f * density
 
         if (distance(x, y, leftX, cy) <= reach) return HudHit.PAUSE_RESUME
         if (distance(x, y, rightX, cy) <= reach) return HudHit.STOP
@@ -301,22 +249,31 @@ class GuiHudRenderer : HudRenderer {
     override fun refreshIntervalMs(): Long = 16L
 
     private companion object {
-        /** 两行文字撑高到 56dp：38dp 装不下"第 N 步"加状态词。 */
-        const val HEIGHT_DP = 56f
-        const val MIN_WIDTH_DP = 196f
-        const val MAX_WIDTH_DP = 300f
-        const val PADDING_DP = 12f
-        const val BUTTON_DP = 24f
-        const val BUTTON_GAP_DP = 8f
+        /**
+         * 44dp 高。56dp 是上一版——两颗 24dp 的大按钮把它撑得像一条播放器控件；
+         * 去掉图标、按钮收到 12dp 之后，两行文字 44dp 就够。
+         */
+        const val HEIGHT_DP = 44f
+        const val MIN_WIDTH_DP = 168f
+        const val MAX_WIDTH_DP = 280f
+        const val PADDING_DP = 14f
+
+        /** 纯色圆点，没有图标。颜色本身承担语义。 */
+        const val DOT_DP = 12f
+        const val DOT_GAP_DP = 11f
+
+        /** 触摸热区 32dp：圆点小，手指不小。 */
+        const val TOUCH_TARGET_DP = 32f
+
         const val STEP_TEXT_DP = 13f
         const val STATUS_TEXT_DP = 11f
 
-        /** 边缘光：一圈 3.4 秒，12 个渐隐的点串成一条带。 */
+        /** 边缘光：一圈 3.4 秒演变成 16 个渐隐点，比 12 点更连续。 */
         const val EDGE_PERIOD_MS = 3400L
-        const val EDGE_DOTS = 12
-        const val EDGE_DOT_RADIUS_DP = 1.6f
-        const val EDGE_DOT_SPACING_DP = 2.4f
-        const val EDGE_ALPHA = 0.85f
+        const val EDGE_DOTS = 16
+        const val EDGE_DOT_RADIUS_DP = 2.0f
+        const val EDGE_DOT_SPACING_DP = 2.6f
+        const val EDGE_ALPHA = 1.0f
         const val EDGE_WIDTH_DP = 1.2f
 
         const val PULSE_MS = 420L
@@ -327,10 +284,15 @@ class GuiHudRenderer : HudRenderer {
         val PILL_BLACK: Int = Color.parseColor("#FF000000")
         val EDGE_COLOR: Int = Color.parseColor("#4DA6FF")
 
-        val PAUSE_YELLOW: Int = Color.parseColor("#FFC53D")
-        val PAUSE_TO_GREEN: Int = Color.parseColor("#3DDC84")
-        val STOP_RED: Int = Color.parseColor("#FF5A5A")
-        val STOP_DISABLED: Int = Color.parseColor("#5A5A5A")
+        /**
+         * 三个颜色都往低饱和压过一档。M3 Expressive 讲的是 tonal palette——纯 #FFC53D /
+         * #FF5A5A 在深色胶囊上一片高饱和，扎眼且廉价；压 20% 之后仍然是同一种语义，
+         * 但看起来像设计过，不是调色板里直接取出来的。
+         */
+        val PAUSE_YELLOW: Int = Color.parseColor("#D9AC4A")
+        val PAUSE_GREEN: Int = Color.parseColor("#4FB477")
+        val STOP_RED: Int = Color.parseColor("#C96A62")
+        val STOP_MUTED: Int = Color.parseColor("#4A4A4A")
 
         val CORE_COLOR: Int = Color.parseColor("#B3FFFFFF")
         val BODY_COLOR: Int = Color.parseColor("#3DFFFFFF")
