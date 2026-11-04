@@ -80,13 +80,8 @@ internal class HudOverlay(private val service: AccessibilityService) {
             // 模糊区域也正好从那里开始。
             y = statusBarHeight() + (14 * density).toInt()
             title = "EV 屏幕操作提示"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                runCatching {
-                    flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                    // 尺寸小、半径也得小：20dp 足够把背后的图标糊成色块，再大就把胶囊边缘也化了。
-                    blurBehindRadius = (18 * density).toInt()
-                }
-            }
+            // 不做玻璃了：真背景模糊要系统在窗口层做，而在无障碍 overlay 上它要么糊整屏、
+            // 要么边缘溢出，两个都比纯黑难看。纯黑没有透光问题，在浅色和深色壁纸上都稳。
         }
         val added = runCatching { manager.addView(created, params) }
         if (added.isFailure) {
@@ -309,30 +304,9 @@ private class PillView(context: Context) : View(context) {
         rect.set(0f, 0f, w, h)
         val radius = h / 2f
 
-        // 底：不透明一点，玻璃才压得住背后的内容；模糊由系统在窗口下面做。
-        fillPaint.shader = LinearGradient(
-            0f, 0f, 0f, h,
-            PILL_TOP, PILL_BOTTOM, android.graphics.Shader.TileMode.CLAMP,
-        )
+        // 纯黑，不带渐变也不带描边：胶囊是一块实心黑，和背后是什么无关。
+        fillPaint.color = PILL_BLACK
         canvas.drawRoundRect(rect, radius, radius, fillPaint)
-        fillPaint.shader = null
-
-        // 顶部内高光：玻璃和色块的区别就在这一条。
-        val highlight = RectF(radius * 0.6f, 1f * density, w - radius * 0.6f, h * 0.42f)
-        fillPaint.shader = LinearGradient(
-            highlight.left, highlight.top, highlight.left, highlight.bottom,
-            0x38FFFFFF, 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP,
-        )
-        canvas.drawRoundRect(highlight, radius * 0.7f, radius * 0.7f, fillPaint)
-        fillPaint.shader = null
-
-        // 描边：上亮下暗，边缘才不会糊进背景。
-        strokePaint.shader = LinearGradient(
-            0f, 0f, 0f, h,
-            0x40FFFFFF, 0x0DFFFFFF, android.graphics.Shader.TileMode.CLAMP,
-        )
-        canvas.drawRoundRect(rect, radius, radius, strokePaint)
-        strokePaint.shader = null
 
         // 呼吸圆点。
         val dotRadius = DOT_DP * density / 2f
@@ -366,9 +340,8 @@ private class PillView(context: Context) : View(context) {
         const val DOT_DP = 7f
         const val DOT_MIN_ALPHA = 90f
 
-        /** 半透明深色：系统模糊在它下面，玻璃才有"透过来的色"而不是一块塑料。 */
-        val PILL_TOP: Int = Color.parseColor("#B8222830")
-        val PILL_BOTTOM: Int = Color.parseColor("#A6161A1F")
+        /** 纯黑。不做玻璃也就不需要"透光"，黑在两种壁纸上都成立。 */
+        val PILL_BLACK: Int = Color.parseColor("#FF000000")
 
         val DOT_COLOR: Int = Color.parseColor("#8FE3FF")
     }
