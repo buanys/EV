@@ -573,17 +573,6 @@ private fun PermissionPage(onGrant: () -> Unit) {
     }
 }
 
-private fun ComponentActivity.openAllFilesSettings() {
-    val appIntent = Intent(
-        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-        Uri.parse("package:$packageName"),
-    )
-    runCatching { startActivity(appIntent) }.onFailure {
-        runCatching { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
-    }
-}
-
-private fun hasAllFilesAccess(): Boolean = Environment.isExternalStorageManager()
 
 private const val REQUEST_POST_NOTIFICATIONS = 0xE5
 

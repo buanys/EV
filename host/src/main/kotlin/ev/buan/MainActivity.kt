@@ -63,12 +63,32 @@ class MainActivity : ComponentActivity() {
         // become no-ops - content draws under the status bar and the keyboard covers the composer.
         enableEdgeToEdge()
         val runtime = (application as EvApplication).runtime
+        // 首次启动先走引导：它解释"为什么空"和"那两个权限干什么用"，
+        // 否则用户第一次打开只看到一个没有主页的空壳，会以为装坏了。
+        val prefs = getSharedPreferences(ONBOARDING_PREFS, MODE_PRIVATE)
+        var onboarded by mutableStateOf(prefs.getBoolean(KEY_ONBOARDED, false))
         setContent {
             EvTheme(
                 appearance = runtime.appearance.value,
                 spec = runtime.themeSpec(runtime.appearance.value.themeId),
-            ) { HomeShell(this, runtime) }
+            ) {
+                if (!onboarded) {
+                    OnboardingScreen(
+                        onFinish = {
+                            prefs.edit().putBoolean(KEY_ONBOARDED, true).apply()
+                            onboarded = true
+                        },
+                    )
+                } else {
+                    HomeShell(this, runtime)
+                }
+            }
         }
+    }
+
+    private companion object {
+        const val ONBOARDING_PREFS = "ev.onboarding"
+        const val KEY_ONBOARDED = "done"
     }
 }
 
@@ -300,14 +320,26 @@ private fun HostGate(activity: ComponentActivity) {
     }
 }
 
-private fun ComponentActivity.openAllFilesSettings() {
+/**
+ * 拉起「所有文件访问权限」。
+ *
+ * 声明成 `Context` 而不是 `ComponentActivity` 的扩展：引导页拿到的只有一个 `Context`，
+ * 而 HostGate 那边是 Activity。用 Context 两边都能调，代价是必须显式加 NEW_TASK
+ * （非 Activity 上下文启动 Activity 的硬要求）。
+ */
+internal fun android.content.Context.openAllFilesSettings() {
     val appIntent = Intent(
         Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
         Uri.parse("package:$packageName"),
-    )
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { startActivity(appIntent) }.onFailure {
-        runCatching { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+        runCatching {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 }
 
-private fun hasAllFilesAccess(): Boolean = Environment.isExternalStorageManager()
+internal fun hasAllFilesAccess(): Boolean = Environment.isExternalStorageManager()
