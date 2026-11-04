@@ -262,8 +262,8 @@ private fun ComposerEdgeLight(
                 color = ComposerEdgeBlue.copy(alpha = envelope * 0.95f),
                 start = a,
                 end = b,
-                // 最粗 0.85dp，最细尖到 0.1dp——"锋芒"就靠这个比例差。
-                strokeWidth = (0.1f + 0.75f * envelope) * density,
+                // 最粗 0.56dp，最尖处 0.06dp——8 倍比例差，"锋芒"就在这一档里。
+                strokeWidth = (0.06f + 0.5f * envelope) * density,
                 cap = StrokeCap.Round,
             )
         }
@@ -273,10 +273,10 @@ private fun ComposerEdgeLight(
 /** 拖尾长度（dp）。整圈周长在这块屏上约 1100px，取 96dp 大约占 27%：短了像一颗子弹在屏幕上跑。 */
 private const val EDGE_PERIOD_MS = 6000
 
-private const val EDGE_TRAIL_DP = 96f
+private const val EDGE_TRAIL_DP = 132f
 
-/** 拖尾切成多少段。96dp / 48 = 2dp 一段，足够让包络平滑，又不至于画 200 条线。 */
-private const val EDGE_SEGMENTS = 48
+/** 拖尾切成多少段。132dp / 60 ≈ 2.2dp 一段，包络平滑且只有 60 条线。 */
+private const val EDGE_SEGMENTS = 60
 
 /** 冷蓝，和 HUD 胶囊的边缘光同源，两个浮层看起来才像一套东西。 */
 private val ComposerEdgeBlue = Color(0xFF5AAEFF)
