@@ -316,8 +316,8 @@ private fun wrap(value: Float, length: Float): Float {
 }
 
 /** 拖尾长度（dp）。整圈周长在这块屏上约 1100px，取 96dp 大约占 27%：短了像一颗子弹在屏幕上跑。 */
-/** 走完半圈用多久。550dp 的行程，6.5s 约 85dp/s，视线跟得住。 */
-private const val EDGE_MOVE_MS = 6500
+/** 走完半圈用多久。550dp 的行程，7.5s 约 73dp/s，慢到能看清它在走。 */
+private const val EDGE_MOVE_MS = 7500
 
 /** 走完之后停多久再重来。没有这一段，右下角还没收干净左上角就又冒出来了。 */
 private const val EDGE_GAP_MS = 1000
