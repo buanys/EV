@@ -4,6 +4,7 @@ import android.content.res.Resources
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RadialGradient
 import android.graphics.Typeface
 import org.cordis.api.HudPulse
 import org.cordis.api.HudRenderer
@@ -38,6 +39,7 @@ class GuiHudRenderer : HudRenderer {
     }
     private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val spotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
     // ---------------------------------------------------------------- 胶囊
 
@@ -90,67 +92,64 @@ class GuiHudRenderer : HudRenderer {
     // ---------------------------------------------------------------- 涟漪
 
     /**
-     * 一次操作的落点：一圈从原点扩散、逐渐变细变淡的环，加一个很快消失的实心点。
+     * 一次操作的落点。
      *
-     * 环是"我动了这里"，实心点是"落点"。两者一起才读得出方向——只有环像涟漪，
-     * 只有点像笔迹，叠在一起才像"手指在这里按了一下"。
+     * 不是圆环。圆环（描边扩散）是水波纹 emoji 的做法，看起来廉价——真实的触摸反馈是
+     * **一个边缘柔和的光点**：它出现时略微放大回弹，停一下，然后淡出。
+     * 参数取自两处成熟实现：HeyGen 的 Touch Indicator（软点、44pt、出现 80ms）
+     * 和 Screen Studio 的点击效果（白色、45% 不透明度、Zoom out 进入）。
+     *
+     * 边缘用径向渐变而不是硬边：硬边在任何背景上都是一块贴纸。
      */
     override fun drawPulses(canvas: Canvas, pulses: List<HudPulse>, elapsedMs: Long) {
         if (pulses.isEmpty()) return
         for (pulse in pulses) {
             val age = (elapsedMs - pulse.startedAt).coerceAtLeast(0L)
             if (age > PULSE_MS) continue
-            val progress = age / PULSE_MS.toFloat()
-            val eased = 1f - (1f - progress) * (1f - progress) * (1f - progress)
+            val t = age / PULSE_MS.toFloat()
 
             val cx = if (pulse.width > 0) pulse.x + pulse.width / 2f else pulse.x.toFloat()
             val cy = if (pulse.height > 0) pulse.y + pulse.height / 2f else pulse.y.toFloat()
 
-            // 有目标的矩形就描个框：知道自己点的是什么，比只知道点了哪里更有用。
-            if (pulse.width > 0 && pulse.height > 0) {
-                val boxProgress = (progress / 0.5f).coerceAtMost(1f)
-                val boxAlpha = ((1f - boxProgress) * SPOT_ALPHA * 255).toInt()
-                if (boxAlpha > 0) {
-                    ripplePaint.color = Color.argb(
-                        boxAlpha,
-                        Color.red(PULSE_COLOR),
-                        Color.green(PULSE_COLOR),
-                        Color.blue(PULSE_COLOR),
-                    )
-                    ripplePaint.strokeWidth = SPOT_STROKE_DP * density
-                    val half = SPOT_PADDING_DP * density
-                    val left = pulse.x - half
-                    val top = pulse.y - half
-                    val right = pulse.x + pulse.width + half
-                    val bottom = pulse.y + pulse.height + half
-                    canvas.drawRoundRect(left, top, right, bottom, half, half, ripplePaint)
-                }
+            // 出现时从 1.25 倍收到 1.0（回弹感），之后不再变。
+            val scale = if (t < APPEAR_MS) {
+                val p = t / APPEAR_MS
+                1.25f - 0.25f * (1f - (1f - p) * (1f - p))
+            } else {
+                1f
             }
+            // 透明度：快速起来 → 短暂保持 → 慢慢落下去。
+            val fade = when {
+                t < APPEAR_MS -> t / APPEAR_MS
+                t < HOLD_END -> 1f
+                else -> 1f - (t - HOLD_END) / (1f - HOLD_END)
+            }.coerceIn(0f, 1f)
+            if (fade <= 0f) continue
 
-            val ringRadius = RIPPLE_MIN_DP * density + (RIPPLE_MAX_DP - RIPPLE_MIN_DP) * density * eased
-            val ringAlpha = ((1f - progress) * RIPPLE_ALPHA * 255).toInt()
-            if (ringAlpha > 0) {
-                ripplePaint.color = Color.argb(
-                    ringAlpha,
-                    Color.red(PULSE_COLOR),
-                    Color.green(PULSE_COLOR),
-                    Color.blue(PULSE_COLOR),
-                )
-                ripplePaint.strokeWidth = (RIPPLE_WIDTH_DP * (1f - progress * 0.6f)) * density
-                canvas.drawCircle(cx, cy, ringRadius, ripplePaint)
-            }
+            val radius = PULSE_RADIUS_DP * density * scale
 
-            // 落点：前 35% 的时间里从 6dp 收到 2dp，然后消失。
-            val dotProgress = (progress / 0.35f).coerceAtMost(1f)
-            if (dotProgress < 1f) {
-                spotPaint.color = Color.argb(
-                    ((1f - dotProgress) * 220).toInt(),
-                    Color.red(PULSE_COLOR),
-                    Color.green(PULSE_COLOR),
-                    Color.blue(PULSE_COLOR),
-                )
-                canvas.drawCircle(cx, cy, (DOT_START_DP - DOT_END_DP * dotProgress) * density, spotPaint)
-            }
+            // 阴影层：白点在浅色背景上会消失，先垫一层很淡的暗色扩散把它托住。
+            shadowPaint.shader = RadialGradient(
+                cx, cy, radius * 1.35f,
+                intArrayOf(SHADOW_COLOR, Color.TRANSPARENT),
+                floatArrayOf(0f, 1f),
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+            shadowPaint.alpha = (fade * 255).toInt()
+            canvas.drawCircle(cx, cy, radius * 1.35f, shadowPaint)
+
+            // 光点本体：中心亮、0.55 处过半、边缘归零。
+            dotPaint.shader = RadialGradient(
+                cx, cy, radius,
+                intArrayOf(CORE_COLOR, BODY_COLOR, Color.TRANSPARENT),
+                floatArrayOf(0f, 0.55f, 1f),
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+            dotPaint.alpha = (fade * 255).toInt()
+            canvas.drawCircle(cx, cy, radius, dotPaint)
+
+            dotPaint.shader = null
+            shadowPaint.shader = null
         }
     }
 
@@ -167,25 +166,24 @@ class GuiHudRenderer : HudRenderer {
         const val DOT_MIN_ALPHA = 90f
         const val BREATH_MS = 1600L
 
-        /** 涟漪总时长。600ms 足够看完一圈扩散，又不至于等下一个事件时还挂在那里。 */
-        const val PULSE_MS = 600L
+        /** 整个落点的寿命。420ms 是"看一眼就知道"，又不至于挡着下一次操作。 */
+        const val PULSE_MS = 420L
 
-        const val RIPPLE_MIN_DP = 6f
-        const val RIPPLE_MAX_DP = 46f
-        const val RIPPLE_WIDTH_DP = 2.5f
-        const val RIPPLE_ALPHA = 0.55f
+        /** 出现阶段占整个寿命的比例：1.25 倍缩到 1 倍，和 Touch Indicator 的 80ms 对齐。 */
+        const val APPEAR_MS = 0.19f
 
-        const val DOT_START_DP = 6f
-        const val DOT_END_DP = 2f
+        /** 保持到 45% 处开始落下去，最后 55% 是淡出。 */
+        const val HOLD_END = 0.45f
 
-        const val SPOT_STROKE_DP = 1.6f
-        const val SPOT_PADDING_DP = 6f
-        const val SPOT_ALPHA = 0.45f
+        /** 半径 22dp ≈ 直径 44dp，和触控热区的下限一致，看着像一根手指按的。 */
+        const val PULSE_RADIUS_DP = 22f
 
         val PILL_BLACK: Int = Color.parseColor("#FF000000")
         val DOT_COLOR: Int = Color.parseColor("#8FE3FF")
 
-        /** 涟漪的颜色：和胶囊呼吸点同源，一整屏只有一种冷色在动，不花。 */
-        val PULSE_COLOR: Int = Color.parseColor("#8FE3FF")
+        /** 白色半透明：Screen Studio 的点击效果是白色 45%，这个更亮一点，因为屏幕上有干扰内容。 */
+        val CORE_COLOR: Int = Color.parseColor("#B3FFFFFF")
+        val BODY_COLOR: Int = Color.parseColor("#3DFFFFFF")
+        val SHADOW_COLOR: Int = Color.parseColor("#26000000")
     }
 }
