@@ -112,7 +112,17 @@ internal fun EvComposerArea(
     androidx.compose.runtime.LaunchedEffect(imeBottom, navBottom, sysBottom) {
         android.util.Log.i("EV", "insets: ime=$imeBottom nav=$navBottom sys=$sysBottom px")
     }
-    Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
+    // 玻璃和间距都在**这一层**：`evGlassLayer` 画的是本 Box 的矩形，如果把 padding 加在内层
+    // EvComposer 上，内容会缩进去而玻璃仍然贴着屏幕底——看起来就像"只有按钮行有间距"。
+    Box(
+        Modifier
+            .fillMaxWidth()
+            // 键盘和底部手势条取并集，不是串联：串联会把两个高度加起来。
+            // navigationBars 在这里已被父级的 evSystemBarsPadding 消费成 0，
+            // 所以键盘收起时真正起作用的是下面的 14dp——视觉呼吸，不是安全区。
+            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+            .padding(start = 10.dp, end = 10.dp, bottom = 14.dp),
+    ) {
         // The field floats over the transcript, so it needs more body than the drawer's glass:
         // 30% of the theme blur (a hint of what is underneath, not a readable copy of it) and a
         // denser tint, so the placeholder and the cursor never compete with a message scrolling by.
@@ -143,17 +153,8 @@ internal fun EvComposerArea(
         modelName = modelName,
         opaque = false,
         onModelClick = onModelClick,
-            // 键盘和底部手势条取**并集**，不是串联：
-            // 串联（.imePadding().navigationBarsPadding()）在键盘弹出时会把两个高度加起来，
-            // 输入框被顶到半空；单独 imePadding 在键盘收起时又是 0，输入框直接贴着屏幕底边。
-            // union 让"当前该避开多少"始终是两者中更大的那个。
-            //
-            // 注意 navigationBars 在这里会被上一个父级（首页的 evSystemBarsPadding）消费成 0，
-            // 所以键盘收起时真正起作用的只有下面这个 14dp——那是视觉呼吸，不是安全区。
-            // 只给 6dp 时看起来仍然是贴边的。
-            modifier = Modifier
-                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-                .padding(bottom = 14.dp),
+            // 间距已经在外层（玻璃那一层）处理，这里不再重复加，否则内容会比玻璃多缩一段。
+            modifier = Modifier,
         )
         }
     }
