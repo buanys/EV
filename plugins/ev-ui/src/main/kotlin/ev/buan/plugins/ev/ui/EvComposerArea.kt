@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import kotlin.math.sin
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -236,38 +237,59 @@ private fun ComposerEdgeLight(
         val length = measure.length
         if (length <= 0f) return@Canvas
 
-        val head = phase * length
-        val trail = EDGE_TRAIL_DP.dp.toPx()
-        val segments = EDGE_SEGMENTS
-        val stepPx = trail / segments
-
-        // 逐段画**线**，不是画一串圆点。
+        // 两条光带都从**左上角**出发，各走一条边，到**右下角**汇合。
         //
-        // 圆点无论多小，连起来都是一条有厚度的带子——看着"粗"。线可以把端点收成尖：
-        // 每段的宽度和亮度都按 sin(π·t) 包络走，t=0 是头部、t=1 是尾部，
-        // 两端都是 0。整条光因此是一枚梭形：两头尖、中段细长，像刀刃上的一道反光。
-        for (i in 0 until segments) {
-            val tStart = i / segments.toFloat()
-            val tEnd = (i + 1) / segments.toFloat()
-            // 中段取 tStart 和 tEnd 的中点算包络，段与段之间才不会出现忽明忽暗的台阶。
-            val envelope = sin(Math.PI * ((tStart + tEnd) / 2f)).toFloat()
-            if (envelope <= 0.01f) continue
+        // 圆角矩形的半周长恰好是 w + h：从左上顺时针走一半就到右下，逆时针走一半也是。
+        // 所以不需要两条独立的 Path——同一个 PathMeasure 上取两段相反方向的间距就行。
+        val half = length / 2f
+        val headForward = phase * half
+        val headBackward = length - phase * half
 
-            val from = (head - tStart * trail + length * 2f) % length
-            val to = (head - tEnd * trail + length * 2f) % length
-            val a = measure.getPosition(from)
-            val b = measure.getPosition(to)
-
-            drawLine(
-                color = ComposerEdgeBlue.copy(alpha = envelope * 0.95f),
-                start = a,
-                end = b,
-                // 最粗 0.56dp，最尖处 0.06dp——8 倍比例差，"锋芒"就在这一档里。
-                strokeWidth = (0.06f + 0.5f * envelope) * density,
-                cap = StrokeCap.Round,
-            )
-        }
+        drawBolt(measure, length, head = headForward, direction = -1f)
+        drawBolt(measure, length, head = headBackward, direction = 1f)
     }
+}
+
+/**
+ * 一道梭形光：从 [head] 起，沿 [direction] 方向铺开一条 [EDGE_TRAIL_DP] 长的渐尖光带。
+ *
+ * [direction] 为 -1 表示拖尾朝负数方向（顺时针那一路），+1 表示反过来（逆时针那一路）。
+ * 两路各自收尖，所以在右下角汇合时是"两把刀尖对在一起"，不是一条粗线接上。
+ */
+private fun DrawScope.drawBolt(
+    measure: PathMeasure,
+    length: Float,
+    head: Float,
+    direction: Float,
+) {
+    val trail = EDGE_TRAIL_DP.dp.toPx()
+    val stepPx = trail / EDGE_SEGMENTS
+
+    for (i in 0 until EDGE_SEGMENTS) {
+        val tStart = i / EDGE_SEGMENTS.toFloat()
+        val tEnd = (i + 1) / EDGE_SEGMENTS.toFloat()
+        val envelope = sin(Math.PI * ((tStart + tEnd) / 2f)).toFloat()
+        if (envelope <= 0.01f) continue
+
+        val from = wrap(head + direction * tStart * trail, length)
+        val to = wrap(head + direction * tEnd * trail, length)
+        val a = measure.getPosition(from)
+        val b = measure.getPosition(to)
+
+        drawLine(
+            color = ComposerEdgeBlue.copy(alpha = envelope * 0.95f),
+            start = a,
+            end = b,
+            strokeWidth = (0.06f + 0.5f * envelope) * density,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+/** 取模落回 [0, length)。负数也要正确回绕，否则光带会在起点突然断掉。 */
+private fun wrap(value: Float, length: Float): Float {
+    val mod = value % length
+    return if (mod < 0f) mod + length else mod
 }
 
 /** 拖尾长度（dp）。整圈周长在这块屏上约 1100px，取 96dp 大约占 27%：短了像一颗子弹在屏幕上跑。 */
