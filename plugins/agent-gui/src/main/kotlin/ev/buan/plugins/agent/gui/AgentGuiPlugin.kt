@@ -36,20 +36,30 @@ class AgentGuiPlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
+
+        // 视觉在工具之前发布：工具总线晚一步就位时，胶囊照样能画——它不依赖 ToolRegistry。
+        // 这也是"提示层属于屏幕操作"的落点：插件在，两层一起在。
+        val hudRenderer = GuiHudRenderer()
+        runCatching { directory.publish(org.cordis.api.HudRenderer.Key, hudRenderer) }
+            .onFailure { Log.w("EV", "agent-gui: 提示层视觉没发布出去：${it.message}") }
+
         // 工具总线由 agent-tools 发布。插件启动是并发的，这里可能先跑完；
         // 早退会让整组工具凭空消失且没有痕迹，所以短轮询再放弃，放弃也要留日志。
         val registry = awaitRegistry(directory)
         if (registry == null) {
             Log.w("EV", "agent-gui: 等不到 ToolRegistry，本插件没有注册任何工具")
-            return
+        } else {
+            val tools = GuiTools.all { ctx.get(ScreenService.Key) } + GuiVision.all()
+            registry.register(PLUGIN_ID, tools)
+            Log.i("EV", "agent-gui: 注册 ${tools.size} 个工具（${tools.joinToString(",") { it.spec.name }}）")
         }
-
-        val tools = GuiTools.all { ctx.get(ScreenService.Key) } + GuiVision.all()
-        registry.register(PLUGIN_ID, tools)
-        Log.i("EV", "agent-gui: 注册 ${tools.size} 个工具（${tools.joinToString(",") { it.spec.name }}）")
+        Log.i("EV", "agent-gui: 提示层视觉已发布")
         effect.collect {
-            registry.unregister(PLUGIN_ID)
-            Log.i("EV", "agent-gui: 已撤回工具注册")
+            registry?.unregister(PLUGIN_ID)
+            if (directory.lookup(org.cordis.api.HudRenderer.Key) === hudRenderer) {
+                directory.retract(org.cordis.api.HudRenderer.Key)
+            }
+            Log.i("EV", "agent-gui: 已撤回工具注册与提示层")
         }
     }
 

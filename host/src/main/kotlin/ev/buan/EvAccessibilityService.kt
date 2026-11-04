@@ -60,7 +60,8 @@ class EvAccessibilityService : AccessibilityService() {
 
     private fun hud(): HudOverlay = hudOrNull ?: HudOverlay(this).also { hudOrNull = it }
 
-    internal fun showHud(state: org.cordis.api.HudState) = hud().show(state)
+    internal fun showHud(state: org.cordis.api.HudState, renderer: org.cordis.api.HudRenderer?) =
+        hud().show(state, renderer)
 
     internal fun hideHud() = hudOrNull?.hide()
 
@@ -281,13 +282,13 @@ class EvAccessibilityService : AccessibilityService() {
         fun currentPackage(): String? = foregroundPackage
 
         /** 提示层的门面：服务不在时只是少一层可见性，但必须留痕，否则"没显示"无从查起。 */
-        fun showHud(state: org.cordis.api.HudState) {
+        fun showHud(state: org.cordis.api.HudState, renderer: org.cordis.api.HudRenderer?) {
             val service = instance
             if (service == null) {
                 android.util.Log.w("EV", "HUD: 无障碍服务实例不在，跳过显示")
                 return
             }
-            service.showHud(state)
+            service.showHud(state, renderer)
         }
 
         fun hideHud() {

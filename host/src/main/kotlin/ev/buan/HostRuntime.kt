@@ -315,7 +315,7 @@ class HostRuntime(private val context: AndroidContext) {
                 .also { runCatching { it.awaitReady() } }
             screenHandle = cordis.provide(ScreenService.Key, ScreenServiceImpl(context))
                 .also { runCatching { it.awaitReady() } }
-            hudHandle = cordis.provide(org.cordis.api.HudService.Key, HudServiceImpl())
+            hudHandle = cordis.provide(org.cordis.api.HudService.Key, HudServiceImpl { serviceDirectory })
                 .also { runCatching { it.awaitReady() } }
             restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context))
                 .also { runCatching { it.awaitReady() } }
