@@ -40,14 +40,10 @@ class GuiHudRenderer : HudRenderer {
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
 
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = GLOW_DP * density
-    }
-    private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = CORE_DP * density
-    }
+    /** 边缘辉光的一层：多宽、多亮。 */
+    private data class EdgeLayer(val widthDp: Float, val alpha: Float)
+
+    private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
     private val rect = RectF()
     private val matrix = Matrix()
@@ -118,21 +114,21 @@ class GuiHudRenderer : HudRenderer {
         matrix.setRotate(phase, w / 2f, h / 2f)
         gradient.setLocalMatrix(matrix)
 
-        // 两遍画同一圈：外圈柔光、内圈主体。只有一圈的话边缘是硬的，像贴了条胶带。
+        // 六层同心的描边叠成一道辉光：外层宽而极淡，越往里越窄越亮。
+        // 一条固定宽度的线不管多粗都是"线"；有厚度的是这种从边缘向内衰减的过渡。
+        // 最外面那层看不见，但它决定了整圈光的"底子"，去掉之后内侧几层会显得生硬。
         val inset = INSET_DP * density
         rect.set(inset, inset, w - inset, h - inset)
         val radius = CORNER_DP * density
 
-        glowPaint.shader = gradient
-        glowPaint.alpha = (GLOW_ALPHA * 255).toInt()
-        canvas.drawRoundRect(rect, radius, radius, glowPaint)
-
-        corePaint.shader = gradient
-        corePaint.alpha = (CORE_ALPHA * 255).toInt()
-        canvas.drawRoundRect(rect, radius, radius, corePaint)
-
-        glowPaint.shader = null
-        corePaint.shader = null
+        edgePaint.shader = gradient
+        for (layer in EDGE_LAYERS) {
+            edgePaint.strokeWidth = layer.widthDp * density
+            edgePaint.alpha = (layer.alpha * 255).toInt()
+            canvas.drawRoundRect(rect, radius, radius, edgePaint)
+        }
+        edgePaint.shader = null
+        edgePaint.alpha = 255
     }
 
     private fun shaderFor(w: Float, h: Float): SweepGradient? {
@@ -170,20 +166,26 @@ class GuiHudRenderer : HudRenderer {
         const val DOT_MIN_ALPHA = 90f
         const val BREATH_MS = 1600L
 
-        const val INSET_DP = 5f
+        const val INSET_DP = 22f
         const val CORNER_DP = 30f
 
         /**
-         * 亮度是调下来的：单色时 0.34 就够，换成七色之后同样的值会显得很吵——颜色多了，
-         * 同样的 alpha 在视觉上更"响"。0.24 + 柔光 0.07 在深色壁纸上清楚，在浅色壁纸上
-         * 只是一层淡淡的彩边，不会压过内容。
+         * 六层同心描边。宽的那个极淡，窄的那个最亮。
+         *
+         * 加起来的观感是"屏幕边缘在发光"而不是"屏幕被框了一圈"：外侧的 40dp 里
+         * 只贡献了一层几乎看不见的雾，真正认得出的核心只有最里面那 2.2dp。
+         * 之所以要这么多层，是因为单层再粗也是条硬边，中间得有渐变过渡才像光。
          */
-        const val GLOW_ALPHA = 0.07f
-        const val CORE_ALPHA = 0.24f
-        const val GLOW_DP = 9f
-        const val CORE_DP = 2.8f
+        val EDGE_LAYERS: List<EdgeLayer> = listOf(
+            EdgeLayer(44f, 0.030f),
+            EdgeLayer(28f, 0.045f),
+            EdgeLayer(17f, 0.070f),
+            EdgeLayer(9.5f, 0.110f),
+            EdgeLayer(4.8f, 0.190f),
+            EdgeLayer(2.2f, 0.320f),
+        )
 
-        const val PERIOD_MS = 4200L
+        const val PERIOD_MS = 3400L
 
         /** 光带占整圈的比例：从 [BAND_START] 开始，到 [BAND_END] 收尾。 */
         const val BAND_START = 0.62f
