@@ -86,9 +86,37 @@ class EvAccessibilityService : AccessibilityService() {
      * 只保留"有文字"或"能点/能编辑"的节点：无障碍树里绝大多数是不可交互的容器，
      * 原样交给模型会几万个字符还读不到重点。
      */
+    /**
+     * 真正的"应用窗口"，从窗口列表里挑，而不是问 [rootInActiveWindow]。
+     *
+     * `rootInActiveWindow` 回答的是"当前活动窗口是谁"，而这个值会被**任何**窗口状态变化
+     * 影响——包括我们自己盖上去的提示层（`TYPE_ACCESSIBILITY_OVERLAY`）。胶囊一出现，
+     * 活动窗口就可能变成它；而它的内容被标成 `NO_HIDE_DESCENDANTS` 不可访问，于是
+     * `screen_dump` 拿到空节点报"没有活动窗口"，`app_current` 则读到被改写的包名
+     * （桌面、速览）。
+     *
+     * 改成按类型挑：只有 `TYPE_APPLICATION` 才是用户正在用的那个应用。提示层、输入法、
+     * 系统弹窗都不参与。
+     */
+    private fun applicationWindow(): android.view.accessibility.AccessibilityWindowInfo? =
+        runCatching {
+            val all = windows ?: return@runCatching null
+            all.firstOrNull {
+                it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION && it.isActive
+            } ?: all.firstOrNull {
+                it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION
+            }
+        }.getOrNull()
+
     internal fun dumpNodes(maxNodes: Int): ScreenDump {
-        val root = runCatching { rootInActiveWindow }.getOrNull()
-            ?: return ScreenDump(emptyList(), foregroundPackage.orEmpty(), error = "没有活动窗口（可能屏幕锁着或在系统桌面）")
+        val window = applicationWindow()
+        val root = window?.root
+            ?: runCatching { rootInActiveWindow }.getOrNull()
+            ?: return ScreenDump(
+                emptyList(),
+                window?.root?.packageName?.toString() ?: foregroundPackage.orEmpty(),
+                error = "没有活动窗口（可能屏幕锁着，或当前应用禁止辅助功能读取）",
+            )
 
         val lines = mutableListOf<String>()
         var truncated = false
@@ -300,7 +328,10 @@ class EvAccessibilityService : AccessibilityService() {
             true
         }.getOrDefault(false)
 
-        fun currentPackage(): String? = foregroundPackage
+        fun currentPackage(): String? =
+            instance?.let { service ->
+                service.applicationWindow()?.root?.packageName?.toString()
+            } ?: foregroundPackage
 
         /** 提示层的门面：服务不在时只是少一层可见性，但必须留痕，否则"没显示"无从查起。 */
         fun showHud(state: org.cordis.api.HudState, renderer: org.cordis.api.HudRenderer?) {
@@ -349,7 +380,8 @@ class EvAccessibilityService : AccessibilityService() {
             override fun key(key: String): ScreenAction =
                 instance?.pressKey(key) ?: ScreenAction.NoAccessibility
 
-            override fun currentPackage(): String? = foregroundPackage
+            override fun currentPackage(): String? =
+                instance?.applicationWindow()?.root?.packageName?.toString() ?: foregroundPackage
         }
 
         const val NOT_ENABLED =
