@@ -7,7 +7,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import ev.buan.ui.evGlassLayer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -126,7 +131,13 @@ internal fun EvComposerArea(
         modelName = modelName,
         opaque = false,
         onModelClick = onModelClick,
-            modifier = Modifier.imePadding(),
+            // 键盘和底部手势条取**并集**，不是串联：
+            // 串联（.imePadding().navigationBarsPadding()）在键盘弹出时会把两个高度加起来，
+            // 输入框被顶到半空；单独 imePadding 在键盘收起时又是 0，输入框直接贴着屏幕底边。
+            // union 让"当前该避开多少"始终是两者中更大的那个。
+            modifier = Modifier
+                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                .padding(bottom = 6.dp),
         )
         }
     }
