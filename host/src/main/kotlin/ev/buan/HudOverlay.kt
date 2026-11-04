@@ -70,7 +70,7 @@ internal class HudOverlay(private val service: AccessibilityService) {
     private fun ensurePill(): PillView? {
         pillView?.let { return it }
         val manager = windowManager ?: return null
-        val created = PillView()
+        val created = PillView().also { hideFromAccessibility(it) }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -102,7 +102,7 @@ internal class HudOverlay(private val service: AccessibilityService) {
     private fun ensurePulseLayer(painter: HudRenderer): PulseView? {
         pulseView?.let { return it }
         val manager = windowManager ?: return null
-        val created = PulseView()
+        val created = PulseView().also { hideFromAccessibility(it) }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -154,6 +154,24 @@ internal class HudOverlay(private val service: AccessibilityService) {
         } else {
             (24 * density).toInt()
         }
+    }
+
+    /**
+     * 把提示层从无障碍树里摘出去。
+     *
+     * 这不是可有可无的美化：agent 自己就是靠读这棵树工作的。如果胶囊的文字进得去，
+     * `screen_dump` 会读到「第 3 步 · 点『设置』」，模型很可能把它当成界面内容，
+     * 于是 `screen_tap_text("第 3 步")` —— 而窗口是 `FLAG_NOT_TOUCHABLE` 的，触摸穿过去，
+     * 真正被点中的是下面那个应用的同位置控件。**agent 就会因为读到自己而点了别处。**
+     *
+     * 配合 `FLAG_NOT_FOCUSABLE`（窗口不会成为活动窗口，`rootInActiveWindow` 仍是下面那个
+     * 应用）和 `FLAG_NOT_TOUCHABLE`（事件穿透），三层一起才闭环。
+     */
+    private fun hideFromAccessibility(view: View) {
+        view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        view.isFocusable = false
+        view.isClickable = false
+        view.contentDescription = null
     }
 
     /** 全屏那层：只画涟漪。 */

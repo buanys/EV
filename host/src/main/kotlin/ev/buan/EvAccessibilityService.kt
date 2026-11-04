@@ -127,8 +127,16 @@ class EvAccessibilityService : AccessibilityService() {
         }
 
         runCatching { walk(root, 0) }
+        // 包名以实际窗口为准，不用 foregroundPackage：那是事件流缓存的，提示层窗口出现时
+        // 会被改写成 ev.buan，模型就会以为"当前在 EV 里"，然后对着错误的上下文做决定。
+        val actualPackage = runCatching { root.packageName?.toString() }.getOrNull().orEmpty()
         runCatching { root.recycle() }
-        return ScreenDump(lines, foregroundPackage.orEmpty(), truncated, null)
+        return ScreenDump(
+            lines,
+            actualPackage.ifEmpty { foregroundPackage.orEmpty() },
+            truncated,
+            null,
+        )
     }
 
     // ---------------------------------------------------------------- 操作
