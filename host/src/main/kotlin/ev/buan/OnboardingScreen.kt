@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -259,6 +260,8 @@ private fun PrimaryAction(label: String, onClick: () -> Unit, emphasized: Boolea
                 // 原来是 onSurfaceVariantSummary + 0.55 的底，读起来像禁用状态。
                 // 它是个正常的"跳过"，该有正常文字的对比度。
                 .background(tokens.surfaceContainerHighest.copy(alpha = 0.8f))
+                // 少这一行的时候，按钮长得对、点下去毫无反应——画了一个胶囊却没接事件。
+                .clickable(onClick = onClick)
                 .padding(vertical = 14.dp),
         ) {
             Text(
