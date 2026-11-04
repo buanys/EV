@@ -58,6 +58,8 @@ class AgentBrainPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
             },
         )
         directory.publish(AgentService.Key, service)
+        // 胶囊上的两个按钮交给 brain：只有它知道暂停该停在哪儿、停止该怎么收尾。
+        runCatching { ctx.get(org.cordis.api.HudService.Key)?.attachController(service) }
         // The identity check keeps this stale disposer from retracting a newer instance published
         // after a re-activation, mirroring the tools/memory plugins.
         effect.collect {

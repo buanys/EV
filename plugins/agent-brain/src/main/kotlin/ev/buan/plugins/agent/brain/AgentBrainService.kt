@@ -72,7 +72,89 @@ class AgentBrainService internal constructor(
     private val capabilities: CapabilityProvider,
     /** Injectable so tests can shrink the budget instead of scripting 60 tool calls. */
     private val budget: Budget = Budget(),
-) : AgentService {
+) : AgentService, org.cordis.api.HudController {
+
+    // ---------------------------------------------------------------- 暂停与停止
+
+    /**
+     * 暂停是真的"冻结"：当前这一步跑完之后停在原地，不发起下一轮模型调用。
+     *
+     * 不在工具执行中间硬停——点了一半的手指不可能收回来，停在动作之间才是干净的断点。
+     */
+    @Volatile
+    private var paused = false
+
+    @Volatile
+    private var stopRequested = false
+
+    private val pauseLock = Any()
+    private var pausedWaiter: kotlinx.coroutines.CancellableContinuation<Unit>? = null
+
+    /** 最近一次推给胶囊的状态：暂停/恢复时要在它的基础上改，不能丢掉步骤和工具名。 */
+    @Volatile
+    private var lastHud: org.cordis.api.HudState =
+        org.cordis.api.HudState(status = "思考中", phase = org.cordis.api.HudPhase.RUNNING)
+
+    override fun onTogglePause() {
+        val nowPaused = synchronized(pauseLock) {
+            paused = !paused
+            if (!paused) {
+                pausedWaiter?.resume(Unit, null)
+                pausedWaiter = null
+            }
+            paused
+        }
+        val base = lastHud
+        publishHud(
+            base.copy(
+                status = if (nowPaused) "已暂停" else "执行中",
+                phase = if (nowPaused) org.cordis.api.HudPhase.PAUSED else org.cordis.api.HudPhase.RUNNING,
+            ),
+        )
+    }
+
+    override fun onStop() {
+        stopRequested = true
+        // 停止必须能把挂起中的暂停唤醒，否则一颗暂停的胶囊会永远停在那里，
+        // 而"停止"看起来毫无反应。
+        synchronized(pauseLock) {
+            paused = false
+            pausedWaiter?.resume(Unit, null)
+            pausedWaiter = null
+        }
+        publishHud(
+            lastHud.copy(status = "已停止", phase = org.cordis.api.HudPhase.STOPPED),
+        )
+    }
+
+    /** 每个断点都过一遍：先响应停止，再处理暂停。 */
+    private suspend fun checkpoint() {
+        if (stopRequested) throw AgentStopped()
+        synchronized(pauseLock) {
+            if (!paused) return
+        }
+        kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
+            synchronized(pauseLock) {
+                if (!paused || stopRequested) {
+                    continuation.resume(Unit, null)
+                } else {
+                    pausedWaiter = continuation
+                    continuation.invokeOnCancellation {
+                        synchronized(pauseLock) { pausedWaiter = null }
+                    }
+                }
+            }
+        }
+        if (stopRequested) throw AgentStopped()
+    }
+
+    private fun publishHud(state: org.cordis.api.HudState) {
+        lastHud = state
+        runCatching { capabilities.current().hud?.show(state) }
+    }
+
+    /** 用户按了停止。单独一个类型，好和真正的异常区分开。 */
+    private class AgentStopped : RuntimeException("用户停止了这一轮")
 
     /** True when a model plugin is published and serves at least one configured model. */
     override val ready: Boolean
@@ -106,8 +188,14 @@ class AgentBrainService internal constructor(
             override suspend fun emit(value: AgentProgress) { send(value) }
         }
         val hud = capabilities.current().hud
+        // 新的一轮从干净状态开始：上一轮按下的停止/暂停不该影响这一次。
+        stopRequested = false
+        paused = false
         try {
             collector.turn(sessionId, text, model, systemPrompt)
+        } catch (stopped: AgentStopped) {
+            // 胶囊上已经显示"已停止"，这里给对话一个明确的收尾，而不是无声结束。
+            send(AgentProgress.Done(degraded(null, "已停止当前任务")))
         } finally {
             // 胶囊跟着这一轮走：正常结束、报错、被取消，任何一条路径都要收掉。
             // 留一颗胶囊挂在屏幕顶上是最难看的失败模式。
@@ -200,6 +288,8 @@ class AgentBrainService internal constructor(
                 break
             }
 
+            // 每轮开头是第一个断点：暂停中的 agent 不该再向模型发起一次调用。
+            checkpoint()
             rounds++
             emit(AgentProgress.RoundStarted(rounds))
             val reply = try {
@@ -268,9 +358,19 @@ class AgentBrainService internal constructor(
                     continue
                 }
                 toolCalls++
+                // 第二个断点：两个工具之间。工具执行中不硬停——点了一半的手指收不回来，
+                // 停在动作之间才是干净的。
+                checkpoint()
                 // 屏幕上的进度：用户看不见审批弹窗了，得在胶囊上看见"现在在跑哪个工具"。
-                current.hud?.show(
-                    org.cordis.api.HudState(step = toolCalls, tool = call.name),
+                // 走 publishHud 而不是直接 show：暂停/停止时要基于最近一次状态改，
+                // 直接 show 会让 lastHud 停在旧值上。
+                publishHud(
+                    org.cordis.api.HudState(
+                        step = toolCalls,
+                        tool = call.name,
+                        status = "操作中",
+                        phase = org.cordis.api.HudPhase.RUNNING,
+                    ),
                 )
                 val executed = executeGuarded(tools, call, current.approval) {
                     emit(AgentProgress.ToolAwaitingApproval(call.id))

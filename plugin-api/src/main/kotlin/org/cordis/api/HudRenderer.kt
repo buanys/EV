@@ -31,6 +31,14 @@ interface HudRenderer {
     fun drawPulses(canvas: Canvas, pulses: List<HudPulse>, elapsedMs: Long)
 
     /**
+     * 胶囊上这一下点到了什么。坐标是胶囊内的像素坐标。
+     *
+     * 交互归渲染器，是因为按钮的位置和大小只有画的人知道——宿主如果硬编码两个圆形区域，
+     * 换一套布局就会点错地方。宿主只负责把触摸坐标原样递过来。
+     */
+    fun hitTest(x: Float, y: Float, state: HudState, size: HudSize): HudHit = HudHit.NONE
+
+    /**
      * 至少多久刷新一次。有涟漪在飞的时候宿主按这个间隔重绘；没有涟漪、胶囊又不呼吸时，
      * 返回 0 可以让宿主停掉重绘。
      */
@@ -39,6 +47,17 @@ interface HudRenderer {
     companion object {
         val Key = ServiceKey<HudRenderer>("host/hud-renderer")
     }
+}
+
+/** 胶囊上被点中的区域。 */
+enum class HudHit {
+    NONE,
+
+    /** 左键：暂停 ⇄ 继续。 */
+    PAUSE_RESUME,
+
+    /** 右键：停止。 */
+    STOP,
 }
 
 /** 像素尺寸。宿主按它给胶囊开窗口。 */

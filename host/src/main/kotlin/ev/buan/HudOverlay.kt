@@ -4,11 +4,14 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.PixelFormat
+import android.view.MotionEvent
 import android.os.Build
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import org.cordis.api.HudController
+import org.cordis.api.HudHit
 import org.cordis.api.HudPulse
 import org.cordis.api.HudRenderer
 import org.cordis.api.HudSize
@@ -32,6 +35,13 @@ internal class HudOverlay(private val service: AccessibilityService) {
     private var pulseView: PulseView? = null
     private var pillView: PillView? = null
     private var renderer: HudRenderer? = null
+    private var controller: HudController? = null
+
+    /** brain 接管两个按钮。传 null 表示没人能接管，按钮会被画成灰的。 */
+    fun attachController(next: HudController?) = onMain {
+        controller = next
+        pillView?.invalidate()
+    }
 
     fun show(state: HudState, painter: HudRenderer?) = onMain {
         if (painter == null) {
@@ -76,7 +86,7 @@ internal class HudOverlay(private val service: AccessibilityService) {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
@@ -219,6 +229,7 @@ internal class HudOverlay(private val service: AccessibilityService) {
     private inner class PillView : View(service) {
 
         private var state: HudState? = null
+        private var pressed = false
         private var startedAt = 0L
 
         fun render(next: HudState) {
@@ -265,6 +276,51 @@ internal class HudOverlay(private val service: AccessibilityService) {
             val painter = renderer ?: return
             val current = state ?: return
             painter.drawPill(canvas, current, SystemClock.elapsedRealtime() - startedAt)
+        }
+
+        /**
+         * 胶囊上只有两个按钮响应，其余区域也吃掉事件——窗口本来就是胶囊那么大，
+         * 手指落在文字上却点到下面的应用会更糟。
+         *
+         * 点击判定交给 [HudRenderer.hitTest]：按钮画在哪里、多大，只有画的人知道。
+         * 宿主在这里硬编码两个圆形区域的话，换一套布局就会点错。
+         */
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    pressed = true
+                    invalidate()
+                    return true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    val painter = renderer
+                    val current = state
+                    if (painter != null && current != null && width > 0 && height > 0) {
+                        val hit = painter.hitTest(
+                            event.x,
+                            event.y,
+                            current,
+                            HudSize(width, height),
+                        )
+                        when (hit) {
+                            HudHit.PAUSE_RESUME -> controller?.onTogglePause()
+                            HudHit.STOP -> controller?.onStop()
+                            HudHit.NONE -> Unit
+                        }
+                    }
+                    pressed = false
+                    invalidate()
+                    return true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    pressed = false
+                    invalidate()
+                    return true
+                }
+            }
+            return super.onTouchEvent(event)
         }
     }
 }

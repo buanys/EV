@@ -57,8 +57,18 @@ class EvAccessibilityService : AccessibilityService() {
      * 自动消失，漏一个就留在屏幕上变成幽灵。
      */
     private var hudOrNull: HudOverlay? = null
+    private var hudController: org.cordis.api.HudController? = null
 
-    private fun hud(): HudOverlay = hudOrNull ?: HudOverlay(this).also { hudOrNull = it }
+    private fun hud(): HudOverlay = hudOrNull ?: HudOverlay(this).also {
+        hudOrNull = it
+        // brain 可能在胶囊出现之前就注册了按钮，创建时补上，否则第一次显示时按钮是空的。
+        it.attachController(hudController)
+    }
+
+    internal fun attachController(controller: org.cordis.api.HudController?) {
+        hudController = controller
+        hudOrNull?.attachController(controller)
+    }
 
     internal fun showHud(state: org.cordis.api.HudState, renderer: org.cordis.api.HudRenderer?) =
         hud().show(state, renderer)
@@ -304,6 +314,10 @@ class EvAccessibilityService : AccessibilityService() {
 
         fun pulse(pulse: org.cordis.api.HudPulse, renderer: org.cordis.api.HudRenderer?) {
             instance?.pulse(pulse, renderer)
+        }
+
+        fun attachController(controller: org.cordis.api.HudController?) {
+            instance?.attachController(controller)
         }
 
         fun hideHud() {

@@ -366,7 +366,14 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                     onToggleHudPreview = { on ->
                         hudPreviewOn.value = on
                         if (on) {
-                            hud?.show(org.cordis.api.HudState(step = 3, tool = "screen_tap", note = "调试预览"))
+                            hud?.show(
+                                org.cordis.api.HudState(
+                                    step = 3,
+                                    tool = "screen_tap",
+                                    note = "调试预览",
+                                    status = "操作中",
+                                ),
+                            )
                         } else {
                             hud?.hide()
                         }
