@@ -211,14 +211,13 @@ fun EvComposer(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp)
-                .padding(bottom = safeToolbarReserve),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
         ) {
+            // 文本区：只往上长，长到 4 行就自己滚动。
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = fieldMinHeight, max = EvComposerDefaults.FieldMaxActive)
-                    .padding(start = safeSideInset, end = safeSideInset + modelReserve),
+                    .heightIn(min = fieldMinHeight, max = EvComposerDefaults.FieldMaxActive),
                 contentAlignment = if (active) Alignment.TopStart else Alignment.CenterStart,
             ) {
                 if (value.isEmpty()) {
@@ -245,31 +244,42 @@ fun EvComposer(
                         },
                 )
             }
+
+            // 按钮行：**固定在卡片底部**，不随文本行数移动。
+            //
+            // 之前的做法是把三个按钮浮在整个 Box 上、按 active 状态给一个固定偏移（36dp）。
+            // 文本一长到三四行，偏移还停在 36dp —— 按钮就悬在卡片中间，看起来像"跟着字走"。
+            // 放进 Column 的最后一行之后，文本长多高都跟它无关。
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(EvComposerDefaults.ActionSize)
+                    .padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PlusButton(
+                    active = plusActive,
+                    onClick = onPlus,
+                    modifier = Modifier,
+                )
+                Spacer(Modifier.weight(1f))
+                if (modelName != null) {
+                    ModelChip(
+                        name = modelName,
+                        onClick = onModelClick,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
+                SendKey(
+                    value = value,
+                    busy = busy,
+                    onMic = onMic,
+                    onSend = onSend,
+                    onStop = onStop,
+                    modifier = Modifier,
+                )
+            }
         }
-        PlusButton(
-            active = plusActive,
-            onClick = onPlus,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = 2.dp, y = actionDrop),
-        )
-        // The model lives next to the mic, not in the top bar: it is a property of what you are
-        // about to send, so it belongs where you send from - collapsed or expanded.
-        if (modelName != null) {
-            ModelChip(
-                name = modelName,
-                onClick = onModelClick,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = -(actionSize + 6.dp), y = actionDrop),
-            )
-        }
-        SendKey(
-            value = value,
-            busy = busy,
-            onMic = onMic,
-            onSend = onSend,
-            onStop = onStop,
-            modifier = Modifier.align(Alignment.TopEnd).offset(x = (-2).dp, y = actionDrop),
-        )
     }
 }
 
