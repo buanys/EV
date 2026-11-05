@@ -120,13 +120,24 @@ cmd_deploy() {
     mods=/sdcard/EV/mods
     [ -d "$mods" ] || die "没有 $mods"
 
-    app_uid=$(stat -c %u /data/data/ev.buan) || die "读不到 ev.buan 的数据目录"
-    mods_uid=$(stat -c %u "$mods" | head -n 1)
+    # uid 不能靠 stat /data/data/ev.buan：Eta 的 shell 与 EV 在各自的 mount namespace 里，
+    # 那边的属主可能是 root，而 EV 自己的 uid 由 PackageManager 说了算。
+    app_uid=$(pm list packages -U 2>/dev/null \
+        | sed -n 's/^package:ev\.buan uid:\([0-9][0-9]*\).*/\1/p' | head -n 1)
+    [ -n "$app_uid" ] || die "查不到 ev.buan 的 uid"
+
+    # /sdcard 的属主跟着写它的进程走，覆盖已有插件时沿用同名的那个，比按目录猜稳。
+    ref="$mods/$(basename "$jar")"
+    if [ -f "$ref" ]; then
+        mods_owner=$(stat -c '%u:%g' "$ref")
+    else
+        mods_owner=$(stat -c '%u:%g' "$mods")
+    fi
 
     echo "==> 插件 $id"
     cp -f "$jar" "$mods/$(basename "$jar")" || die "复制 jar 失败"
     cp -f "$json" "$mods/$(basename "$json")" || die "复制 json 失败"
-    chown "$mods_uid:$mods_uid" "$mods/$(basename "$jar")" "$mods/$(basename "$json")" 2>/dev/null || true
+    chown "$mods_owner" "$mods/$(basename "$jar")" "$mods/$(basename "$json")" 2>/dev/null || true
     chmod 660 "$mods/$(basename "$jar")" "$mods/$(basename "$json")" 2>/dev/null || true
 
     sha=$(sha256sum "$mods/$(basename "$jar")" | awk '{print $1}')
