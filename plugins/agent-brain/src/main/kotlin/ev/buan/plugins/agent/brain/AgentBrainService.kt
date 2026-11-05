@@ -631,7 +631,11 @@ class AgentBrainService internal constructor(
             // A broken store degrades to a stateless turn; it must not lose the user's message.
             emptyList()
         }
-        return HistoryTrim.trim(stored, MAX_HISTORY_TURNS, MAX_HISTORY_CHARS)
+        // 被 kill 在工具执行中时，历史会停在 assistant(tool_calls) 上；
+        // 不补一条合成结果，下一轮请求会被服务端以 400 永久拒绝。
+        return HistoryRepair.closeDanglingToolCalls(
+            HistoryTrim.trim(stored, MAX_HISTORY_TURNS, MAX_HISTORY_CHARS),
+        )
     }
 
     /**
