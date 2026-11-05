@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Startup theme.
+
+  The system draws a starting window before the activity renders. With the default theme that
+  window is a grey sheet with the launcher icon on a white square, which read as an "empty state"
+  flashing ahead of the intro. Setting it to pure black, with a blank icon and no icon animation,
+  makes it indistinguishable from the intro's own black curtain - one launch, not two.
+-->
+<resources>
+    <color name="ev_boot_black">#FF000000</color>
+
+    <style name="Theme.EV.Startup" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ev_boot_black</item>
+        <item name="android:colorBackground">@color/ev_boot_black</item>
+        <item name="android:statusBarColor">@color/ev_boot_black</item>
+        <item name="android:navigationBarColor">@color/ev_boot_black</item>
+        <item name="android:windowSplashScreenBackground">@color/ev_boot_black</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_blank</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/ev_boot_black</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+</resources>

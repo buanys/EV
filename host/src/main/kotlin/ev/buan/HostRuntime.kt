@@ -81,6 +81,8 @@ data class PluginCard(
     val grantedPermissions: Set<HostPermission> = emptySet(),
     /** Bytes used by the plugin's persistent storage area. */
     val storageBytes: Long = 0,
+    /** 这个插件声明了哪些桌面入口；空表示它不提供快捷方式。 */
+    val shortcuts: List<ShortcutDeclaration> = emptyList(),
     /**
      * 是否为这个未签名插件开启了「信任后续版本」（ADR-0008）。
      *
@@ -180,6 +182,10 @@ class HostRuntime(private val context: AndroidContext) {
     private val permissions = PermissionStore(context)
     /** ADR-0008：未签名插件的能力面与「信任后续版本」开关。默认全部关闭。 */
     private val capabilityTrust = CapabilityTrustStore(context)
+    /** 本次进程完成启动时用的范围；null 表示还没成功启动过。 */
+    @Volatile
+    private var startedScope: LaunchScope? = null
+
     private val installer = PluginInstaller(
         context,
         trust,
@@ -281,7 +287,17 @@ class HostRuntime(private val context: AndroidContext) {
     var safeMode: SafeModeNotice? = null
         private set
 
-    suspend fun start(): HostState = withContext(Dispatchers.IO) {
+    suspend fun start(scope: LaunchScope = LaunchScope.Full): HostState = withContext(Dispatchers.IO) {
+        // 已经全量启动过：重复调用（旋转屏幕、从插件页返回）不该再跑一遍同步。
+        if (startedScope is LaunchScope.Full) return@withContext snapshot()
+        // 之前只按快捷方式加载了闭包，现在用户打开了主界面：补齐，而不是重头再来。
+        if (startedScope is LaunchScope.Closure && scope is LaunchScope.Full) {
+            startedScope = LaunchScope.Full
+            syncAndActivate(LaunchScope.Full)
+            lifecycle.completeStart(safeMode = safeMode != null)
+            progressHolder.value = progressHolder.value.copy(finished = true, current = null)
+            return@withContext snapshot()
+        }
         // A marker means the previous process died without unwinding. Compose has no error boundary,
         // so nothing in this process can repair that: this launch runs without loading any plugin,
         // and the management page offers the explicit way out. Read on every start because the
@@ -362,7 +378,8 @@ class HostRuntime(private val context: AndroidContext) {
             restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context))
                 .also { runCatching { it.awaitReady() } }
         }
-        syncAndActivate()
+        syncAndActivate(scope)
+        startedScope = scope
         // Only a pass that actually ran outside safe mode counts. Safe mode loaded no plugin, and a
         // start that throws never reaches this line, so both leave the process unable to render a
         // plugin page - which is exactly what PluginPageActivity needs to know.
@@ -380,7 +397,7 @@ class HostRuntime(private val context: AndroidContext) {
      * second half of that sentence.
      */
     suspend fun resync(): HostState = withContext(Dispatchers.IO) {
-        syncAndActivate()
+        syncAndActivate(startedScope ?: LaunchScope.Full)
         snapshot()
     }
 
@@ -390,7 +407,7 @@ class HostRuntime(private val context: AndroidContext) {
      * Kept as one function on purpose. Two callers meant two chance for the rules to drift, and the
      * rules here are exactly the ones a plugin author will blame the host for ("装完为什么不生效").
      */
-    private suspend fun syncAndActivate() {
+    private suspend fun syncAndActivate(scope: LaunchScope = LaunchScope.Full) {
         val sync = installer.sync()
         syncErrors = sync.errors
         pendingUnsigned = sync.pending
@@ -404,7 +421,11 @@ class HostRuntime(private val context: AndroidContext) {
         // never touched here. Clearing on disable is deliberately not a thing.
         if (sync.errors.isEmpty()) pruneStorageOfUninstalled()
         // Progress covers exactly the plugins this pass will try to activate, in activation order.
-        val targets = if (safeMode == null) installed.values.filter { isEnabled(it.id) } else emptyList()
+        val targets = if (safeMode == null) {
+            installed.values.filter { isEnabled(it.id) && scopeCovers(scope, it.id) }
+        } else {
+            emptyList()
+        }
         var processed = 0
         fun publishProgress(current: String?) {
             progressHolder.value = progressHolder.value.copy(
@@ -425,7 +446,7 @@ class HostRuntime(private val context: AndroidContext) {
                     deactivate(plugin.id)
                     if (isEnabled(plugin.id)) failures[plugin.id] = SAFE_MODE_BLOCKED
                 }
-                isEnabled(plugin.id) -> {
+                isEnabled(plugin.id) && scopeCovers(scope, plugin.id) -> {
                     activate(plugin)
                     processed++
                     publishProgress(targets.getOrNull(processed)?.let { shortPluginName(it.id) })
@@ -783,6 +804,38 @@ class HostRuntime(private val context: AndroidContext) {
 
     // ---------------------------------------------------------------- activation
 
+    /**
+     * 从「只加载了某个快捷方式的闭包」补到全量。
+     *
+     * 主界面在快捷方式之后被打开时必须调它一次，否则聊天页面对着一堆没激活的插件。
+     * 幂等：已经是全量、或者处于安全模式，直接返回。
+     */
+    suspend fun ensureFullActivation() {
+        if (safeMode != null) return
+        if (startedScope is LaunchScope.Full) return
+        withContext(Dispatchers.IO) {
+            startedScope = LaunchScope.Full
+            syncAndActivate(LaunchScope.Full)
+        }
+    }
+
+    /** 这个 id 是否落在此次启动范围内。 */
+    private fun scopeCovers(scope: LaunchScope, id: String): Boolean = when (scope) {
+        LaunchScope.Full -> true
+        is LaunchScope.Closure -> id in closureOf(scope.root)
+    }
+
+    /** [root] 的依赖闭包（含它自己）。环会被 [linkedSetOf] 挡住。 */
+    private fun closureOf(root: String): Set<String> {
+        val result = linkedSetOf<String>()
+        fun visit(id: String) {
+            if (!result.add(id)) return
+            installed[id]?.dependencies?.forEach { visit(it) }
+        }
+        visit(root)
+        return result
+    }
+
     private suspend fun activate(plugin: InstalledPlugin) {
         if (active.containsKey(plugin.id)) return
         // Process-wide gate: even a caller that forgot to check [safeMode] cannot load a plugin.
@@ -958,6 +1011,7 @@ class HostRuntime(private val context: AndroidContext) {
                 requestedPermissions = plugin.requestedPermissions,
                 grantedPermissions = permissions.granted(plugin.id),
                 storageBytes = storageUsage(plugin.id),
+                shortcuts = plugin.shortcuts,
                 trustsUpdates = capabilityTrust.trustsUpdates(plugin.id),
             )
         },

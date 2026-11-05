@@ -242,6 +242,7 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostRuntime) {
                                     state = HostUiState.Ready(runtime.setTrustUpdates(id, trust))
                                 }
                             },
+                            onPinShortcut = { id, shortcut -> ShortcutPin.pin(activity, id, shortcut) },
                         )
                     }
                 }
@@ -331,6 +332,7 @@ private fun PluginSection(
     onConfirmUninstall: () -> Unit,
     onCancelUninstall: () -> Unit,
     onTrustUpdates: (String, Boolean) -> Unit,
+    onPinShortcut: (String, ShortcutDeclaration) -> Unit,
 ) {
     var expanded by remember(card.id) { mutableStateOf(false) }
     val colors = MiuixTheme.colorScheme
@@ -413,6 +415,39 @@ private fun PluginSection(
                     }
                 }
             }
+            // 桌面入口：插件声明了才有这一节。点了会弹系统确认框，不是静默创建。
+            if (card.shortcuts.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "桌面快捷方式",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = colors.onSurfaceVariantSummary,
+                )
+                card.shortcuts.forEach { shortcut ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(onClickLabel = "添加 ${shortcut.label} 到桌面") {
+                                onPinShortcut(card.id, shortcut)
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = shortcut.label,
+                            style = MiuixTheme.textStyles.body1,
+                            color = colors.onBackground,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "添加到桌面",
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = colors.primary,
+                        )
+                    }
+                }
+            }
+
             // 未签名插件才有「信任后续版本」：已签名走签名链，不需要人逐次点头。
             // 放在展开区，因为它是一次性的决定，不是每次打开都要看的开关。
             if (!card.signed) {

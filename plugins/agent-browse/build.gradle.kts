@@ -82,7 +82,10 @@ tasks.register("bundlePlugin") {
               "version": "1.1.0",
               "entryClass": "ev.buan.plugins.agent.browse.AgentBrowsePlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.tools"]
+              "dependencies": ["ev.buan.plugins.agent.tools"],
+              "shortcuts": [
+                { "id": "browser", "label": "浏览器", "icon": "Globe" }
+              ]
             }
         """.trimIndent()
         File(distDir.get().asFile, "agent-browse.json").writeText(metadata)

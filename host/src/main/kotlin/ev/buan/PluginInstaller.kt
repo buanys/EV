@@ -37,6 +37,8 @@ data class InstalledPlugin(
     val dependencies: List<String> = emptyList(),
     /** Hash accepted during sync; load-time re-checks against this. */
     val sha256: String,
+    /** Desktop entries this container declares in its sidecar; the host creates them on request. */
+    val shortcuts: List<ShortcutDeclaration> = emptyList(),
     /**
      * Capabilities the container declared in its metadata. Carried past sync so activation can
      * re-check them against the grants currently stored by the host (T06).
@@ -478,6 +480,7 @@ class PluginInstaller(
         hashes[meta.id] = hash
         accepted[meta.id] = InstalledPlugin(
             id = meta.id,
+            shortcuts = meta.shortcuts,
             version = meta.version,
             entryClass = meta.entryClass,
             apiVersion = meta.apiVersion,
@@ -531,6 +534,8 @@ class PluginInstaller(
         val dependencies: List<String> = emptyList(),
         /** Capabilities declared in metadata, split into known/unknown names. */
         val permissions: PermissionDeclaration = PermissionDeclaration(),
+        /** Desktop entries the container wants the host to be able to pin. */
+        val shortcuts: List<ShortcutDeclaration> = emptyList(),
     )
 
     private fun readMetadata(file: File): PluginMeta? =
@@ -579,7 +584,28 @@ class PluginInstaller(
                 declared = json.stringList(PermissionMetadataParser.JAR_SIDECAR_KEY),
                 supported = HostPermission.wireNames,
             ),
+            shortcuts = parseShortcuts(json.optJSONArray("shortcuts")),
         )
+    }
+
+    /**
+     * 只认完整声明：缺 id 或 label 的条目跳过，不猜。
+     *
+     * 一个坏条目不该让整个插件装不上——快捷方式是增值项，不是运行前提。
+     */
+    private fun parseShortcuts(array: org.json.JSONArray?): List<ShortcutDeclaration> {
+        if (array == null) return emptyList()
+        return (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("id", "").trim()
+            val label = item.optString("label", "").trim()
+            if (id.isEmpty() || label.isEmpty()) return@mapNotNull null
+            ShortcutDeclaration(
+                id = id,
+                label = label,
+                icon = item.optString("icon", "").takeIf { it.isNotBlank() },
+            )
+        }
     }
 
     private fun JSONObject.stringList(key: String): List<String>? =

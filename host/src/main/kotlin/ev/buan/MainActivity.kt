@@ -40,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import ev.buan.intro.PaperStartup
 import ev.buan.ui.EvPreferenceDivider
 import ev.buan.ui.evSystemBarsPadding
 import ev.buan.ui.EvPreferenceGroup
@@ -68,6 +70,7 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences(ONBOARDING_PREFS, MODE_PRIVATE)
         var onboarded by mutableStateOf(prefs.getBoolean(KEY_ONBOARDED, false))
         setContent {
+            var introDone by rememberSaveable { mutableStateOf(false) }
             EvTheme(
                 appearance = runtime.appearance.value,
                 spec = runtime.themeSpec(runtime.appearance.value.themeId),
@@ -78,6 +81,14 @@ class MainActivity : ComponentActivity() {
                             prefs.edit().putBoolean(KEY_ONBOARDED, true).apply()
                             onboarded = true
                         },
+                    )
+                } else if (!introDone) {
+                    // Every cold start plays the intro. rememberSaveable keeps it from replaying on
+                    // rotation or when the system recreates this Activity inside the same launch.
+                    PaperStartup(
+                        runtime = runtime,
+                        onGrant = { openAllFilesSettings() },
+                        onDone = { introDone = true },
                     )
                 } else {
                     HomeShell(this, runtime)
@@ -110,9 +121,12 @@ private fun HomeShell(activity: ComponentActivity, runtime: HostRuntime) {
         return
     }
 
-    // Kick the first (and only) start pass of this screen; [HostRuntime.state] carries the result.
+    // The launch intro normally runs the start pass already; start here only if it has not yet.
+    // A second pass would sync and activate every plugin twice.
     LaunchedEffect(Unit) {
-        runCatching { runtime.start() }.onFailure { failure = it.toString() }
+        if (runtime.state.value == null) {
+            runCatching { runtime.start() }.onFailure { failure = it.toString() }
+        }
     }
 
     val openHost: () -> Unit = { activity.startActivity(PluginsActivity.intent(activity)) }
