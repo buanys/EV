@@ -62,6 +62,24 @@ ANDROID_HOME=/opt/android-sdk \
 
 ---
 
+## 3.5 造一个新插件
+
+```bash
+cp -r plugins/_template plugins/<id>
+# 改四处 id（namespace/applicationId、sidecar 的 id 与 entryClass、
+# AndroidManifest 的 cordis.entry、PluginManifest.id），然后
+scripts/plugin.sh build <id>      # Linux 环境
+scripts/plugin.sh deploy <id>     # Android root 环境
+```
+
+- `plugins/_template` **不参与构建**，复制之后要自己在 `settings.gradle.kts` 加 `include`。
+- 忘了同步 `entryClass` 会在 `bundlePlugin` 阶段直接失败——`plugin-verify.gradle.kts`
+  会核对 sidecar 声明的入口类是否真的在 dex 里。
+- **deploy 的信任写入在某些设备上不生效**（EV 跑在沙箱里时，它的 `/data/data` 是
+  tmpfs 覆盖层，脚本写的是真实磁盘）。脚本会检测 inode 不一致并提示；
+  新插件请在插件页点一次「信任」。
+- 插件的运行日志统一打 `EV` tag，装上去先看 logcat 里有没有它自己那一行。
+
 ## 4. 铁律
 
 - **不要改内核目录**（`loader/` `core/` `hmr/` `include/` `packages/`）。`scripts/kernel-freeze.sh` 会拦。
