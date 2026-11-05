@@ -89,6 +89,8 @@ class TemplatePlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
         val directory = ctx.require(ServiceDirectory.Key)
         val service = PongService()
         directory.publish(PingService.Key, service)
+        // 复制后保留这行：装上新插件时，logcat 里能直接看到它真的跑起来了。
+        android.util.Log.i("EV", "template: 已发布 template/ping")
 
         // 身份判断防止一个过期的撤销闭包把后来者发布的新实例撤掉。
         // 这不是防御性编程的洁癖：热重载会真的造出两个实例。

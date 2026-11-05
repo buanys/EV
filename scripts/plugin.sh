@@ -152,6 +152,17 @@ cmd_deploy() {
     trust /data/data/ev.buan/shared_prefs/ev.unsigned.xml "$id" "$sha" "$app_uid" \
         || die "写信任表失败"
 
+    # 这台设备上 EV 跑在 Eta 的沙箱里，它的 /data/data 是一层 tmpfs 覆盖：
+    # 同一个路径在我们这里是真实磁盘（inode 21），在 EV 那里是另一个文件（inode 614986）。
+    # 也就是说上面这次写入 EV 根本看不到——新插件仍然会停在「待确认」。
+    # 保留写入是因为换一台没有沙箱的设备它是有用的；但别把它当成保证。
+    sandboxed=$(nsenter -t "$(pidof ev.buan | awk '{print $1}')" -m -- stat -c %i /data/data/ev.buan 2>/dev/null || true)
+    ours=$(stat -c %i /data/data/ev.buan 2>/dev/null || true)
+    if [ -n "$sandboxed" ] && [ "$sandboxed" != "$ours" ]; then
+        echo "    注意：EV 的 /data/data 是沙箱覆盖层，本次写入它看不到"
+        echo "    新插件请启动后在插件页点一次「信任」"
+    fi
+
     if [ "$launch" = "0" ]; then
         echo "==> 已跳过启动（--no-launch）"
         return 0
