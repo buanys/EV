@@ -10,14 +10,11 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 
 /**
- * 浏览器自己的箭头。
+ * 浏览器自己的图标。
  *
- * 设计系统里没有箭头（只有 `Send` / `Chevron`），于是旧代码拿 `Send` 旋转 90° 冒充——
- * 结果「返回聊天」和「后退」是同一个符号，还挨在一起，用户没法分辨。
- *
- * 为什么不在 `EvGlyphKind` 里加：
- * AGENTS.md 的规矩是「契约只加不改」，而给枚举加值会让已编译插件的 `when` 崩溃。
- * 这两个图形只有这个面板用，画在这里就够了。
+ * 设计系统里没有箭头和房子（只有 `Send` / `Chevron` / `Grid`），而给 `EvGlyphKind` 加值
+ * 会让已编译插件的 `when` 崩溃（AGENTS.md 的硬规矩）。这几个图形只有这个面板用，
+ * 画在这里就够了。
  */
 internal enum class BrowserArrowKind {
     /** 一条带尾巴的向左长箭：离开面板，回到聊天。 */
@@ -68,6 +65,35 @@ internal fun BrowserArrow(
                     lineTo(w * 0.38f, h * 0.76f)
                 }
             }
+        }
+        drawPath(path, color, style = stroke)
+    }
+}
+
+/** 房子：底部工具栏的"回首页"。 */
+@Composable
+internal fun BrowserHomeGlyph(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(
+            width = w * 0.1f,
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round,
+        )
+        val path = Path().apply {
+            // 屋顶
+            moveTo(w * 0.16f, h * 0.48f)
+            lineTo(w * 0.5f, h * 0.18f)
+            lineTo(w * 0.84f, h * 0.48f)
+            // 墙
+            moveTo(w * 0.27f, h * 0.43f)
+            lineTo(w * 0.27f, h * 0.82f)
+            lineTo(w * 0.73f, h * 0.82f)
+            lineTo(w * 0.73f, h * 0.43f)
         }
         drawPath(path, color, style = stroke)
     }

@@ -54,6 +54,15 @@ internal class BrowserSession {
     var error by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * 本次会话访问过的域名，最近的在前。
+     *
+     * 只做内存、不落盘：这是首页的"快捷入口"，不是一个完整的访问历史。
+     * 落盘的历史是另一件事（要能搜索、清除、按时间分组），先不假装有。
+     */
+    val recentHosts: List<String> get() = recent
+    private val recent = androidx.compose.runtime.mutableStateListOf<String>()
+
     fun attach(view: WebView) {
         this.view = view
         syncControls()
@@ -113,8 +122,24 @@ internal class BrowserSession {
         view.loadUrl(url)
     }
 
+    /** 回到首页：清空页面状态，WebView 停在 about:blank。 */
+    fun goHome() {
+        val view = view ?: return
+        view.stopLoading()
+        view.loadUrl(HOME_URL)
+        currentUrl = ""
+        pageTitle = ""
+        address = ""
+        error = null
+        loading = false
+        canGoBack = false
+        canGoForward = false
+    }
+
     /** 页面开始加载。 */
     fun onStarted(url: String?) {
+        // about:blank 是首页的占位，不是"用户打开了 about:blank"。
+        if (url == HOME_URL) return
         loading = true
         error = null
         if (!url.isNullOrBlank()) currentUrl = url
@@ -123,18 +148,37 @@ internal class BrowserSession {
 
     /** 页面加载结束：退出 loading，同步地址栏（用户正在编辑时不覆盖）。 */
     fun onFinished(url: String?, title: String?) {
+        if (url == HOME_URL) return
         loading = false
         if (!url.isNullOrBlank()) {
             currentUrl = url
             if (!editingAddress) address = url
         }
         if (!title.isNullOrBlank()) pageTitle = title
+        rememberHost(url)
         syncControls()
+    }
+
+    /** 记下这个页面的域名；重复访问会被提到最前。 */
+    private fun rememberHost(url: String?) {
+        val host = url
+            ?.let { runCatching { java.net.URI(it).host }.getOrNull() }
+            ?.removePrefix("www.")
+            ?.takeIf { it.isNotBlank() }
+            ?: return
+        recent.remove(host)
+        recent.add(0, host)
+        while (recent.size > MAX_RECENT) recent.removeAt(recent.lastIndex)
     }
 
     /** 页面标题回调；WebChromeClient 可能在 onPageFinished 之前就送来。 */
     fun onTitle(title: String?) {
         if (!title.isNullOrBlank()) pageTitle = title
+    }
+
+    private companion object {
+        const val HOME_URL = "about:blank"
+        const val MAX_RECENT = 4
     }
 
     /**

@@ -55,7 +55,18 @@ fun BrowserPage(
         BrowserChrome(session = session, onBack = onBack)
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
+            // WebView 常驻：从组合里移除会触发 DisposableEffect 把它销毁，
+            // 再打开页面又要重建一个。首页只是盖在它上面的一层。
             BrowserWebView(session = session, modifier = Modifier.fillMaxSize())
+
+            if (session.currentUrl.isEmpty() && session.error == null) {
+                BrowserHome(
+                    session = session,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MiuixTheme.colorScheme.background),
+                )
+            }
 
             session.error?.let { message ->
                 ErrorView(
@@ -66,19 +77,6 @@ fun BrowserPage(
                     },
                     modifier = Modifier.align(Alignment.Center),
                 )
-            } ?: run {
-                if (session.currentUrl.isEmpty()) {
-                    // 空态贴着顶部而不是屏幕正中：页面开起来之后这块会立刻被盖住，
-                    // 放正中会让首屏看起来像"什么都没有"。
-                    Text(
-                        text = "输入网址开始浏览。链接会留在本面板内打开。",
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(horizontal = 32.dp, vertical = 44.dp),
-                    )
-                }
             }
         }
 

@@ -1,6 +1,7 @@
 package ev.buan.plugins.agent.browse
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,19 +32,27 @@ internal fun BrowserBottomBar(
 ) {
     val colors = MiuixTheme.colorScheme
     Row(
-        modifier.fillMaxWidth().height(44.dp).padding(horizontal = 10.dp),
+        modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
         NavArrow(BrowserArrowKind.ChevronLeft, session.canGoBack, "后退") { session.goBack() }
+        Spacer(Modifier.width(28.dp))
         NavArrow(BrowserArrowKind.ChevronRight, session.canGoForward, "前进") { session.goForward() }
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = statusOf(session),
-            style = MiuixTheme.textStyles.footnote1,
-            color = colors.onSurfaceVariantSummary,
-            maxLines = 1,
-            modifier = Modifier.weight(1f),
-        )
+        Spacer(Modifier.width(28.dp))
+        // 回首页：正常浏览器的底部都有这一颗，否则离开页面之后没有"起点"可回。
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable(onClickLabel = "回首页", onClick = { session.goHome() }),
+            contentAlignment = Alignment.Center,
+        ) {
+            BrowserHomeGlyph(
+                color = MiuixTheme.colorScheme.onBackground,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 

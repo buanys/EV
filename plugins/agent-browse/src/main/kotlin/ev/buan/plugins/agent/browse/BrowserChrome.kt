@@ -40,11 +40,13 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 顶栏：退出面板、地址栏、刷新。
+ * 顶栏。两种形态：
  *
- * 旧版把「返回聊天」「后退」「前进」全塞在顶部两行里，而且都用 Send 旋转出来，
- * 于是两个 ↑ 挨在一起表示两件完全不同的事。现在顶部只留**离开面板**这一个出口
- * （长箭），网页历史挪到底部（折线），形状和位置都区分开。
+ * - **首页**（还没有页面）：只有退出和标题「主页」。地址栏让位给中间的大搜索框——
+ *   一个还没填地址的输入框贴在顶上，看起来像表单，不像"可以开始的地方"。
+ * - **页面中**：退出 + 地址栏 + 刷新。
+ *
+ * 不管哪种形态，下方都跟着那条 2dp 的加载线。
  */
 @Composable
 internal fun BrowserChrome(
@@ -52,6 +54,40 @@ internal fun BrowserChrome(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    Column(modifier.fillMaxWidth()) {
+        if (session.currentUrl.isEmpty()) {
+            HomeHeader(onBack = onBack)
+        } else {
+            PageHeader(session = session, onBack = onBack)
+        }
+        LoadProgress(visible = session.loading)
+    }
+}
+
+@Composable
+private fun HomeHeader(onBack: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircleTap(enabled = true, label = "返回聊天", onClick = onBack) {
+            BrowserArrow(
+                kind = BrowserArrowKind.Back,
+                color = MiuixTheme.colorScheme.onBackground,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "主页",
+            style = MiuixTheme.textStyles.subtitle,
+            color = MiuixTheme.colorScheme.onBackground,
+        )
+    }
+}
+
+@Composable
+private fun PageHeader(session: BrowserSession, onBack: () -> Unit) {
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val colors = MiuixTheme.colorScheme
@@ -63,67 +99,63 @@ internal fun BrowserChrome(
         }
     }
 
-    Column(modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(start = 8.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircleTap(enabled = true, label = "返回聊天", onClick = onBack) {
-                BrowserArrow(
-                    kind = BrowserArrowKind.Back,
-                    color = colors.onBackground,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(colors.onBackground.copy(alpha = 0.06f))
-                    .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                if (session.address.isEmpty()) {
-                    Text(
-                        text = "输入网址",
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = colors.onSurfaceVariantSummary,
-                    )
-                }
-                BasicTextField(
-                    value = session.address,
-                    onValueChange = { session.address = it },
-                    singleLine = true,
-                    textStyle = TextStyle(color = colors.onBackground, fontSize = 13.sp),
-                    cursorBrush = SolidColor(colors.primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(onGo = { submit() }),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { session.editingAddress = it.isFocused },
-                )
-            }
-            Spacer(Modifier.width(6.dp))
-            CircleTap(
-                enabled = session.currentUrl.isNotEmpty(),
-                label = "刷新",
-                onClick = { session.reload() },
-            ) {
-                EvGlyph(
-                    EvGlyphKind.Refresh,
-                    color = if (session.currentUrl.isNotEmpty()) {
-                        colors.onBackground
-                    } else {
-                        colors.onBackground.copy(alpha = 0.25f)
-                    },
-                    modifier = Modifier.size(17.dp),
-                )
-            }
+    Row(
+        Modifier.fillMaxWidth().height(52.dp).padding(start = 8.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircleTap(enabled = true, label = "返回聊天", onClick = onBack) {
+            BrowserArrow(
+                kind = BrowserArrowKind.Back,
+                color = colors.onBackground,
+                modifier = Modifier.size(20.dp),
+            )
         }
-
-        LoadProgress(visible = session.loading)
+        Spacer(Modifier.width(6.dp))
+        Box(
+            Modifier
+                .weight(1f)
+                .height(36.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(colors.onBackground.copy(alpha = 0.06f))
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (session.address.isEmpty()) {
+                Text(
+                    text = "输入网址",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = colors.onSurfaceVariantSummary,
+                )
+            }
+            BasicTextField(
+                value = session.address,
+                onValueChange = { session.address = it },
+                singleLine = true,
+                textStyle = TextStyle(color = colors.onBackground, fontSize = 13.sp),
+                cursorBrush = SolidColor(colors.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { submit() }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { session.editingAddress = it.isFocused },
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        CircleTap(
+            enabled = session.currentUrl.isNotEmpty(),
+            label = "刷新",
+            onClick = { session.reload() },
+        ) {
+            EvGlyph(
+                EvGlyphKind.Refresh,
+                color = if (session.currentUrl.isNotEmpty()) {
+                    colors.onBackground
+                } else {
+                    colors.onBackground.copy(alpha = 0.25f)
+                },
+                modifier = Modifier.size(17.dp),
+            )
+        }
     }
 }
 
@@ -131,8 +163,7 @@ internal fun BrowserChrome(
  * 地址栏下面那条 2dp 的进度线。
  *
  * 旧版只有一句「载入中…」文字，页面慢的时候看不出到底在动还是卡住了。
- * 这里用一条来回呼吸的细线：它不报告真实进度（WebView 只在 onProgressChanged 里给），
- * 但能回答"还活着吗"——那才是等待时真正想问的。
+ * 它不报告真实进度（WebView 的 onProgressChanged 才有），但能回答"还活着吗"。
  */
 @Composable
 private fun LoadProgress(visible: Boolean) {
