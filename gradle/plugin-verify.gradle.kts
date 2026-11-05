@@ -19,6 +19,35 @@ tasks.matching { it.name == "bundlePlugin" }.configureEach {
         val dist = layout.buildDirectory.dir("dist").get().asFile
         val jars = dist.listFiles { f -> f.extension == "jar" }.orEmpty()
         check(jars.isNotEmpty()) { "bundlePlugin: ${dist.path} 下没有 jar" }
+
+        // sidecar 的 entryClass 必须真的在 dex 里。
+        // 改名时最容易被漏掉的就是这一处：构建照样成功、jar 也打得出来，
+        // 但加载器找不到入口类，会退回用文件名当插件 id，表现为"永远停在待确认"。
+        // 这个检查把那种失败从运行期提前到构建期。
+        val sidecars = dist.listFiles { f -> f.extension == "json" }.orEmpty()
+        check(sidecars.size == 1) {
+            "bundlePlugin: 期望恰好一个 sidecar，实际 ${sidecars.size} 个（${sidecars.joinToString { it.name }}）"
+        }
+        val entryClass = Regex("\"entryClass\"\\s*:\\s*\"([^\"]+)\"")
+            .find(sidecars[0].readText())
+            ?.groupValues?.get(1)
+        check(entryClass != null) { "bundlePlugin: ${sidecars[0].name} 里没有 entryClass" }
+        val entryNeedle = "L" + entryClass.replace('.', '/') + ";"
+        jars.forEach { jar ->
+            java.util.zip.ZipFile(jar).use { zip ->
+                val found = zip.entries().asSequence()
+                    .filter { it.name.endsWith(".dex") }
+                    .any { entry ->
+                        String(zip.getInputStream(entry).readBytes(), Charsets.ISO_8859_1)
+                            .contains(entryNeedle)
+                    }
+                check(found) {
+                    "${jar.name} 里找不到 sidecar 声明的入口类 $entryClass。" +
+                        "改类名之后别忘了同步 build.gradle.kts 里 sidecar 的 entryClass。"
+                }
+            }
+        }
+
         val needle = "androidx/compose/material/icons/extended"
         jars.forEach { jar ->
             java.util.zip.ZipFile(jar).use { zip ->
