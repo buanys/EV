@@ -358,6 +358,8 @@ private fun PluginSection(
                         append("版本 ").append(card.version)
                         append("  ·  api ").append(card.apiVersion)
                         if (!card.signed) append("  ·  未签名")
+                        // 一眼层只加一个词：开了才显示，没开不制造噪音。
+                        if (card.trustsUpdates) append("  ·  自动信任")
                     },
                     style = MiuixTheme.textStyles.footnote1,
                     color = colors.onSurfaceVariantSummary,
@@ -373,65 +375,10 @@ private fun PluginSection(
                         modifier = Modifier.padding(top = 6.dp),
                     )
                 }
-                // 只有未签名插件才有"信任后续版本"这回事：已签名的走签名链，不需要人逐次点头。
-                if (!card.signed) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 8.dp),
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = "信任后续版本",
-                                style = MiuixTheme.textStyles.footnote1,
-                                color = colors.onBackground,
-                            )
-                            Text(
-                                text = if (card.trustsUpdates) {
-                                    "权限与依赖不变时，更新不再询问"
-                                } else {
-                                    "每次更新都要重新确认"
-                                },
-                                style = MiuixTheme.textStyles.footnote1,
-                                color = colors.onSurfaceVariantSummary,
-                            )
-                        }
-                        Switch(
-                            checked = card.trustsUpdates,
-                            onCheckedChange = { onTrustUpdates(card.id, it) },
-                        )
-                    }
-                }
+
             }
             Box(Modifier.padding(start = 12.dp)) {
                 Switch(checked = card.enabled, onCheckedChange = { onToggle(card.id, it) })
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // A plugin without a UI page still offers "打开" is pointless, so the action only
-            // appears when there is somewhere to go.
-            if (card.ui != null) {
-                CardAction(label = "打开") { onOpenPage(card.id) }
-                Spacer(Modifier.width(10.dp))
-            }
-            CardAction(label = "清理") { onClearStorage(card.id) }
-            Spacer(Modifier.weight(1f))
-            CardAction(label = "卸载", danger = true) { onUninstall(card.id) }
-        }
-
-        if (confirming) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = "卸载只删除 EV/mods 里的容器文件，插件存储的数据会保留。重启 EV 后生效。",
-                style = MiuixTheme.textStyles.footnote1,
-                color = colors.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CardAction(label = "取消") { onCancelUninstall() }
-                Spacer(Modifier.weight(1f))
-                CardAction(label = "确认卸载", danger = true) { onConfirmUninstall() }
             }
         }
 
@@ -466,18 +413,39 @@ private fun PluginSection(
                     }
                 }
             }
+            // 未签名插件才有「信任后续版本」：已签名走签名链，不需要人逐次点头。
+            // 放在展开区，因为它是一次性的决定，不是每次打开都要看的开关。
+            if (!card.signed) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "信任后续版本",
+                            style = MiuixTheme.textStyles.body1,
+                            color = colors.onBackground,
+                        )
+                        Text(
+                            text = if (card.trustsUpdates) {
+                                "权限与依赖不变时的更新会自动通过"
+                            } else {
+                                "每次更新都需要你确认"
+                            },
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = colors.onSurfaceVariantSummary,
+                        )
+                    }
+                    Switch(
+                        checked = card.trustsUpdates,
+                        onCheckedChange = { onTrustUpdates(card.id, it) },
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "存储 ${formatBytes(card.storageBytes)} / ${formatBytes(PluginStorageFiles.DEFAULT_QUOTA_BYTES)}",
                     style = MiuixTheme.textStyles.footnote1,
                     color = colors.onSurfaceVariantSummary,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "清理",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = colors.primary,
                 )
             }
             if (card.error != null) {
@@ -494,9 +462,36 @@ private fun PluginSection(
                     style = MiuixTheme.textStyles.footnote1,
                     color = colors.onSurfaceVariantSummary,
                 )
+
             }
         }
-    }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // A plugin without a UI page still offers "打开" is pointless, so the action only
+            // appears when there is somewhere to go.
+            if (card.ui != null) {
+                CardAction(label = "打开") { onOpenPage(card.id) }
+                Spacer(Modifier.width(10.dp))
+            }
+            CardAction(label = "清理") { onClearStorage(card.id) }
+            Spacer(Modifier.weight(1f))
+            CardAction(label = "卸载", danger = true) { onUninstall(card.id) }
+        }
+
+        if (confirming) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "卸载只删除 EV/mods 里的容器文件，插件存储的数据会保留。重启 EV 后生效。",
+                style = MiuixTheme.textStyles.footnote1,
+                color = colors.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CardAction(label = "取消") { onCancelUninstall() }
+                Spacer(Modifier.weight(1f))
+                CardAction(label = "确认卸载", danger = true) { onConfirmUninstall() }
+            }
+        }    }
 }
 
 @Composable
