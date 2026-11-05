@@ -2,6 +2,7 @@ package ev.buan.plugins.agent.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import ev.buan.plugins.agent.api.ApprovalPolicy
 import ev.buan.plugins.agent.api.ToolRegistry
 import org.cordis.Context
 import org.cordis.Dependencies
@@ -95,6 +96,10 @@ class AgentShellPlugin :
         }.getOrNull()?.coerceIn(1, ShellTools.MAX_TIMEOUT_SECONDS)
             ?: ShellTools.DEFAULT_TIMEOUT_SECONDS
         registry.register(PLUGIN_ID, ShellTools.all(ProbingShellRunner()) { defaultTimeout })
+        // ADR-0007 的策略层：明确灾难性的命令直接拒绝，其余仍然问人。
+        // 没有它，headless 形态（没有 UI 就没有审批通道）下 run_shell 等于永远不可用。
+        directory.publish(ApprovalPolicy.Key, DangerousCommandPolicy)
+        android.util.Log.i("EV", "shell: 审批策略已发布（灾难性命令直接拒绝，其余问人）")
         this.registry = registry
         this.directory = directory
         android.util.Log.i(
@@ -105,6 +110,9 @@ class AgentShellPlugin :
         // Identity is unnecessary here (unregister is owner-scoped): even a stale disposer can
         // only remove this plugin's own group, which is exactly what disposal means.
         effect.collect {
+            if (directory.lookup(ApprovalPolicy.Key) === DangerousCommandPolicy) {
+                directory.retract(ApprovalPolicy.Key)
+            }
             registry.unregister(PLUGIN_ID)
         }
     }

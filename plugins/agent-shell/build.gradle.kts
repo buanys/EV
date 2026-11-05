@@ -59,6 +59,8 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     testImplementation("org.json:json:20260814")
+    // 这个模块带 Compose 页面，测试编译时 Compose 编译器要求 classpath 上有 runtime。
+    testImplementation("androidx.compose.runtime:runtime:1.12.0")
 }
 
 /**
