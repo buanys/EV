@@ -381,7 +381,23 @@ class PluginInstaller(
                     trace("accepted-with-denied-permissions ${meta.id} (${source.name})")
                 } else {
                     errors += "${decision.rejection.code}: ${decision.rejection.message}"
-                    trace("rejected ${meta.id} (${source.name}): ${decision.rejection.code}")
+                    // 只打 code 等于把人赶去读 validator：缺哪个依赖、那个依赖现在是什么状态，
+                    // 这里其实全都知道。
+                    trace(
+                        "rejected ${meta.id} (${source.name}): ${decision.rejection.code}" +
+                            " · ${decision.rejection.message}",
+                    )
+                    if (decision.rejection.code == PluginRejectionCode.DEPENDENCY_MISSING) {
+                        candidate.dependencies.filter { it !in accepted.keys }.forEach { dep ->
+                            val state = when {
+                                pending.any { it.id == dep } ->
+                                    "pending（未信任：在插件页确认它，或跑 scripts/plugin.sh deploy）"
+                                else ->
+                                    "本次没有被接受（不在 mods、被别的规则拒绝，或它自己也缺依赖）"
+                            }
+                            trace("  ↳ 依赖 $dep：$state")
+                        }
+                    }
                 }
 
             is ValidationResult.NeedsUnsignedApproval ->
