@@ -52,13 +52,19 @@ fun BrowserPage(
             BrowserWebView(session = session, modifier = Modifier.fillMaxSize())
 
             if (session.currentUrl.isEmpty()) {
+                // 空态贴着顶部而不是屏幕正中：页面开起来之后这块会立刻被盖住，
+                // 放正中会让首屏看起来像"什么都没有"。
                 Text(
-                    text = "地址栏输入网址后按 Go；链接会留在本面板内打开。",
+                    text = "输入网址开始浏览。链接会留在本面板内打开。",
                     style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 40.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = 32.dp, vertical = 44.dp),
                 )
             }
         }
+
+        BrowserBottomBar(session = session)
     }
 }
