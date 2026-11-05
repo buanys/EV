@@ -148,6 +148,8 @@
             android:name=".PluginPageActivity"
             android:exported="false"
             android:label="EV"
+            android:documentLaunchMode="intoExisting"
+            android:autoRemoveFromRecents="false"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- 通知读取：用户必须在 设置 → 通知 → 通知使用权 里手动授权，

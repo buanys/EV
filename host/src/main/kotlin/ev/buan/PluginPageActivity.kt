@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import ev.buan.intro.LaunchIntro
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvTheme
 import ev.buan.ui.evSystemBarsPadding
@@ -51,31 +52,19 @@ class PluginPageActivity : ComponentActivity() {
 
         setContent {
             var runtime by remember { mutableStateOf(app.startedRuntime) }
-            var failed by remember { mutableStateOf(false) }
-
-            LaunchedEffect(Unit) {
-                if (runtime != null) return@LaunchedEffect
-                runCatching { app.runtime.start(LaunchScope.Closure(pluginId)) }
-                    .onFailure { failed = true }
-                runtime = app.startedRuntime
-                if (runtime == null) failed = true
-            }
-
-            if (failed) {
-                // 启动失败（安全模式、装不上的容器）：交给主界面去解释，别停在一个空页上。
-                LaunchedEffect(Unit) {
-                    startActivity(
-                        Intent(this@PluginPageActivity, MainActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                    finish()
-                }
-                return@setContent
-            }
 
             val live = runtime
             if (live == null) {
-                LoadingScreen()
+                // 和主界面同一套启动动画，不是另一套"正在加载插件…"。
+                // 它自己负责调 start(scope) 并处理权限/失败，所以这里不再另起一个
+                // LaunchedEffect——两条路径同时启动会互相踩。
+                LaunchIntro(
+                    runtime = app.runtime,
+                    activity = this@PluginPageActivity,
+                    scope = LaunchScope.Closure(pluginId),
+                ) {
+                    runtime = app.startedRuntime
+                }
                 return@setContent
             }
 
@@ -98,7 +87,7 @@ class PluginPageActivity : ComponentActivity() {
                 if (page != null) {
                     // The page owns its chrome; the host only supplies the surface.
                     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
-                        page.Page(Modifier.fillMaxSize().evSystemBarsPadding(), onBack = { finish() })
+                        page.Page(Modifier.fillMaxSize().evSystemBarsPadding(), onBack = { leave() })
                     }
                 } else if (ui == null) {
                     EvPage(title = "EV") {
@@ -109,7 +98,7 @@ class PluginPageActivity : ComponentActivity() {
                         }
                     }
                 } else {
-                    EvPage(title = titleOf(pluginId), onBack = { finish() }) {
+                    EvPage(title = titleOf(pluginId), onBack = { leave() }) {
                         item {
                             androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
                                 ui.Content(Modifier.fillMaxSize())
@@ -121,19 +110,20 @@ class PluginPageActivity : ComponentActivity() {
         }
     }
 
-    /** 冷启动那几秒的占位：一句话，不转圈——转圈会让人以为卡住了。 */
-    @androidx.compose.runtime.Composable
-    private fun LoadingScreen() {
-        Column(
-            Modifier.fillMaxSize().padding(32.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "正在加载插件…",
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
+    /**
+     * 离开这个页面。
+     *
+     * 从桌面快捷方式打开时它是一个独立任务（`isTaskRoot`），这时候**不能 finish**：
+     * Activity 一销毁任务就空了，最近任务里那张卡也随之消失，用户再想切回来就没入口。
+     * 移到后台才是"退出应用"的正确语义——任务还在，点回来是原样。
+     *
+     * 从宿主内部打开时它不是根，`finish()` 才是回去的路。
+     */
+    private fun leave() {
+        if (isTaskRoot) {
+            moveTaskToBack(true)
+        } else {
+            finish()
         }
     }
 

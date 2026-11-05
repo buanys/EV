@@ -33,14 +33,14 @@ object ShortcutPin {
         val manager = context.getSystemService(ShortcutManager::class.java) ?: return false
         if (!manager.isRequestPinShortcutSupported) return false
 
+        // data URI 是 document 任务的复用键：同一个插件再点一次会命中 intoExisting 的
+        // 那个任务，而不是又开一张最近任务卡片。MULTIPLE_TASK 必须去掉——它明确要求
+        // "每次都要新任务"，和复用正好相反。
         val intent = Intent(context, PluginPageActivity::class.java)
             .setAction(Intent.ACTION_VIEW)
+            .setData(android.net.Uri.parse("ev://plugin/$pluginId"))
             .putExtra("ev.plugin.id", pluginId)
-            .addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
-                    Intent.FLAG_ACTIVITY_MULTIPLE_TASK,
-            )
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
 
         val info = ShortcutInfo.Builder(context, shortcutId(pluginId, shortcut))
             .setShortLabel(shortcut.label)

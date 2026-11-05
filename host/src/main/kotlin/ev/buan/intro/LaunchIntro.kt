@@ -1,5 +1,6 @@
 package ev.buan.intro
 
+import ev.buan.LaunchScope
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
@@ -202,7 +203,18 @@ private fun bootStats(context: Context, facts: DeviceFacts, mods: ModsInfo?): Li
 /* ------------------------------------------------------------- entry point */
 
 @Composable
-fun LaunchIntro(runtime: HostRuntime, activity: ComponentActivity, onDone: () -> Unit) {
+fun LaunchIntro(
+    runtime: HostRuntime,
+    activity: ComponentActivity,
+    /**
+     * 这次启动要加载多少插件。
+     *
+     * 主界面用 [LaunchScope.Full]；从桌面快捷方式进来时只加载那个插件的闭包——
+     * 用户点的是"浏览器"图标，他没有要聊天、模型和记忆。
+     */
+    scope: LaunchScope = LaunchScope.Full,
+    onDone: () -> Unit,
+) {
     val context = LocalContext.current
     val reduced = remember { reducedMotion(context) }
     val facts = remember { deviceFacts(context) }
@@ -227,7 +239,7 @@ fun LaunchIntro(runtime: HostRuntime, activity: ComponentActivity, onDone: () ->
     LaunchedEffect(stage, granted) {
         if (stage == IntroStage.Assembly && granted && !startRequested) {
             startRequested = true
-            runCatching { runtime.start() }.onFailure { loadFailure.value = it.toString() }
+            runCatching { runtime.start(scope) }.onFailure { loadFailure.value = it.toString() }
         }
     }
 
