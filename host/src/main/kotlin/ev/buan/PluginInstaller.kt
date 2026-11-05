@@ -13,6 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.cordis.api.HostPermission
 import org.cordis.api.PLUGIN_API_VERSION
+import ev.buan.hostcore.trust.CapabilitySurface
+import ev.buan.hostcore.trust.CapabilityTrust
+import ev.buan.hostcore.trust.TrustOutcome
 import ev.buan.hostcore.validation.DexClassScanner
 import ev.buan.hostcore.validation.HostPolicy
 import ev.buan.hostcore.validation.PluginCandidate
@@ -88,6 +91,13 @@ class PluginInstaller(
      * 执行入口。改成 false 不会让人装不上插件：宿主启动后停在插件管理页，导入 + 确认即可。
      */
     private val autoTrustUnsigned: Boolean = false,
+    /**
+     * ADR-0008 的能力面记录与 per-id opt-in。
+     *
+     * 默认状态下没有记录、opt-in 关闭，所以判定永远落到"需要确认"——
+     * 这个参数存在与否不改变现有行为。
+     */
+    private val capabilityTrust: CapabilityTrustStore = CapabilityTrustStore(context),
 ) {
 
     private val privateRoot: File = File(context.filesDir, "mods")
@@ -353,14 +363,27 @@ class PluginInstaller(
             },
         )
 
+        // ADR-0008：未签名插件的「能力面」。依赖也算——它可以通过 lookup 高权限插件的
+        // 服务间接扩权，所以不能只比权限。
+        val surface = CapabilitySurface.of(meta.permissions.declared, meta.dependencies)
+
         var decision = PluginValidator.validate(candidate, policy)
         if (decision is ValidationResult.NeedsUnsignedApproval) {
             if (!autoTrustUnsigned) {
-                pending += PendingUnsigned(meta.id, meta.version, decision.sha256, source.name)
-                trace("pending ${meta.id} (${source.name})")
-                return
+                val outcome = CapabilityTrust.decide(
+                    previous = capabilityTrust.surface(meta.id),
+                    current = surface,
+                    optedIn = capabilityTrust.trustsUpdates(meta.id),
+                )
+                if (outcome !is TrustOutcome.Approve) {
+                    pending += PendingUnsigned(meta.id, meta.version, decision.sha256, source.name)
+                    trace("pending ${meta.id} (${source.name}) · ${CapabilityTrust.describe(outcome)}")
+                    return
+                }
+                trace("auto-approved ${meta.id} (${source.name}) · ${CapabilityTrust.describe(outcome)}")
             }
             approvals.approve(decision.pluginId, decision.sha256)
+            capabilityTrust.record(meta.id, surface)
             decision = PluginValidator.validate(
                 candidate,
                 policy.copy(approvedUnsignedHashes = approvals.approved()),
@@ -368,6 +391,11 @@ class PluginInstaller(
         }
         when (decision) {
             ValidationResult.Accepted -> {
+                // 人工批准过的未签名插件，下次启动因 sha256 匹配直接到这里——此时补记能力面，
+                // 作为它下一次更新时的比对基准。已存在就不覆盖，避免把扩权写进基准。
+                if (approvals.approved().containsKey(meta.id)) {
+                    capabilityTrust.recordIfAbsent(meta.id, surface)
+                }
                 publish(source, meta, hash, candidate, accepted, hashes, reused = cached != null)
                 trace("accepted ${meta.id} (${source.name})")
             }
