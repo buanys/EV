@@ -51,6 +51,8 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
+    // 这个模块带 Compose 页面，测试编译时 Compose 编译器要求 classpath 上有 runtime。
+    testImplementation("androidx.compose.runtime:runtime:1.12.0")
     testImplementation(files(agentApiClasses))
     testImplementation("org.jsoup:jsoup:1.23.2")
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
