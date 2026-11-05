@@ -237,6 +237,11 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostRuntime) {
                                 }
                             },
                             onCancelUninstall = { pendingUninstall = null },
+                            onTrustUpdates = { id, trust ->
+                                scope.launch {
+                                    state = HostUiState.Ready(runtime.setTrustUpdates(id, trust))
+                                }
+                            },
                         )
                     }
                 }
@@ -255,7 +260,8 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostRuntime) {
                                 if (index > 0) EvPreferenceDivider()
                                 EvPreferenceRow(
                                     title = pendingItem.id,
-                                    summary = "v${pendingItem.version} · 未签名 · 哈希 ${pendingItem.sha256.take(8)}…",
+                                    summary = "v${pendingItem.version} · 未签名 · 哈希 ${pendingItem.sha256.take(8)}…" +
+                                    (pendingItem.reason?.let { "\n$it" } ?: ""),
                                     onClick = {
                                         state = HostUiState.Ready(
                                             runtime.approveUnsigned(pendingItem.id, pendingItem.sha256),
@@ -324,6 +330,7 @@ private fun PluginSection(
     onUninstall: (String) -> Unit,
     onConfirmUninstall: () -> Unit,
     onCancelUninstall: () -> Unit,
+    onTrustUpdates: (String, Boolean) -> Unit,
 ) {
     var expanded by remember(card.id) { mutableStateOf(false) }
     val colors = MiuixTheme.colorScheme
@@ -365,6 +372,34 @@ private fun PluginSection(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 6.dp),
                     )
+                }
+                // 只有未签名插件才有"信任后续版本"这回事：已签名的走签名链，不需要人逐次点头。
+                if (!card.signed) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = "信任后续版本",
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = colors.onBackground,
+                            )
+                            Text(
+                                text = if (card.trustsUpdates) {
+                                    "权限与依赖不变时，更新不再询问"
+                                } else {
+                                    "每次更新都要重新确认"
+                                },
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = colors.onSurfaceVariantSummary,
+                            )
+                        }
+                        Switch(
+                            checked = card.trustsUpdates,
+                            onCheckedChange = { onTrustUpdates(card.id, it) },
+                        )
+                    }
                 }
             }
             Box(Modifier.padding(start = 12.dp)) {

@@ -50,6 +50,14 @@ data class PendingUnsigned(
     val version: String,
     val sha256: String,
     val fileName: String,
+    /**
+     * 为什么还要人确认（由能力面判定给出的一句话）。
+     *
+     * null 表示没有额外原因，只是"没批准过"。有值时插件页会把这句直接显示出来——
+     * 「第一次见到」「未开启信任后续版本」「权限或依赖有变化」是三种完全不同的处境，
+     * 用户看不到区别就只能盲签。
+     */
+    val reason: String? = null,
 )
 
 data class SyncResult(
@@ -376,8 +384,15 @@ class PluginInstaller(
                     optedIn = capabilityTrust.trustsUpdates(meta.id),
                 )
                 if (outcome !is TrustOutcome.Approve) {
-                    pending += PendingUnsigned(meta.id, meta.version, decision.sha256, source.name)
-                    trace("pending ${meta.id} (${source.name}) · ${CapabilityTrust.describe(outcome)}")
+                    val reason = CapabilityTrust.describe(outcome)
+                    pending += PendingUnsigned(
+                        id = meta.id,
+                        version = meta.version,
+                        sha256 = decision.sha256,
+                        fileName = source.name,
+                        reason = reason,
+                    )
+                    trace("pending ${meta.id} (${source.name}) · $reason")
                     return
                 }
                 trace("auto-approved ${meta.id} (${source.name}) · ${CapabilityTrust.describe(outcome)}")

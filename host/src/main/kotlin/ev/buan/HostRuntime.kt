@@ -44,6 +44,25 @@ import org.cordis.loader.AndroidModuleVerifier
 import org.cordis.plugin
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Plugin activation progress for the launch intro. Only the enabled plugins that are activated in
+ * one pass are counted; [names] keeps their activation order so the UI can match index to plugin.
+ */
+data class LoadProgress(
+    val total: Int = 0,
+    val done: Int = 0,
+    val current: String? = null,
+    val names: List<String> = emptyList(),
+    val failed: Set<String> = emptySet(),
+    val finished: Boolean = false,
+)
+
+/** Short display name for a plugin id, e.g. `ev.buan.plugins.ev.ui` -> `ev.ui`. */
+internal fun shortPluginName(id: String): String = id.removePrefix("ev.buan.plugins.")
 
 /** What the UI renders for one plugin, whether or not it managed to activate. */
 data class PluginCard(
@@ -62,6 +81,12 @@ data class PluginCard(
     val grantedPermissions: Set<HostPermission> = emptySet(),
     /** Bytes used by the plugin's persistent storage area. */
     val storageBytes: Long = 0,
+    /**
+     * 是否为这个未签名插件开启了「信任后续版本」（ADR-0008）。
+     *
+     * 关闭时它已有的字节批准仍然有效，只是下一次更新不再自动继承。
+     */
+    val trustsUpdates: Boolean = false,
 )
 
 data class HostState(
@@ -153,7 +178,15 @@ class HostRuntime(private val context: AndroidContext) {
     )
     private val approvals = UnsignedApprovalStore(context)
     private val permissions = PermissionStore(context)
-    private val installer = PluginInstaller(context, trust, approvals, permissions)
+    /** ADR-0008：未签名插件的能力面与「信任后续版本」开关。默认全部关闭。 */
+    private val capabilityTrust = CapabilityTrustStore(context)
+    private val installer = PluginInstaller(
+        context,
+        trust,
+        approvals,
+        permissions,
+        capabilityTrust = capabilityTrust,
+    )
 
     /** Crash marker under `files/crash/`; tells [start] whether this is a safe-mode launch. */
     private val crash = CrashStore(context)
@@ -221,6 +254,15 @@ class HostRuntime(private val context: AndroidContext) {
 
     /** Latest published state; null until [start] finishes its first pass. */
     val state: State<HostState?> = stateHolder
+
+    private val progressHolder = MutableStateFlow(LoadProgress())
+
+    /** The Compose state as a Flow, so non-Compose code can wait on it. */
+    fun stateFlow(): kotlinx.coroutines.flow.Flow<HostState?> =
+        androidx.compose.runtime.snapshotFlow { stateHolder.value }
+
+    /** Live activation progress; the launch intro observes it, nothing else needs to. */
+    val loadProgress: StateFlow<LoadProgress> = progressHolder.asStateFlow()
 
     /**
      * Plugin whose page or inline UI the host last handed to a screen (recorded in [pageFor] and
@@ -325,6 +367,7 @@ class HostRuntime(private val context: AndroidContext) {
         // start that throws never reaches this line, so both leave the process unable to render a
         // plugin page - which is exactly what PluginPageActivity needs to know.
         lifecycle.completeStart(safeMode = safeMode != null)
+        progressHolder.value = progressHolder.value.copy(finished = true, current = null)
         snapshot()
     }
 
@@ -360,6 +403,20 @@ class HostRuntime(private val context: AndroidContext) {
         // just mean this scan missed it), and disabled plugins stay installed, so their data is
         // never touched here. Clearing on disable is deliberately not a thing.
         if (sync.errors.isEmpty()) pruneStorageOfUninstalled()
+        // Progress covers exactly the plugins this pass will try to activate, in activation order.
+        val targets = if (safeMode == null) installed.values.filter { isEnabled(it.id) } else emptyList()
+        var processed = 0
+        fun publishProgress(current: String?) {
+            progressHolder.value = progressHolder.value.copy(
+                total = targets.size,
+                done = processed,
+                current = current,
+                names = targets.map { shortPluginName(it.id) },
+                failed = targets.filter { it.id in failures }.map { shortPluginName(it.id) }.toSet(),
+                finished = false,
+            )
+        }
+        publishProgress(targets.firstOrNull()?.let { shortPluginName(it.id) })
         installed.values.forEach { plugin ->
             when {
                 safeMode != null -> {
@@ -368,7 +425,11 @@ class HostRuntime(private val context: AndroidContext) {
                     deactivate(plugin.id)
                     if (isEnabled(plugin.id)) failures[plugin.id] = SAFE_MODE_BLOCKED
                 }
-                isEnabled(plugin.id) -> activate(plugin)
+                isEnabled(plugin.id) -> {
+                    activate(plugin)
+                    processed++
+                    publishProgress(targets.getOrNull(processed)?.let { shortPluginName(it.id) })
+                }
                 else -> deactivate(plugin.id)
             }
         }
@@ -415,6 +476,18 @@ class HostRuntime(private val context: AndroidContext) {
 
     fun revokeUnsignedApproval(id: String): HostState {
         approvals.revoke(id)
+        capabilityTrust.forget(id)
+        return snapshot()
+    }
+
+    /**
+     * 打开/关闭某个未签名插件的「信任后续版本」（ADR-0008）。
+     *
+     * 打开它等于接受"同一能力面下作者可以推新代码而不再问我"。所以这个开关只有在
+     * 插件页能显示出能力面变化之后才有意义——UI 与它是一起交付的。
+     */
+    fun setTrustUpdates(id: String, trust: Boolean): HostState {
+        capabilityTrust.setTrustsUpdates(id, trust)
         return snapshot()
     }
 
@@ -482,6 +555,10 @@ class HostRuntime(private val context: AndroidContext) {
         // 而且下次扫描才被 prune——中间这段时间它在插件页里像个幽灵。
         installer.removePrivate(id)
         preferences.edit().remove(key(id)).apply()
+        // ADR-0008 决策 2：卸载 = 撤回整条链。只清字节批准会让能力面和 opt-in 留下来，
+        // 同名插件重新装回来时白拿一次自动通过。
+        approvals.revoke(id)
+        capabilityTrust.forget(id)
         snapshot()
     }
 
@@ -881,6 +958,7 @@ class HostRuntime(private val context: AndroidContext) {
                 requestedPermissions = plugin.requestedPermissions,
                 grantedPermissions = permissions.granted(plugin.id),
                 storageBytes = storageUsage(plugin.id),
+                trustsUpdates = capabilityTrust.trustsUpdates(plugin.id),
             )
         },
         errors = syncErrors,
