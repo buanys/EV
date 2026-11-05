@@ -52,6 +52,8 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     // The contract interfaces initialize their companion ServiceKeys at class-init time, so the JVM
     // test classpath also needs the kernel types the plugin normally receives from the host.
+    // 单测跑在普通 JVM 上，契约里的 ServiceKey / HudController 等类型要显式在 classpath 里。
+    testImplementation(project(":plugin-api"))
     testImplementation(project(":loader"))
 }
 

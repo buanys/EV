@@ -247,6 +247,20 @@ agent 能力层是同一规则的实例：`agent-api` 只放契约；`agent-mode
 已移除）。记忆存储保持完整追加日志；发给模型的历史视图由 brain 按轮裁剪
 （`HistoryTrim`，user 消息为边界、工具组同进同出，上限 20 轮 / 24K 字符）。
 
+### 6.3 Agent 侧的三条流
+
+与 agent 直接相关的契约按「事实 / 派生 / 控制」分三层：
+
+| 契约 | 提供者 | 角色 |
+|---|---|---|
+| `SessionLog` | `agent-log` | **真相源**：会话事件 append-only，历史由它派生（ADR-0006） |
+| `MemoryService` | `agent-memory` | **派生物**：蒸馏、笔记、索引；不再是历史的权威定义 |
+| `ApprovalPolicy` / `ToolGuardRegistry` / `ApprovalService` | 策略插件 / `agent-brain` / `ev-ui` | **控制**：预判 / 硬规则 / 问人，顺序不可换（ADR-0007） |
+
+审计流（`events.jsonl`，全局、跨会话连续）与会话流（`sessions/<hash>.jsonl`，按会话分片）
+共用 `EventLog` 的写入纪律（单写者、seq 严格 +1、不可改写），但是两个文件——
+清空一个会话不该在审计流里留下一个洞。
+
 ## 7. 已知偏差与不承诺
 
 ### 7.1 权限不是沙箱
@@ -293,6 +307,8 @@ SDK 不能承诺「插件只看到 SDK」；`org.cordis` 从加载器内置共�
   依赖解析、存储、崩溃标记）。
 - `loader/src/androidInstrumentedTest` 未接线（需要 `withDeviceTest` + androidx.test + 真机）。
 - Compose 没有错误边界，插件 UI 抛异常仍会崩进程；安全模式是**下次启动**的恢复路径，不是进程内隔离。
+- 会话事件流（ADR-0006）补上了「崩溃后知道这一轮停在哪」：历史可从日志重建，`TurnEnded`
+  记录了它是正常结束还是被预算截断。仍未做的是 fork 与请求级重放（system prompt 不落盘）。
 
 ### 7.6 其他边界
 

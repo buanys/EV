@@ -11,15 +11,20 @@ import ev.buan.plugins.agent.api.AgentStop
 import ev.buan.plugins.agent.api.AgentToolCall
 import ev.buan.plugins.agent.api.AgentUsage
 import ev.buan.plugins.agent.api.ApprovalDecision
+import ev.buan.plugins.agent.api.ApprovalPolicy
 import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelRef
 import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.PromptContext
 import ev.buan.plugins.agent.api.PromptLayer
+import ev.buan.plugins.agent.api.SessionEvent
+import ev.buan.plugins.agent.api.SessionLog
 import ev.buan.plugins.agent.api.StepState
 import ev.buan.plugins.agent.api.SystemPromptService
 import ev.buan.plugins.agent.api.Tool
+import ev.buan.plugins.agent.api.ToolGuard
+import ev.buan.plugins.agent.api.ToolGuardRegistry
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.agent.api.ToolSpec
 import kotlinx.coroutines.CancellationException
@@ -72,6 +77,13 @@ class AgentBrainService internal constructor(
     private val capabilities: CapabilityProvider,
     /** Injectable so tests can shrink the budget instead of scripting 60 tool calls. */
     private val budget: Budget = Budget(),
+    /**
+     * 工具执行前的硬规则。brain 自己发布它（见 AgentBrainPlugin），其它插件往上挂。
+     *
+     * 默认空实现，让只测 loop 的用例不必先起一个注册表；接上真实注册表后 vet 一次
+     * 是 O(guard 数量) 的内存遍历，不会碰到 I/O。
+     */
+    private val guards: ToolGuardRegistry = NoGuards,
 ) : AgentService, org.cordis.api.HudController {
 
     // ---------------------------------------------------------------- 暂停与停止
@@ -292,7 +304,7 @@ class AgentBrainService internal constructor(
         val prompt = composePrompt(current.prompt, systemPrompt, sessionId)
         val inputs = mutableListOf<AgentMessage>()
         prompt.system?.let { inputs += AgentMessage(AgentRole.SYSTEM, it) }
-        inputs += historyOf(memory, sessionId)
+        inputs += historyOf(memory, current.sessionLog, sessionId)
         inputs += if (prompt.volatile.isNullOrBlank()) {
             userMessage
         } else {
@@ -300,7 +312,7 @@ class AgentBrainService internal constructor(
         }
         // Memory keeps what the user actually typed: the volatile tail is regenerated every turn,
         // and storing it would replay a stale clock in later requests.
-        remember(memory, sessionId, userMessage)
+        remember(memory, current.sessionLog, sessionId, userMessage)
 
         val startedAt = System.nanoTime()
         // Time the user spends deciding is not the agent's time: a phone in a pocket must not eat
@@ -380,7 +392,7 @@ class AgentBrainService internal constructor(
             val roundCalls = calls.mapIndexed { index, call -> toolCallOf(index, call) }
             val assistantTurn = reply.message.copy(toolCalls = roundCalls)
             inputs += assistantTurn
-            remember(memory, sessionId, assistantTurn)
+            remember(memory, current.sessionLog, sessionId, assistantTurn)
 
             // Every call in this turn must be answered, including the ones a guard skipped: an
             // assistant turn with unanswered tool_calls is an invalid request for the final call.
@@ -424,7 +436,12 @@ class AgentBrainService internal constructor(
                         phase = org.cordis.api.HudPhase.RUNNING,
                     ),
                 )
-                val executed = executeGuarded(tools, call, current.approval) {
+                val executed = executeGuarded(
+                    registry = tools,
+                    call = call,
+                    approval = current.approval,
+                    policy = current.policy,
+                ) {
                     emit(AgentProgress.ToolAwaitingApproval(call.id))
                 }
                 approvalNanos += executed.approvalNanos
@@ -473,7 +490,7 @@ class AgentBrainService internal constructor(
                     toolCallId = outcome.call.id,
                 )
                 inputs += toolMessage
-                remember(memory, sessionId, toolMessage)
+                remember(memory, current.sessionLog, sessionId, toolMessage)
                 events += AgentEvent(
                     kind = AgentEvent.Kind.TOOL_RESULT,
                     text = outcome.result,
@@ -493,7 +510,7 @@ class AgentBrainService internal constructor(
                     images = producedImages,
                 )
                 inputs += imageMessage
-                remember(memory, sessionId, imageMessage)
+                remember(memory, current.sessionLog, sessionId, imageMessage)
             }
             // One nudge per round is enough: several identical reminders would just eat context.
             outcomes.filterIsInstance<Outcome.Reflection>().firstOrNull()?.let { nudge ->
@@ -502,7 +519,7 @@ class AgentBrainService internal constructor(
                 // explicitly that it comes from the runtime.
                 val message = AgentMessage(AgentRole.USER, nudge.text)
                 inputs += message
-                remember(memory, sessionId, message)
+                remember(memory, current.sessionLog, sessionId, message)
             }
 
             emit(AgentProgress.RoundFinished(rounds))
@@ -520,7 +537,19 @@ class AgentBrainService internal constructor(
             wrapUp(stop, inputs, target, modelService, usages, events)
         }
         if (content.isNotBlank()) {
-            remember(memory, sessionId, AgentMessage(role = AgentRole.ASSISTANT, content = content))
+            remember(memory, current.sessionLog, sessionId, AgentMessage(role = AgentRole.ASSISTANT, content = content))
+        }
+
+        // 这一轮为什么停下也要落日志：只存消息的话，回放时看不出它是被预算截断的，
+        // 也分不出"模型自己说完"和"我们把它掐了"。
+        current.sessionLog?.let { log ->
+            try {
+                log.append(sessionId, SessionEvent.TurnEnded(stop))
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Throwable) {
+                // 收尾事件丢了不影响对话本身；下一次读历史仍然完整。
+            }
         }
 
         emit(
@@ -580,19 +609,53 @@ class AgentBrainService internal constructor(
         if (requested == null) available.firstOrNull()
         else available.firstOrNull { it.model == requested.model }
 
-    private suspend fun historyOf(memory: MemoryService?, sessionId: String): List<AgentMessage> {
-        if (memory == null) return emptyList()
-        return try {
-            HistoryTrim.trim(memory.history(sessionId), MAX_HISTORY_TURNS, MAX_HISTORY_CHARS)
+    /**
+     * 历史：事件流优先，memory 兜底。
+     *
+     * 为什么不是"两边合并"：合并就得定义去重与顺序，而这两份数据本来就该是同一串消息。
+     * 日志非空说明它记录了完整的一轮（brain 每次 remember 都先写它），直接采用；
+     * 日志为空说明这是启用日志之前的会话——那时只有 memory 有内容，读它就对了。
+     * 这样升级到事件流不需要迁移脚本，老会话不会突然"没有历史"。
+     */
+    private suspend fun historyOf(
+        memory: MemoryService?,
+        sessionLog: SessionLog?,
+        sessionId: String,
+    ): List<AgentMessage> {
+        val stored = try {
+            sessionLog?.messages(sessionId)?.takeIf { it.isNotEmpty() }
+                ?: memory?.history(sessionId).orEmpty()
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (error: Throwable) {
-            // A memory failure degrades to a stateless turn; it must not lose the user's message.
+            // A broken store degrades to a stateless turn; it must not lose the user's message.
             emptyList()
         }
+        return HistoryTrim.trim(stored, MAX_HISTORY_TURNS, MAX_HISTORY_CHARS)
     }
 
-    private suspend fun remember(memory: MemoryService?, sessionId: String, message: AgentMessage) {
+    /**
+     * 记一条消息：事件流是真相源，memory 是派生物。
+     *
+     * 顺序不能反过来。先写 memory 再写日志，一旦日志那步失败，下一次 historyOf 会发现
+     * 日志非空却断了一截，于是采用一份不完整的历史——用户会看到对话"丢了一段"。
+     * 先写日志则最坏情况是 memory 少一条（蒸馏的输入旧一点），对话本身不受影响。
+     */
+    private suspend fun remember(
+        memory: MemoryService?,
+        sessionLog: SessionLog?,
+        sessionId: String,
+        message: AgentMessage,
+    ) {
+        if (sessionLog != null) {
+            try {
+                sessionLog.append(sessionId, SessionEvent.Message(message))
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Throwable) {
+                // 日志写失败不该让这一轮死掉：memory 仍会写下同一条，最坏情况是这次不可回放。
+            }
+        }
         if (memory == null) return
         try {
             memory.append(sessionId, message)
@@ -686,10 +749,22 @@ class AgentBrainService internal constructor(
      * The approval wait sits **outside** the execution timeout: a person deciding must not be
      * "timed out", they are the reason the call is slow. The timeout only bounds the tool itself.
      */
+    /**
+     * 跑一次工具调用，按顺序过三道：硬规则、预判、人工审批。
+     *
+     * 三道的强度不同，顺序也不可换：
+     *  1. [ToolGuardRegistry] —— 硬规则，任何人都绕不过，包括 policy 和用户自己批过；
+     *  2. [ApprovalPolicy] —— 预判，只能把"要问人"变成"直接放行/直接拒绝"；
+     *  3. [ApprovalService] —— 问人，挂起直到有人回答，没人回答就是拒绝。
+     *
+     * fail-closed 贯穿全程：缺 registry、缺 gate、policy 抛异常、gate 抛异常，全部拒绝。
+     * 拒绝理由作为工具结果回给模型，所以这一轮会降级，而不是直接死掉。
+     */
     private suspend fun executeGuarded(
         registry: ToolRegistry?,
         call: AgentToolCall,
         approval: ApprovalService?,
+        policy: ApprovalPolicy?,
         onAwaitingApproval: suspend () -> Unit,
     ): Executed {
         if (registry == null) {
@@ -698,30 +773,67 @@ class AgentBrainService internal constructor(
         val tool = registry.lookup(call.name)
             ?: return Executed("没有名为 ${call.name} 的工具", 0, StepState.Failed)
 
+        // 硬规则先过：不管谁批过、是不是高危，guard 说不行就是不行。
+        // 放在审批之前而不是之后，是因为"先问人再被规则否决"会让用户白做一次决定。
+        val veto = try {
+            guards.vet(call)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (error: Throwable) {
+            // 坏掉的 guard 不能变成放行。
+            "已拦截：安全规则插件出错（${error.message ?: error::class.simpleName}），本次未执行"
+        }
+        if (veto != null) return Executed(veto, 0, StepState.Failed)
+
         var approvalNanos = 0L
         if (tool.spec.dangerous) {
-            val gate = approval ?: return Executed(
-                "已拦截：${call.name} 属于高危操作，需要人工审批，但审批界面未启用（请启用 ev-ui 后重试）",
-                0,
-                StepState.Failed,
-            )
-            onAwaitingApproval()
-            val startedApproval = System.nanoTime()
-            val decision = try {
-                gate.request(call.name, call.argumentsJson)
+            // 预判：policy 只能把 ASK 变成 ALLOW / DENY，绕不过上面的 guard。
+            // 没有 policy 时一律 ASK，行为与它出现之前完全一致。
+            val verdict = try {
+                policy?.judge(call.name, call.argumentsJson) ?: ApprovalPolicy.Verdict.ASK
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Throwable) {
-                // A broken gate must never become an approval.
                 return Executed(
-                    "已拦截：审批通道出错（${error.message ?: error::class.simpleName}），本次未执行",
-                    System.nanoTime() - startedApproval,
+                    "已拦截：审批策略出错（${error.message ?: error::class.simpleName}），本次未执行",
+                    0,
                     StepState.Failed,
                 )
             }
-            approvalNanos = System.nanoTime() - startedApproval
-            if (decision == ApprovalDecision.DENY) {
-                return Executed("用户拒绝了本次执行", approvalNanos, StepState.Failed)
+            when (verdict) {
+                ApprovalPolicy.Verdict.DENY -> return Executed(
+                    "已拒绝：审批策略禁止 ${call.name} 在本次执行",
+                    0,
+                    StepState.Failed,
+                )
+
+                ApprovalPolicy.Verdict.ALLOW -> Unit // 明确安全，不问人
+
+                ApprovalPolicy.Verdict.ASK -> {
+                    val gate = approval ?: return Executed(
+                        "已拦截：${call.name} 属于高危操作，需要人工审批，但审批界面未启用（请启用 ev-ui 后重试）",
+                        0,
+                        StepState.Failed,
+                    )
+                    onAwaitingApproval()
+                    val startedApproval = System.nanoTime()
+                    val decision = try {
+                        gate.request(call.name, call.argumentsJson)
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (error: Throwable) {
+                        // A broken gate must never become an approval.
+                        return Executed(
+                            "已拦截：审批通道出错（${error.message ?: error::class.simpleName}），本次未执行",
+                            System.nanoTime() - startedApproval,
+                            StepState.Failed,
+                        )
+                    }
+                    approvalNanos = System.nanoTime() - startedApproval
+                    if (decision == ApprovalDecision.DENY) {
+                        return Executed("用户拒绝了本次执行", approvalNanos, StepState.Failed)
+                    }
+                }
             }
         }
 
@@ -776,6 +888,13 @@ class AgentBrainService internal constructor(
 
     private fun timeoutFor(toolName: String): Long =
         if (toolName == SHELL_TOOL_NAME) budget.shellTimeoutMs else budget.toolTimeoutMs
+
+    /** 没有 guard 的默认实现：让不关心拦截的用例不必先起一个注册表。 */
+    internal object NoGuards : ToolGuardRegistry {
+        override fun register(guard: ToolGuard): () -> Unit = {}
+
+        override suspend fun vet(call: AgentToolCall): String? = null
+    }
 
     /** What a tool call produced, in the order it must be fed back to the model. */
     private sealed interface Outcome {

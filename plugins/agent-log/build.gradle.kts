@@ -31,11 +31,24 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
 }
 
+// 会话事件流的契约在 agent-api 里。AGP 不允许一个 application 模块依赖另一个 application
+// 模块，所以对着它的编译产物编译；契约不会被打进这个容器，只可能在运行时由依赖加载器送进来。
+val agentApiClasses = rootProject.file(
+    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
+)
+
 dependencies {
     compileOnly(project(":plugin-api"))
     compileOnly(project(":loader"))
+    compileOnly(files(agentApiClasses))
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation(files(agentApiClasses))
+    // 单测要在普通 JVM 上解析 PluginStorage 与 ServiceKey。
+    testImplementation(project(":plugin-api"))
+    testImplementation(project(":loader"))
+    // 会话日志的读写是挂起函数，单测用 runBlocking 跑它们。
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     // 插件本体用平台自带的 org.json（永不打包），JVM 单测需要真实现。
     testImplementation("org.json:json:20260814")
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
@@ -67,9 +80,15 @@ tasks.register("bundlePlugin") {
               "version": "1.0.0",
               "entryClass": "ev.buan.plugins.agent.log.AgentLogPlugin",
               "apiVersion": 1,
+              "dependencies": ["ev.buan.plugins.agent.api"],
               "permissions": ["PLUGIN_STORAGE"]
             }
         """.trimIndent()
         File(distDir.get().asFile, "agent-log.json").writeText(metadata)
     }
+}
+
+// agent-api 的 class jar 由另一个工程产出，clean build 时先有它才能编译这里。
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
 }
