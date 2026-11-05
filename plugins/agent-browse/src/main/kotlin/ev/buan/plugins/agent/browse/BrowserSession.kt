@@ -50,6 +50,10 @@ internal class BrowserSession {
     /** 地址栏是否有焦点。有焦点时不覆盖用户正在输入的内容。 */
     var editingAddress by mutableStateOf(false)
 
+    /** 加载失败的说明；null 表示当前没有错误。 */
+    var error by mutableStateOf<String?>(null)
+        private set
+
     fun attach(view: WebView) {
         this.view = view
         syncControls()
@@ -101,9 +105,18 @@ internal class BrowserSession {
         view?.reload()
     }
 
+    /** 从一个已知 URL 导航（新窗口、重定向都走这里）。 */
+    fun navigate(url: String) {
+        val view = view ?: return
+        address = url
+        error = null
+        view.loadUrl(url)
+    }
+
     /** 页面开始加载。 */
     fun onStarted(url: String?) {
         loading = true
+        error = null
         if (!url.isNullOrBlank()) currentUrl = url
         syncControls()
     }
@@ -122,5 +135,20 @@ internal class BrowserSession {
     /** 页面标题回调；WebChromeClient 可能在 onPageFinished 之前就送来。 */
     fun onTitle(title: String?) {
         if (!title.isNullOrBlank()) pageTitle = title
+    }
+
+    /**
+     * 主框架加载失败。
+     *
+     * 只处理主框架：子资源（图片、广告）失败不该把整页变成错误页——那会让一个
+     * 本来能读的页面看起来完全坏了。
+     */
+    fun onFailed(reason: String) {
+        loading = false
+        error = reason
+    }
+
+    fun clearError() {
+        error = null
     }
 }
