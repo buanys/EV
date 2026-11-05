@@ -20,6 +20,17 @@ interface LogStore {
 
     /** 覆盖写入。 */
     fun writeText(text: String)
+
+    /**
+     * 在末尾追加，没有文件时创建。
+     *
+     * 默认实现退回「读全文 + 写全文」，所以旧实现不改也能用；
+     * 有真实文件路径的实现应当覆盖它——每次追加都重写全文是 O(n²)，
+     * 会话流一天就能积累到几千条。
+     */
+    fun appendText(text: String) {
+        writeText((readText() ?: "") + text)
+    }
 }
 
 /** 单测与（未来）直接持有目录的宿主用。 */
@@ -29,6 +40,11 @@ class FileLogStore(private val file: File) : LogStore {
     override fun writeText(text: String) {
         file.parentFile?.mkdirs()
         file.writeText(text)
+    }
+
+    override fun appendText(text: String) {
+        file.parentFile?.mkdirs()
+        file.appendText(text)
     }
 }
 
@@ -42,6 +58,26 @@ class PluginStorageLogStore(
     override fun writeText(text: String) {
         // atomicWrite：读者永远看不到写了一半的正文。这是"半行事件"的第一道防线。
         storage.atomicWrite(path, text.toByteArray(Charsets.UTF_8))
+    }
+
+    /**
+     * 真追加。
+     *
+     * 追加写没有 atomicWrite 的"要么旧要么新"保证：进程可能停在半行。但读侧本来就要
+     * 处理尾部半行（断电的正常形态），所以这是安全的取舍——用一次可能被丢弃的半行，
+     * 换掉每次追加都重写全文的 O(n²)。
+     *
+     * 宿主没给真实路径时（受限容器）退回整块写，行为与旧版一致。
+     */
+    override fun appendText(text: String) {
+        val root = runCatching { storage.rootPath() }.getOrDefault("")
+        if (root.isEmpty()) {
+            writeText((readText() ?: "") + text)
+            return
+        }
+        val file = File(root, path)
+        file.parentFile?.mkdirs()
+        file.appendText(text)
     }
 }
 
@@ -69,6 +105,14 @@ class EventLog(
         private set
 
     /**
+     * 最后写下的 seq；null 表示还没读过。
+     *
+     * 缓存它才能做真追加：否则每次都要读全文才知道下一条是几号。单写者假设下它是准的
+     * （[append] 与 [readAll] 由调用方串行），进程重启后第一次读会重新建立。
+     */
+    private var cachedSeq: Int? = null
+
+    /**
      * 读全流。
      *
      * 返回的事件保证是文件里**连续可解析**的那一段；缺口记录在 [Recovery.gaps]，
@@ -78,6 +122,7 @@ class EventLog(
         val text = store.readText()
         if (text.isNullOrEmpty()) {
             lastRecovery = Recovery()
+            cachedSeq = 0
             return emptyList()
         }
         // 保留末尾空串，才能判断最后一行是否以换行结束（有换行 = 那行写完了）。
@@ -117,6 +162,7 @@ class EventLog(
             quarantinedLines = quarantined,
             gaps = gapsOf(events),
         )
+        cachedSeq = events.lastOrNull()?.seq ?: 0
         return events
     }
 
@@ -133,8 +179,10 @@ class EventLog(
         refs: List<String> = emptyList(),
         ts: Long = System.currentTimeMillis(),
     ): EvEvent {
-        val existing = readAll()
-        val nextSeq = (existing.lastOrNull()?.seq ?: 0) + 1
+        // 只在第一次（或缓存被清掉时）读一遍全文来定位 seq，之后靠缓存递增。
+        // 之前每次追加都 readAll + 重写全文：写第 n 条是 O(n)，n 条就是 O(n²)。
+        val base = cachedSeq ?: readAll().lastOrNull()?.seq ?: 0
+        val nextSeq = base + 1
         val event = EvEvent(
             seq = nextSeq,
             id = newId(nextSeq),
@@ -144,8 +192,8 @@ class EventLog(
             payload = payload,
             refs = refs,
         )
-        val body = existing.joinToString("\n", postfix = "\n") { it.toJson().toString() }
-        store.writeText(body + event.toJson().toString() + "\n")
+        store.appendText(event.toJson().toString() + "\n")
+        cachedSeq = nextSeq
         return event
     }
 

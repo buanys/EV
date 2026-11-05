@@ -144,4 +144,31 @@ class EventLogTest {
         assertEquals(3, atThree.lastSeq)
         assertEquals(3, atThree.eventCount)
     }
+
+    @Test
+    fun `新实例从已有文件续号`() {
+        val file = File.createTempFile("eventlog", ".jsonl").also { it.delete() }
+        EventLog(FileLogStore(file)).append("a", "host", JSONObject())
+        EventLog(FileLogStore(file)).append("b", "host", JSONObject())
+
+        val third = EventLog(FileLogStore(file)).append("c", "host", JSONObject())
+
+        assertEquals(3, third.seq)
+        assertEquals(3, EventLog(FileLogStore(file)).readAll().size)
+    }
+
+    @Test
+    fun `追加是就地写，不会重写已有字节`() {
+        val file = File.createTempFile("eventlog", ".jsonl").also { it.delete() }
+        val log = EventLog(FileLogStore(file))
+        log.append("a", "host", JSONObject())
+
+        // 在尾部塞一行坏数据。整块重写（旧实现）会把它当"尾部半行"截掉；
+        // 就地追加则原样保留——这条用例正是区分两者的地方。
+        file.appendText("not-json\n")
+        log.append("b", "host", JSONObject())
+
+        assertTrue(file.readText().contains("not-json"))
+    }
+
 }
