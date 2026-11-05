@@ -101,7 +101,7 @@ internal fun BrowserHome(
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (session.address.isEmpty()) {
                     Text(
-                        text = "输入网址",
+                        text = "输入网址或搜索",
                         style = MiuixTheme.textStyles.footnote1,
                         color = colors.onSurfaceVariantSummary,
                     )

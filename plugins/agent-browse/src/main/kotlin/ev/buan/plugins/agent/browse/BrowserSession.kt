@@ -47,6 +47,18 @@ internal class BrowserSession {
 
     var loading by mutableStateOf(false)
 
+    /**
+     * 主框架的真实加载进度，0..100；0 表示没有在加载。
+     *
+     * 旧版进度线是一条来回摆动的假动画：它只能回答「还活着吗」，回答不了「还要多久」。
+     * `onProgressChanged` 一直都在给真值，只是没人接。
+     */
+    var progress by mutableStateOf(0)
+        private set
+
+    /** 当前地址是否走 HTTPS。空地址（还没打开页面）时为 false。 */
+    val secure: Boolean get() = currentUrl.startsWith("https://", ignoreCase = true)
+
     /** 地址栏是否有焦点。有焦点时不覆盖用户正在输入的内容。 */
     var editingAddress by mutableStateOf(false)
 
@@ -132,6 +144,7 @@ internal class BrowserSession {
         address = ""
         error = null
         loading = false
+        progress = 0
         canGoBack = false
         canGoForward = false
     }
@@ -142,14 +155,28 @@ internal class BrowserSession {
         if (url == HOME_URL) return
         loading = true
         error = null
+        progress = 0
         if (!url.isNullOrBlank()) currentUrl = url
         syncControls()
+    }
+
+    /**
+     * WebView 报上来的真实加载进度。
+     *
+     * 100 就意味着「这一页的东西都到了」，所以顺手把 loading 收掉：某些站点不发
+     * onPageFinished（或发得比进度更晚），只靠它会让进度条一直挂着。
+     */
+    fun onProgress(value: Int) {
+        val next = value.coerceIn(0, 100)
+        progress = next
+        if (next >= 100) loading = false
     }
 
     /** 页面加载结束：退出 loading，同步地址栏（用户正在编辑时不覆盖）。 */
     fun onFinished(url: String?, title: String?) {
         if (url == HOME_URL) return
         loading = false
+        progress = 100
         if (!url.isNullOrBlank()) {
             currentUrl = url
             if (!editingAddress) address = url
