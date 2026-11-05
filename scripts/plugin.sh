@@ -144,23 +144,26 @@ cmd_deploy() {
     echo "    sha256 $sha"
 
     # 先停再写：SharedPreferences 在进程里有一份缓存，运行时改文件会被它覆盖回去。
+    # 这台设备上 EV 跑在 Eta 的沙箱里，它的 /data/data 是一层 tmpfs 覆盖：
+    # 同一个路径在我们这里是真实磁盘（inode 21），在 EV 那里是另一个文件（inode 614986）。
+    # 必须趁 EV 还活着才能看到它的那份，所以检测放在 force-stop 之前。
+    ev_pid=$(pidof ev.buan | awk '{print $1}')
+    sandboxed=$(nsenter -t "$ev_pid" -m -- stat -c %i /data/data/ev.buan 2>/dev/null || true)
+    ours=$(stat -c %i /data/data/ev.buan 2>/dev/null || true)
+
     echo "==> 停止 EV"
     am force-stop ev.buan
     sleep 1
 
+    # 写盘必须在停止之后：SharedPreferences 在进程里有一份缓存，
+    # 运行中改文件会被它下一次 commit 盖回去。
     echo "==> 更新信任"
     trust /data/data/ev.buan/shared_prefs/ev.unsigned.xml "$id" "$sha" "$app_uid" \
         || die "写信任表失败"
 
-    # 这台设备上 EV 跑在 Eta 的沙箱里，它的 /data/data 是一层 tmpfs 覆盖：
-    # 同一个路径在我们这里是真实磁盘（inode 21），在 EV 那里是另一个文件（inode 614986）。
-    # 也就是说上面这次写入 EV 根本看不到——新插件仍然会停在「待确认」。
-    # 保留写入是因为换一台没有沙箱的设备它是有用的；但别把它当成保证。
-    sandboxed=$(nsenter -t "$(pidof ev.buan | awk '{print $1}')" -m -- stat -c %i /data/data/ev.buan 2>/dev/null || true)
-    ours=$(stat -c %i /data/data/ev.buan 2>/dev/null || true)
-    if [ -n "$sandboxed" ] && [ "$sandboxed" != "$ours" ]; then
-        echo "    注意：EV 的 /data/data 是沙箱覆盖层，本次写入它看不到"
-        echo "    新插件请启动后在插件页点一次「信任」"
+    if [ -n "$sandboxed" ] && [ -n "$ours" ] && [ "$sandboxed" != "$ours" ]; then
+        echo "    注意：EV 的 /data/data 是沙箱覆盖层（inode $sandboxed vs 我们的 $ours）"
+        echo "    本次写入它看不到；新插件请在插件页点一次「信任」"
     fi
 
     if [ "$launch" = "0" ]; then
