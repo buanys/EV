@@ -19,7 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import ev.buan.intro.LaunchIntro
+import ev.buan.intro.PaperStartup
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvTheme
 import ev.buan.ui.evSystemBarsPadding
@@ -58,13 +58,12 @@ class PluginPageActivity : ComponentActivity() {
                 // 和主界面同一套启动动画，不是另一套"正在加载插件…"。
                 // 它自己负责调 start(scope) 并处理权限/失败，所以这里不再另起一个
                 // LaunchedEffect——两条路径同时启动会互相踩。
-                LaunchIntro(
+                PaperStartup(
                     runtime = app.runtime,
-                    activity = this@PluginPageActivity,
                     scope = LaunchScope.Closure(pluginId),
-                ) {
-                    runtime = app.startedRuntime
-                }
+                    onGrant = { openAllFilesSettings() },
+                    onDone = { runtime = app.startedRuntime },
+                )
                 return@setContent
             }
 
@@ -124,6 +123,16 @@ class PluginPageActivity : ComponentActivity() {
             moveTaskToBack(true)
         } else {
             finish()
+        }
+    }
+
+    /** 和主界面同一个入口：没给「所有文件访问」时，启动页上那个按钮要能真的跳过去。 */
+    private fun openAllFilesSettings() {
+        runCatching {
+            startActivity(
+                Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    .setData(android.net.Uri.parse("package:$packageName")),
+            )
         }
     }
 

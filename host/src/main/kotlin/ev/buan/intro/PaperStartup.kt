@@ -1,5 +1,6 @@
 package ev.buan.intro
 
+import ev.buan.LaunchScope
 import android.content.Context
 import android.os.VibrationEffect
 import android.os.VibratorManager
@@ -96,7 +97,18 @@ private fun Act.en(): String = when (this) {
 }
 
 @Composable
-fun PaperStartup(runtime: HostRuntime, onGrant: () -> Unit, onDone: () -> Unit) {
+fun PaperStartup(
+    runtime: HostRuntime,
+    /**
+     * 这次启动要加载多少插件。
+     *
+     * 主界面用 [LaunchScope.Full]；从桌面快捷方式进来时只加载那个插件的闭包——
+     * 用户点的是"浏览器"图标，他没有要聊天、模型和记忆。
+     */
+    scope: LaunchScope = LaunchScope.Full,
+    onGrant: () -> Unit,
+    onDone: () -> Unit,
+) {
     val context = LocalContext.current
     val progress by runtime.loadProgress.collectAsState()
 
@@ -144,7 +156,7 @@ fun PaperStartup(runtime: HostRuntime, onGrant: () -> Unit, onDone: () -> Unit) 
                 // The only place the host is started. Nothing else in this screen calls start().
                 if (!loadStarted) {
                     loadStarted = true
-                    runCatching { runtime.start() }.onFailure { loadFailed = true }
+                    runCatching { runtime.start(scope) }.onFailure { loadFailed = true }
                 }
                 // Reached only once start() has actually returned.
                 delay(250)
