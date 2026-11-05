@@ -3,6 +3,7 @@ package ev.buan.plugins.agent.shell
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import ev.buan.plugins.agent.api.ApprovalPolicy
+import ev.buan.plugins.agent.api.ToolGuardRegistry
 import ev.buan.plugins.agent.api.ToolRegistry
 import org.cordis.Context
 import org.cordis.Dependencies
@@ -100,6 +101,13 @@ class AgentShellPlugin :
         // 没有它，headless 形态（没有 UI 就没有审批通道）下 run_shell 等于永远不可用。
         directory.publish(ApprovalPolicy.Key, DangerousCommandPolicy)
         android.util.Log.i("EV", "shell: 审批策略已发布（灾难性命令直接拒绝，其余问人）")
+
+        // 硬规则：不管谁批准，都不能杀掉 EV 或改写它自己的数据目录。
+        // 注册表由 brain 发布；没有 brain 时这里退化为无 guard，与之前一致。
+        val unregisterGuard = directory.lookup(ToolGuardRegistry.Key)?.register(SelfProtectionGuard)
+        if (unregisterGuard != null) {
+            android.util.Log.i("EV", "shell: 自我保护 guard 已注册")
+        }
         this.registry = registry
         this.directory = directory
         android.util.Log.i(
@@ -110,6 +118,7 @@ class AgentShellPlugin :
         // Identity is unnecessary here (unregister is owner-scoped): even a stale disposer can
         // only remove this plugin's own group, which is exactly what disposal means.
         effect.collect {
+            unregisterGuard?.invoke()
             if (directory.lookup(ApprovalPolicy.Key) === DangerousCommandPolicy) {
                 directory.retract(ApprovalPolicy.Key)
             }
