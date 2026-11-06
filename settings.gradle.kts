@@ -18,15 +18,17 @@ dependencyResolutionManagement {
 
 rootProject.name = "cordis-kotlin"
 
-include(
-    "core",
-    "loader",
-    // 只保留内核的 core 与 loader；utils/timer/logger-console/include/hmr 已归档到
-    // /workspace/EV-archive/2026-11-05，需要时再引回并写明理由（见 docs/newdocs/最高规则）。
-    // 打包 mods 还在用 packager，它依赖 packages，两者一起留。
-    "packages",
-    "packager",
-)
+// 内核：vendor 到 third_party/cordis，版本与目录树哈希记在 third_party/cordis/KERNEL.lock。
+// Gradle 项目名仍是 :core / :loader——目录归目录、坐标归坐标，几十处 project(":core")
+// 不用跟着改；换目录只改下面两行。
+include(":core", ":loader")
+project(":core").projectDir = file("third_party/cordis/core")
+project(":loader").projectDir = file("third_party/cordis/loader")
+
+// 只保留内核的 core 与 loader；utils/timer/logger-console/include/hmr 已归档到
+// /workspace/EV-archive/2026-11-05，需要时再引回并写明理由（见 docs/newdocs/最高规则）。
+// 打包 mods 还在用 packager，它依赖 packages，两者一起留。
+include("packages", "packager")
 
 // Android host runtime and the plugin contract it shares with plugins.
 include(":ui-kit")

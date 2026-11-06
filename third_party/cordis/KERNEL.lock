@@ -1,0 +1,19 @@
+# 内核冻结记录。改内核请先改上游，再同步回来并更新本文件（人工审核）。
+# 校验：sh scripts/verify-kernel-lock.sh
+
+upstream_url = https://github.com/meteor149/cordis-kotlin
+upstream_commit = 7b13e6b8c0e2c10e802978f87433247e851f3607
+upstream_date = 2026-10-06T18:11:33Z
+imported_at = 2026-11-06
+included_modules = core loader
+license = MIT (Copyright (c) 2021-present Shigma)，全文见同目录 LICENSE
+
+tree_sha256 = 28bb5f033583d4ff4531918222e31b52c5a6ef5273ad8f348fc76d1f9bf8aa28
+tree_hash_algorithm = 对 core/ 与 loader/ 下所有文件（排除 build/ 与 .gradle/）按相对路径排序，逐行写 "<sha256>  <path>"，再对整段取 sha256
+
+# 与上游的差异。只有构建接线，没有内核源码：
+# 1. loader/build.gradle.kts 未保留上游的 androidInstrumentedTest 依赖与
+#    LibraryExtension（testInstrumentationRunner / consumerProguardFiles）。
+# 2. loader/src/androidUnitTest 改名 androidHostTest（KGP 2.x 的新名字），文件内容与上游逐字节一致。
+# core/ 与上游 7b13e6b 完全一致；loader/src 下的代码也与上游完全一致（已逐文件 diff）。
+local_patches = build-wiring only (loader/build.gradle.kts, source set rename)
