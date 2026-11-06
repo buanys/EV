@@ -295,7 +295,6 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
             directory = { serviceDirectory },
             failures = failures,
             onFailure = { id -> recordFailure(id, success = false) },
-            onSuccess = { id -> recordFailure(id, success = true) },
             publish = { runCatching { snapshot() } },
         )
     }

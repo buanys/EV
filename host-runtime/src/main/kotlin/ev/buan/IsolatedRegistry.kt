@@ -20,7 +20,6 @@ internal class IsolatedRegistry(
     private val directory: () -> org.cordis.api.ServiceDirectory?,
     private val failures: MutableMap<String, String>,
     private val onFailure: (String) -> Unit,
-    private val onSuccess: (String) -> Unit,
     /** 状态变了让界面看一眼；在 binder 线程上被调用，所以实现里要自己切线程。 */
     private val publish: () -> Unit,
 ) {
@@ -36,7 +35,7 @@ internal class IsolatedRegistry(
         val registry = directory()?.lookup(ToolRegistry.Key) ?: error("工具总线还没有就绪")
         registry.register(plugin.id, tools)
         counts[plugin.id] = tools.size
-        onSuccess(plugin.id)
+        // 减分**不在这里做**：成功计分归激活方（RestrictedActivator），一处记账就不会记两次。
         return tools.size
     }
 
