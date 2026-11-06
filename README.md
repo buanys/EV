@@ -1,15 +1,19 @@
 # EV（Android 宿主与插件平台）
 
-> 内核 SDK（`core` / `loader` / `hmr` / `include` / `packages` 的用法）派生自 cordis-kotlin，
-> 单独成文：[KERNEL.md](KERNEL.md)。
+> **想先看现状：**[docs/project-overview.md](docs/project-overview.md)。本文是仓库门面，
+> 只讲格式、边界与禁忌；现状、进度、缺口以那份档案为准。
 
-本仓库除内核外还带一个可侧载的 Android 宿主 `:host`（应用名 EV）、设计系统 `:ui-kit`、
-契约模块 `:host-api` 与若干插件模块 `:plugins:*`。**内核（core/loader/…）的语义未改动**，
-EV 只在其上增加宿主策略。
+内核（`core` + `loader`）派生自 cordis-kotlin 并 vendor 在 `third_party/cordis/`，
+用法单独成文：[KERNEL.md](KERNEL.md)。
 
-> **内核已冻结（2026-10-25 起）。** 内核目录（loader/core/hmr/include/packages）只当依赖用，
-> 不接受业务改动，由 `scripts/kernel-freeze.sh` 门禁强制。规则与例外流程见
-> [docs/kernel-freeze.md](docs/kernel-freeze.md)。全部文档导航见 [docs/README.md](docs/README.md)。
+本仓库除内核外还带一个可侧载的 Android 宿主（应用名 EV，模块 `:host-app`）、宿主私有运行时
+`:host-runtime`、纯 JVM 逻辑 `:host-core`、设计系统 `:ui-kit`、契约模块 `:host-api`
+与 17 个插件模块 `:plugins:<类>:<名>`。**内核语义未改动**，EV 只在其上增加宿主策略。
+
+> **内核已冻结。** `third_party/cordis` 只当依赖用，不接受业务改动；
+> `scripts/verify-kernel-lock.sh` 用目录树哈希强制这一点。规则与例外流程见
+> [docs/kernel-freeze.md](docs/kernel-freeze.md)。
+> 三条架构门禁的入口是 `sh scripts/check.sh`（内核冻结 / 模块边界 / 文件行数）。
 
 > **API 版本 0.x，未稳定。** `PLUGIN_API_VERSION = 1` 只表示当前契约代次，
 > 不表示向后兼容承诺；插件与宿主必须同代编译。不要基于它做第三方分发。
@@ -25,24 +29,26 @@ EV 只在其上增加宿主策略。
 
 容器里必须是 `classes*.dex`（jar 只放 `.class` 会在加载期 `ClassNotFoundException`）。
 产物生成：插件模块跑 `bundlePlugin`，把 APK 的 dex 抽出来封成 jar 并写 sidecar，
-见 [plugins/settings/build.gradle.kts](plugins/settings/build.gradle.kts)。
+见 [plugins/feature/settings/build.gradle.kts](plugins/feature/settings/build.gradle.kts)。
 
-插件类**不得**位于 `org.cordis.*`。
+插件类**不得**位于平台、Kotlin 运行时、内核或共享包所在的任何前缀下（完整清单在
+[PluginPolicy.kt](host-runtime/src/main/kotlin/ev/buan/PluginPolicy.kt)，拒绝码是 `DUPLICATE_PLATFORM_CLASS`）。
 
 ## 共享边界（ABI）
 
-插件类加载器是 child-first，只有共享包从宿主解析。清单的唯一来源是
-[gradle/shared-packages.txt](gradle/shared-packages.txt)（19 项），它同时约束三件事：
+插件类加载器**先查共享包**，命中就从宿主解析；其余才查插件自己的 dex、再查它声明的依赖容器、
+最后才是 platform loader。清单的唯一来源是
+[gradle/shared-packages.txt](gradle/shared-packages.txt)（20 项），它同时约束三件事：
 
 1. `HostPackages.shared`（插件编译期可见）——[host-api/.../HostPackages.kt](host-api/src/main/kotlin/org/cordis/api/HostPackages.kt)
-2. release 的 R8 `-keep`——[host/proguard-rules.pro](host/proguard-rules.pro)
-3. release dex 中该包必须有类——`:host:verifySharedPackagesInDex`
+2. release 的 R8 `-keep`——[host-app/proguard-rules.pro](host-app/proguard-rules.pro)
+3. release dex 中该包必须有类——`:host-app:verifySharedPackagesInDex`
 
 漂移由单测与构建门禁双重拦截（`SharedPackagesContractTest` + `releaseGate`）。
-**加一项共享包 = 同时改清单与 `HostPackages.kt`，否则 `:host-api:testDebugUnitTest` 失败。**
+**加一项共享包 = 同时改清单、`HostPackages.kt` 与 proguard 规则，否则 `SharedPackagesContractTest` 失败。**
 
 未列入共享清单的包**不会回落到宿主**：`IsolatedPluginClassLoader.loadClass` 的兜底是
-platform class loader（[ModuleLoader.android.kt](loader/src/androidMain/kotlin/org/cordis/loader/ModuleLoader.android.kt)），
+platform class loader（[ModuleLoader.android.kt](third_party/cordis/loader/src/androidMain/kotlin/org/cordis/loader/ModuleLoader.android.kt)），
 所以清单写错 = 插件拿不到该类。曾经的 `com.squareup.okhttp3`（Maven group，非包名）就是这样静默失效的。
 
 ### 宿主禁止混淆
@@ -61,7 +67,7 @@ compose / activity / lifecycle / miuix 等共享运行时——裁剪会删掉�
 org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  junit
 ```
 
-宿主侧由 `:host:verifyForbiddenPackages` 在 release 构建时拦截；
+宿主侧由 `:host-app:verifyForbiddenPackages` 在 release 构建时拦截；
 插件侧由 `PluginValidator`（`DUPLICATE_PLATFORM_CLASS`）与 `gradle/plugin-verify.gradle.kts` 拦截
 （后者还禁止引用 `material-icons-extended`——宿主只发 `icons-core`，图标走 `EvIcons`）。
 
@@ -74,13 +80,16 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 ## 信任模型
 
 - **APK 插件**必须与宿主证书一致（比对 SHA-256 摘要）。
-- **jar/dex** 无法携带 Android 签名。宿主默认**自动信任**（`PluginInstaller.autoTrustUnsigned = true`），
-  首次同步即记录 **(id, sha256)** 到应用私有偏好并加载；文件字节变化后，加载期按记录哈希
-  复核会拒载（`LOAD_HASH_MISMATCH`）。
-  若把 `autoTrustUnsigned` 置为 false，则退回手动流程：停在管理页「待确认的未签名插件」区，
-  用户点「信任」后才记录并加载。确认入口始终只在宿主管理页，插件无法触发。
+- **jar/dex** 无法携带 Android 签名，所以宿主按 **`FLAG_DEBUGGABLE`** 分两种：
+  - **调试包**：自动信任，首次同步记录 `(id, sha256)` 后直接加载；
+  - **正式包**：恒为手动——容器停在管理页「待确认的未签名插件」区，用户点「信任」后才记录并加载。
+
+  绑在可调试标志上而不是一个常量，是因为"关掉确认"的副作用会跟着代码一起打进正式版：
+  调试包丢进目录即可跑，正式包不可能忘记改回来。
+- 确认是**按字节**的：文件哈希一变就要重新确认，加载期按记录复核（`LOAD_HASH_MISMATCH`）。
+- 确认入口始终只在宿主管理页，插件无法触发。未签名插件的能力面另由 [ADR-0008](docs/adr/0008-trust-by-capability-surface.md) 约束。
 - 加载期二次复核：内核回调 `AndroidModuleVerifier(descriptor)` **只传 descriptor**，宿主在回调里用
-  `androidModuleHash(descriptor.file)`（[host/src/main/kotlin/ev/buan/PluginHash.kt](host/src/main/kotlin/ev/buan/PluginHash.kt)）
+  `androidModuleHash(descriptor.file)`（[host-runtime/src/main/kotlin/ev/buan/PluginHash.kt](host-runtime/src/main/kotlin/ev/buan/PluginHash.kt)）
   自行测量当前 SHA-256，再调 `PluginValidator.verifyAtLoad` 按批准记录与实际哈希重新判定；
   不匹配一律拒载并带错误码（`LOAD_HASH_MISMATCH` / `UNSIGNED_NOT_APPROVED`）。
 
@@ -96,7 +105,7 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 
 启动直接进**插件主页**（当前是 `ev-ui` 的 EV 风格 UI），宿主管理页退到二级：主页左上角进入 `PluginsActivity`。
 选择顺序：`home.page` 偏好 → `ev.buan.plugins.ev.ui` → 任意实现 `AgentPage` 的插件 → 兜底页
-（[HostRuntime.kt](host/src/main/kotlin/ev/buan/HostRuntime.kt) `homePage()`）。
+（[HostRouting.kt](host-runtime/src/main/kotlin/ev/buan/HostRouting.kt) 与 `HostComposition.homePage()`）。
 没有可用主页插件时不会白屏，兜底页仍可进入管理。
 
 `ev-ui` 声明了 `PLUGIN_STORAGE`，会话历史写在
@@ -134,24 +143,22 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 对话能力由一组相互独立的 jar 插件组成，宿主与内核不认识任何 agent 语义；插件之间只通过
 `ServiceDirectory` 的 Key（`agent/model`、`agent/tool-registry`、`agent/memory`、`agent/service`）组合：
 
-| 插件 | id | 发布 | 依赖 | 权限 |
+**对话链路**上的四颗（完整 17 颗见 [project-overview §5](docs/project-overview.md)）：
+
+| 插件 | id | 发布 | 位置 | 权限 |
 |---|---|---|---|---|
-| agent-model | `ev.buan.plugins.agent.model` | `ModelService` + `ModelProviderService`（多 Provider/模型，OpenAI 兼容 chat completions） | 宿主契约 | `NETWORK`、`PLUGIN_STORAGE` |
-| agent-tools | `ev.buan.plugins.agent.tools` | `ToolRegistry`（插件存储区文件工具） | 宿主契约 | `PLUGIN_STORAGE` |
-| agent-memory | `ev.buan.plugins.agent.memory` | `MemoryService`（JSON 会话记忆） | 宿主契约 | `PLUGIN_STORAGE` |
-| agent-brain | `ev.buan.plugins.agent.brain` | `AgentService`（模型 + 工具 + 记忆编排） | 宿主契约 | — |
+| agent-model | `ev.buan.plugins.agent.model` | `ModelService` + `ModelProviderService`（多 Provider/模型，OpenAI 兼容） | `plugins/integration/` | `NETWORK`、`PLUGIN_STORAGE` |
+| agent-tools | `ev.buan.plugins.agent.tools` | `ToolRegistry`（插件存储区文件工具） | `plugins/base/` | `PLUGIN_STORAGE` |
+| agent-memory | `ev.buan.plugins.agent.memory` | `MemoryService`（三层记忆） | `plugins/base/` | `PLUGIN_STORAGE` |
+| agent-brain | `ev.buan.plugins.agent.brain` | `AgentService`（模型 + 工具 + 记忆编排） | `plugins/feature/` | — |
 
-界面层另有独立插件：
+界面层另有 `ev-ui`（`ev.buan.plugins.ev.ui`，`plugins/feature/`）：**默认主页**，消费 `AgentService`，
+声明 `PLUGIN_STORAGE`（会话历史）。
 
-| 插件 | id | 角色 | 依赖 | 权限 |
-|---|---|---|---|---|
-| ev-ui | `ev.buan.plugins.ev.ui` | **默认主页**（唯一界面插件）：EV 风格首页/抽屉/聊天/会话历史，消费 `AgentService` | 宿主契约 | `PLUGIN_STORAGE` |
-
-- **安装**：把上表 4 个 agent jar + `ev-ui`（默认主页）的 jar 与同名 json
-  一起放进 `EV/mods`；依赖顺序由 sidecar 的 `dependencies` 决定，与文件名无关。
-  契约（`AgentService`、`ToolRegistry`…）已经并进宿主 APK，不再是需要单独安装的插件。
-  ev-ui 仍需在管理页授予「插件存储」才会激活（用于 `sessions.json`），未授予时主页落到宿主兜底页。
-  升级时宿主 APK 与插件要同代投放：契约签名一旦变化，旧 jar 会在类加载期失败，而不是静默降级。
+- **安装**：把要用的插件 jar + 同名 json 放进 `EV/mods`；加载顺序由 sidecar 的 `dependencies` 决定，
+  与文件名无关。契约（`AgentService`、`ToolRegistry`…）已经并进宿主 APK，不是需要单独安装的插件。
+- ev-ui 需要「插件存储」才会激活（用于 `sessions.json`），未授予时主页落到宿主兜底页，不崩。
+- 升级时宿主 APK 与插件要同代投放：契约签名一旦变化，旧 jar 会在类加载期失败，而不是静默降级。
 - **配置模型**：插件管理 → `ev.buan.plugins.agent.model` 卡片 → 授予「网络访问」「插件存储」；
   再到 `ev-ui` 设置 → 模型服务，配置 Provider/Key/模型并设为当前。旧版单配置
   `config/model.json` 会在首次读取时迁移为「默认」Provider；旧卡片表单已删除。
@@ -161,8 +168,9 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
   → 单轮对话；任一能力抛错都变成可读回复，不崩宿主。`ev-ui` 找不到 `AgentService` 时保持
   原来的「未接模型」占位回复。
 - **工具轮次**：模型返回 tool call 时由 brain 执行，按原生 OpenAI tool 协议回填——assistant 的
-  `tool_calls` 消息在前，每个结果一条 `tool` 角色消息（id 对应），随后再次请求模型
-  （每轮最多 3 次、单条结果截断 8 KB，截断不劈开 UTF-16 代理对）。工具轮中的 assistant/tool
+  `tool_calls` 消息在前，每个结果一条 `tool` 角色消息（id 对应），随后再次请求模型。
+  一轮的预算默认是 **20 次模型往返 / 60 次工具调用 / 5 分钟**，超了会被掐断并如实说明原因；
+  单条工具结果截断 8 K 字符，截断不劈开 UTF-16 代理对。工具轮中的 assistant/tool
   消息一并写入记忆，历史可随时重建模型视角。
 - **历史视图有界**：记忆在磁盘上是完整追加日志，发给模型的视图按「轮」裁剪
   （以 user 消息为边界，工具调用与其结果同进同出，最多 20 轮 / 24K 字符，最新一轮永远保留），
@@ -177,25 +185,32 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 ## 验证
 
 ```bash
-scripts/release-smoke.sh          # 单测 + releaseGate + 插件 jar + 真机清单
-:host-api:testDebugUnitTest     # 插件契约、共享包一致性
-:host-core:test                   # 校验器、权限元数据、依赖解析、存储
-:ui-kit:testDebugUnitTest         # 外观计算
-:loader:testAndroidHostTest       # Android 描述符（AGP9 需 withHostTest）
-:plugins:agent-brain:testDebugUnitTest  # agent 编排：未连接降级、工具轮、记忆失败（fake 能力，无网络）
+sh scripts/check.sh                       # 三条架构门禁（内核冻结 / 模块边界 / 行数）
+./gradlew test                            # 全部单测（约 750 个用例）
+./gradlew assembleDebug                   # 宿主 APK
+sh scripts/release-smoke.sh               # 单测 + releaseGate + 插件 jar
+
+./gradlew :host-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck   # SDK 公开面是否变了
 ```
 
-agent 层容器（jar + sidecar）用对应模块的 `bundlePlugin` 构建：
+`apiSnapshotCheck` 是**任何 public 声明变化都要跑**的：契约与设计系统的基线在 `api/*.txt`，
+改完用 `./gradlew :host-api:apiSnapshot :ui-kit:apiSnapshot` 刷新。
+
+插件容器（jar + sidecar）用对应模块的 `bundlePlugin`：
 
 ```bash
-./gradlew :plugins:agent-model:bundlePlugin \
-  :plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
-  :plugins:agent-brain:bundlePlugin :plugins:ev-ui:bundlePlugin
+./gradlew :plugins:integration:agent-model:bundlePlugin
+./gradlew :plugins:feature:ev-ui:bundlePlugin
 ```
+
+⚠️ `bundlePlugin` 有时会**假绿**：源文件改了仍复用旧 jar。部署前看时间戳，或加 `--rerun-tasks`。
 
 ## 真机验收清单（agent 层）
 
-前置：真机已授予 EV「所有文件访问权限」；`EV/mods` 内放齐上表 5 个 agent jar 与 `ev-ui` 的
+> 下面是一份**历史验收清单**（2026-10-24 执行）。插件数量与名字后来变了（现在 17 个），
+> 条目本身仍然有效，当"改完 agent 链路怎么验"的模板用。
+
+前置：真机已授予 EV「所有文件访问权限」；`EV/mods` 内放齐 agent 链路的 jar 与 `ev-ui` 的
 jar/json；真机问答需要一个可用的 OpenAI 兼容服务。本仓库的 CI/本机自动化只覆盖构建与纯逻辑单测
 （`AgentBrainServiceTest`），以下条目需人工逐条执行：
 
@@ -223,12 +238,11 @@ jar/json；真机问答需要一个可用的 OpenAI 兼容服务。本仓库的 
 
 ## 已知缺口
 
-- `:host` 是 AGP 9 application 模块，自身有 `:host:test` / `:host:testDebugUnitTest`（权限、存储、安全模式等
-  Android 接线测试）；`./gradlew test` 会聚合各模块的 `test`（含 `:host`、`:host-api`、`:ui-kit`），
-  CI 也跑这一步。可测的纯逻辑放在 `:host-core`
+- `:host-app` 是 AGP 9 application 模块，入口与 Android 接线测试在它和 `:host-runtime` 里；
+  `./gradlew test` 会聚合所有模块的 `test`，CI 也跑这一步。可测的纯逻辑放在 `:host-core`
   （校验器、dex 扫描、权限元数据、依赖解析、存储、崩溃标记）。
-- `loader/src/androidInstrumentedTest` 仍需 `withDeviceTest` + androidx.test 依赖 + 真机，
-  目前未接线（历史遗留，非本轮引入）。
+- `third_party/cordis/loader` 的 `androidInstrumentedTest` 仍需 `withDeviceTest` + androidx.test 依赖 + 真机，
+  目前未接线（历史遗留）。
 - 插件 UI 抛异常会崩进程：Compose 无错误边界，编译器禁止 `try/catch` 包 composable；
   宿主会记录崩溃并在下次启动进入安全模式（不加载插件），但进程内不恢复、也不是隔离。
 - agent 工具轮已切换为原生 OpenAI tool 协议（`AgentMessage.toolCalls`，2026-10-25）；
