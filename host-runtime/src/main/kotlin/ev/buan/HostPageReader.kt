@@ -44,6 +44,35 @@ class HostPageReader(
 
     private val main = Handler(Looper.getMainLooper())
 
+    /**
+     * 正在渲染的那个 WebView（没有渲染时为 null）。
+     *
+     * 只给内存压力用：宿主几乎不缓存重对象，唯一在压力期间可能攥着几 MB 的就是它。
+     * 有了这个引用，`cancelInFlight()` 才有东西可杀。
+     */
+    @Volatile
+    private var inFlight: WebView? = null
+
+    /**
+     * 取消正在进行的渲染（系统内存压力时由宿主调用）。
+     *
+     * 语义：**销毁 WebView，不等结果**。被取消的那次调用会走到自己的超时分支，
+     * 返回它原本的"没渲染出来"结果——不额外造一种新失败，调用方不需要为它加分支。
+     * 在渲染线程之外调用是安全的：View 的销毁被投递到主线程。
+     */
+    fun cancelInFlight() {
+        main.post {
+            inFlight?.let { view ->
+                (view.parent as? android.view.ViewGroup)?.removeView(view)
+                runCatching {
+                    view.stopLoading()
+                    view.destroy()
+                }
+            }
+            inFlight = null
+        }
+    }
+
     override suspend fun render(url: String, timeoutMs: Long, selector: String?): RenderedPage = withContext(Dispatchers.Main) {
         val outcome = CompletableDeferred<RenderedPage>()
         val started = AtomicBoolean(false)
@@ -51,6 +80,7 @@ class HostPageReader(
         var view: WebView? = null
 
         fun finish(page: RenderedPage) {
+            if (inFlight === view) inFlight = null
             if (outcome.isCompleted) return
             // 清理放在 finish 里而不是 finally：超时和其它异常路径都从这里出去，
             // 只写一份清理代码，少一种漏 destroy 的写法。
@@ -89,6 +119,7 @@ class HostPageReader(
             }
             view = webView
 
+            inFlight = webView
             val activity = activityProvider()
             if (activity != null) {
                 container = FrameLayout(activity).apply {

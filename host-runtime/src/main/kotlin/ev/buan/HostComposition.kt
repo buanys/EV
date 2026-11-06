@@ -209,6 +209,8 @@ class HostComposition(private val context: AndroidContext) {
     /** The host directory, kept so the theme catalog can be resolved outside composition setup. */
     private var serviceDirectory: ServiceDirectoryImpl? = null
     private var pageReaderHandle: org.cordis.EffectHandle? = null
+    /** 离屏渲染实例：内存压力时要能取消它正在跑的那一次。 */
+    private var pageReader: HostPageReader? = null
     private var installHandle: org.cordis.EffectHandle? = null
     private var restartHandle: org.cordis.EffectHandle? = null
     private var deviceContextHandle: org.cordis.EffectHandle? = null
@@ -331,7 +333,7 @@ class HostComposition(private val context: AndroidContext) {
             // 这里只在需要时才起 WebView，服务本身不持有任何实例。
             pageReaderHandle = cordis.provide(
                 org.cordis.api.PageReader.Key,
-                HostPageReader(context) { activityProvider() },
+                HostPageReader(context) { activityProvider() }.also { pageReader = it },
             ).also { runCatching { it.awaitReady() } }
         }
         if (directoryHandle == null) {
@@ -405,6 +407,19 @@ class HostComposition(private val context: AndroidContext) {
      * private storage and then sat there until the next launch. The install contract needs the
      * second half of that sentence.
      */
+    /**
+     * 系统内存压力。
+     *
+     * 宿主几乎不缓存重对象（没有位图缓存，浏览器面板的 WebView 随面板销毁），
+     * 唯一可能在压力期间攥着几 MB 的是离屏渲染——所以这里只做一件事：掐掉在飞的那次。
+     * 更低的级别（TRIM_MEMORY_UI_HIDDEN 等）不处理：那表示界面不可见，不是内存告急。
+     */
+    fun handleTrimMemory(level: Int) {
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            pageReader?.cancelInFlight()
+        }
+    }
+
     suspend fun resync(): HostState = withContext(Dispatchers.IO) {
         syncAndActivate(startedScope ?: LaunchScope.Full)
         snapshot()

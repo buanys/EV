@@ -47,6 +47,12 @@ class EvApplication : Application() {
     @Volatile
     private var currentActivity: WeakReference<Activity>? = null
 
+    /** 系统内存压力：转发给运行时，由它决定要不要掐掉在飞的离屏渲染。 */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        reference?.handleTrimMemory(level)
+    }
+
     /** 当前可见的 Activity；没有则为 null（离屏浏览器会退化成不挂载）。 */
     fun currentActivity(): Activity? = currentActivity?.get()
 
