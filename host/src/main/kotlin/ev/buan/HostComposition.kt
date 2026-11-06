@@ -57,6 +57,15 @@ class HostComposition(private val context: AndroidContext) {
      * 拆模块时这两条正好是挡路的依赖，所以先在本模块里把它们变成注入点。
      */
     var activityProvider: () -> android.app.Activity? = { null }
+    /**
+     * 屏幕、HUD、后台常驻三组能力的实现在 app 层（它们长在无障碍服务与前台服务上）。
+     * 运行时只拿接口，不拿实现——这正是 2f 拆模块最后挡路的三处。
+     */
+    var screenFactory: ((AndroidContext) -> org.cordis.api.ScreenService)? = null
+    var hudFactory: ((() -> ServiceDirectory?) -> org.cordis.api.HudService)? = null
+    var backgroundServiceFactory: ((String, PermissionService?, AndroidContext) -> org.cordis.api.BackgroundService)? = null
+    var backgroundRelease: (String) -> Unit = {}
+
     var restartIntent: (android.content.Context) -> android.content.Intent = { ctx ->
         android.content.Intent(
             ctx,
@@ -355,10 +364,14 @@ class HostComposition(private val context: AndroidContext) {
                 .also { runCatching { it.awaitReady() } }
             deviceContextHandle = cordis.provide(DeviceContextService.Key, DeviceContextServiceImpl(context))
                 .also { runCatching { it.awaitReady() } }
-            screenHandle = cordis.provide(ScreenService.Key, ScreenServiceImpl(context))
-                .also { runCatching { it.awaitReady() } }
-            hudHandle = cordis.provide(org.cordis.api.HudService.Key, HudServiceImpl { serviceDirectory })
-                .also { runCatching { it.awaitReady() } }
+            screenFactory?.let { factory ->
+                screenHandle = cordis.provide(ScreenService.Key, factory(context))
+                    .also { runCatching { it.awaitReady() } }
+            }
+            hudFactory?.let { factory ->
+                hudHandle = cordis.provide(org.cordis.api.HudService.Key, factory { serviceDirectory })
+                    .also { runCatching { it.awaitReady() } }
+            }
             restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context, restartIntent))
                 .also { runCatching { it.awaitReady() } }
         }
@@ -645,7 +658,7 @@ class HostComposition(private val context: AndroidContext) {
      * subsequent [start] marks it started again.
      */
     suspend fun dispose() {
-        active.keys.toList().forEach { BackgroundSessions.releaseAll(context, it) }
+        active.keys.toList().forEach { id -> backgroundRelease(id) }
         active.values.forEach { runCatching { it.dispose() } }
         active.clear()
         lifecycle.stop()
@@ -763,7 +776,8 @@ class HostComposition(private val context: AndroidContext) {
             // the process-wide foreground service and the notification the user can see.
             pluginContext.provide(
                 BackgroundService.Key,
-                BackgroundServiceImpl(plugin.id, permissionService, context),
+                backgroundServiceFactory?.invoke(plugin.id, permissionService, context)
+                    ?: error("后台常驻服务未注入：请检查 EvApplication 的接线"),
             )
             val fiber = pluginContext.plugin(instance, Unit)
             // A plugin that never finishes applying must not hold the whole host hostage.
@@ -797,7 +811,7 @@ class HostComposition(private val context: AndroidContext) {
     private suspend fun deactivate(id: String) {
         // A stopped plugin must not keep the host's foreground service alive; its references are
         // dropped before the scope (and therefore the plugin) goes away.
-        BackgroundSessions.releaseAll(context, id)
+        backgroundRelease(id)
         // The scope Fiber owns the plugin Fiber and both providers; one dispose tears down the whole
         // per-plugin subtree. Storage is deliberately left in place: disabling keeps plugin data.
         active.remove(id)?.let { scope -> runCatching { scope.dispose() } }
