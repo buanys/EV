@@ -40,7 +40,7 @@ val agentApiClasses = rootProject.file(
 )
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     compileOnly(files(agentApiClasses))
 
@@ -53,7 +53,7 @@ dependencies {
     // The contract interfaces initialize their companion ServiceKeys at class-init time, so the JVM
     // test classpath also needs the kernel types the plugin normally receives from the host.
     // 单测跑在普通 JVM 上，契约里的 ServiceKey / HudController 等类型要显式在 classpath 里。
-    testImplementation(project(":plugin-api"))
+    testImplementation(project(":host-api"))
     testImplementation(project(":loader"))
 }
 

@@ -30,6 +30,9 @@ dependencies {
     api("androidx.compose.ui:ui:1.12.0")
     api("androidx.compose.foundation:foundation:1.12.0")
 
+    // 单元测试要真的跑到 ServiceKey / Plugin 这些内核类型。compileOnly 只管编译，
+    // 运行时不会把 :core 放进测试 classpath——少了这一行，测试类在初始化时就 NoClassDefFoundError。
+    testImplementation(project(":core"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.20")
 }

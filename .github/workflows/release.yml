@@ -87,7 +87,7 @@ jobs:
         run: ./gradlew test --console=plain
 
       - name: Check SDK API snapshots
-        run: ./gradlew :plugin-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
+        run: ./gradlew :host-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
 
       - name: Assemble signed release APK
         run: ./gradlew :host:assembleRelease --console=plain

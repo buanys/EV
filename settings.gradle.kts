@@ -32,7 +32,7 @@ include("packages", "packager")
 
 // Android host runtime and the plugin contract it shares with plugins.
 include(":ui-kit")
-include(":plugin-api")
+include(":host-api")
 include(":host")
 // Host-only logic (validation, per-plugin storage, crash bookkeeping, dependency resolution) that
 // must not live in the published plugin contract or the design system. Plain Kotlin/JVM.

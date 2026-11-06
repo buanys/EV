@@ -38,7 +38,7 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
 
 dependencies {
     compileOnly(project(":ui-kit"))
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
 }
 

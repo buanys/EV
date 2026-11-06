@@ -26,8 +26,15 @@ class SharedPackagesContractTest {
         .map { it.substringBefore('#').trim() }
         .filter { it.isNotEmpty() }
 
-    private val hostPackages: String =
-        File(root, "plugin-api/src/main/kotlin/org/cordis/api/HostPackages.kt").readText()
+    private val hostPackagesFile: File =
+        File(root, "host-api/src/main/kotlin/org/cordis/api/HostPackages.kt")
+            .takeIf { it.isFile }
+            ?: error(
+                "找不到 HostPackages.kt。契约模块改名或搬家后，请同步这里的路径——" +
+                    "这个测试是 shared-packages.txt 与代码的唯一对账点，路径漂移等于门禁失效。",
+            )
+
+    private val hostPackages: String = hostPackagesFile.readText()
 
     private val proguard: String = File(root, "host/proguard-rules.pro").readText()
 

@@ -8,7 +8,7 @@ import ev.buan.gradle.VerifyApiSnapshotTask
 // the module's compiled classes into one ordered text file and compare it with the committed
 // baseline in the root `api/` directory. The snapshot changes only when the ABI changes.
 //
-// Applied by :plugin-api and :ui-kit. `./gradlew :plugin-api:apiSnapshot :ui-kit:apiSnapshot`
+// Applied by :host-api and :ui-kit. `./gradlew :host-api:apiSnapshot :ui-kit:apiSnapshot`
 // refreshes the baselines; `apiSnapshotCheck` is the CI gate and fails on any difference.
 
 val apiClasses = layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")

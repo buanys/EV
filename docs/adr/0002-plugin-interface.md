@@ -30,23 +30,23 @@ require(instance is Plugin<*>) { ... }
 
 具体边界：
 
-- `:plugin-api` 只放**业务契约**：`AgentPage`、`AgentUi`、`AgentSurface`、`AppearanceService`、
+- `:host-api` 只放**业务契约**：`AgentPage`、`AgentUi`、`AgentSurface`、`AppearanceService`、
   `HostNavigation`、`ServiceDirectory`、`HostPackages`、`PLUGIN_API_VERSION`。
   它对内核是 `compileOnly(project(":core"))`——公开签名里会出现 `ServiceKey`，但不向使用方导出内核。
-- 插件模块 `compileOnly(project(":loader"))` + `compileOnly(project(":plugin-api"))`
+- 插件模块 `compileOnly(project(":loader"))` + `compileOnly(project(":host-api"))`
   （`ping-api` 之外的插件还加 `:ui-kit`），入口实现 `Plugin<Unit>`；运行期 `org.cordis.*` 由宿主的共享前缀提供。
 - 注入走内核语义：`override val inject = dependencies(...)`、`ctx.require(Key)`；
   需要**可选**依赖时用 `ServiceDirectory`（内核的强注入会让消费者一直等，见
-  [plugin-api/src/main/kotlin/org/cordis/api/ServiceDirectory.kt](../../plugin-api/src/main/kotlin/org/cordis/api/ServiceDirectory.kt) 的注释）。
+  [host-api/src/main/kotlin/org/cordis/api/ServiceDirectory.kt](../../host-api/src/main/kotlin/org/cordis/api/ServiceDirectory.kt) 的注释）。
 - 宿主不重复实现生命周期：加载、依赖等待、`apply: suspend`、`EffectScope` 清理都由内核 `Fiber` 负责。
 
 ## 代价与限制
 
 - **SDK 无法隐藏内核**。`org.cordis` 是加载器内置共享前缀（`DEFAULT_SHARED_PACKAGES`），插件运行期
   必然拿得到 `Context`/`Fiber`/`ServiceKey` 等全部内核类型；拿掉就等于所有插件加载失败。
-  所以「plugin-api 是完整 API 面」是不成立的表述，本文与 [architecture.md](../architecture.md) 都按
+  所以「host-api 是完整 API 面」是不成立的表述，本文与 [architecture.md](../architecture.md) 都按
   「SDK = 业务契约，内核 API 另计」来写。
-- **插件编译期需要 `:loader`**。`:plugin-api` 用 `compileOnly` 引用内核，不向下游导出 `:core`；
+- **插件编译期需要 `:loader`**。`:host-api` 用 `compileOnly` 引用内核，不向下游导出 `:core`；
   插件为了拿到 `org.cordis.Plugin` 必须自己声明 `compileOnly(project(":loader"))`。这等于把内核
   放进每个插件的编译期可见面，SDK 的「收敛」只发生在模块归属上，不发生在可见性上。
 - **契约与内核语义纠缠**。`AppearanceService`/`ServiceDirectory` 的 `Key` 直接是内核 `ServiceKey`，
@@ -67,5 +67,5 @@ require(instance is Plugin<*>) { ... }
 ## 影响
 
 - 新插件一律按 `org.cordis.Plugin` 写，不引入新的插件基类。
-- `:plugin-api` 的新增内容必须是「宿主 ↔ 插件」的业务契约；宿主内部校验/存储等逻辑放到 `:host-core`（T13）。
+- `:host-api` 的新增内容必须是「宿主 ↔ 插件」的业务契约；宿主内部校验/存储等逻辑放到 `:host-core`（T13）。
 - 文档、README、ADR 不得声称「插件只依赖 SDK」或「SDK 隔离了内核」。

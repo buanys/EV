@@ -27,7 +27,7 @@ Kotlin Multiplatform 项目（[settings.gradle.kts](../../settings.gradle.kts)�
 
 三层含义：
 
-1. **同仓源码**：内核模块继续与 `:host`、`:plugin-api`、`:ui-kit` 在同一个 Gradle 构建里，宿主用
+1. **同仓源码**：内核模块继续与 `:host`、`:host-api`、`:ui-kit` 在同一个 Gradle 构建里，宿主用
    project 依赖消费，不引入私服、不做跨仓 composite build。
 2. **冻结门禁**：`scripts/kernel-freeze.sh` 以 `7b13e6b` 为基线，对 `loader core hmr include packages`
    整个目录做已跟踪 diff + 未跟踪文件检查；出现

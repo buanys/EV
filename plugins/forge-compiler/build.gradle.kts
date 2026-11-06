@@ -52,7 +52,7 @@ val sdkDir: String = run {
 }
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
 
     // 编译期只需要编译器与 d8 的符号：类本体由载荷在运行时提供（容器里的 dex），

@@ -46,7 +46,7 @@ val agentApiClasses = rootProject.file(
 )
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     // The page wears the shared design system; ui-kit itself is supplied by the host at runtime.
     compileOnly(project(":ui-kit"))
@@ -59,7 +59,7 @@ dependencies {
     testImplementation(files(agentApiClasses))
     // The distillation test needs the storage contracts on the test classpath: the plugin gets
     // them from the host at runtime, but a JVM test has no host.
-    testImplementation(project(":plugin-api"))
+    testImplementation(project(":host-api"))
     // ServiceKey lives in the frozen kernel; the contracts reference it from their companion objects.
     testImplementation(project(":core"))
     // The Compose compiler plugin runs over this module's tests too and refuses to generate IR

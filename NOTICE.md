@@ -5,7 +5,7 @@
 本项目的内核部分派生自 **[meteor149/cordis-kotlin](https://github.com/meteor149/cordis-kotlin)**。
 派生范围包括内核（`third_party/cordis/core`、`third_party/cordis/loader`，已 vendor 并冻结，
 见 `third_party/cordis/KERNEL.lock`）、打包与发布接线（`packager/`、`packages/`）、
-插件契约与设计系统（`plugin-api/`、`ui-kit/`），以及随它们一起继承的构建脚本、
+插件契约与设计系统（`host-api/`、`ui-kit/`），以及随它们一起继承的构建脚本、
 `buildSrc/` 工具类和 `gradle/` 配置。
 
 上游以 MIT 许可证发布，版权声明为：

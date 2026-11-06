@@ -42,7 +42,7 @@ val agentApiClasses = rootProject.file(
 )
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     compileOnly(files(agentApiClasses))
     // Declared per plugin on purpose: compileOnly keeps them out of the jar, the host supplies them.

@@ -38,14 +38,14 @@ val agentApiClasses = rootProject.file(
 )
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     compileOnly(files(agentApiClasses))
 
     testImplementation("junit:junit:4.13.2")
     testImplementation(files(agentApiClasses))
     // 单测要在普通 JVM 上解析 PluginStorage 与 ServiceKey。
-    testImplementation(project(":plugin-api"))
+    testImplementation(project(":host-api"))
     testImplementation(project(":loader"))
     // 会话日志的读写是挂起函数，单测用 runBlocking 跑它们。
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")

@@ -8,7 +8,7 @@
 # 注意：写的是 Java 包名，不是 Maven group。`com.squareup.okhttp3` 是 group，
 # 真正的包是 `okhttp3`——写错时第 3 条会失败并打印包名。
 #
-# 改这里之后必须同步 plugin-api/.../HostPackages.kt，否则 :host:testReleaseUnitTest 失败。
+# 改这里之后必须同步 host-api/.../HostPackages.kt，否则 :host:testReleaseUnitTest 失败。
 ev.buan.ui
 androidx.compose
 androidx.activity

@@ -40,7 +40,7 @@ val agentApiClasses = rootProject.file(
 )
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     compileOnly(project(":ui-kit"))
     compileOnly("androidx.activity:activity-compose:1.13.0")

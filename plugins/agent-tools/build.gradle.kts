@@ -46,7 +46,7 @@ val agentApiClasses = rootProject.file(
 )
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     // The panel wears the shared design system; ui-kit itself is supplied by the host at runtime.
     compileOnly(project(":ui-kit"))

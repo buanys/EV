@@ -38,7 +38,7 @@
 ## 阶段（详见对话中的六阶段计划）
 
 0. 立规矩：tag、规则改写、三条门禁、本 ADR —— **本 ADR 所在阶段**
-1. 契约收口：`plugin-api` → `host-api`，插件不再依赖宿主
+1. 契约收口：`host-api` → `host-api`，插件不再依赖宿主
 2. 宿主拆分：`host` → `host-app` + `host-runtime`，`HostRuntime` 拆成四个类
 3. 插件归位：按基础/功能/资源/集成四类归位，同时做减法
 4. 拆业务枢纽：`AgentBrainService`、`MemoryPage`、`EvModelProvidersScreen`、`BrowserWebView`

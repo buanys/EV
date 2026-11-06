@@ -4,7 +4,7 @@
 > 单独成文：[KERNEL.md](KERNEL.md)。
 
 本仓库除内核外还带一个可侧载的 Android 宿主 `:host`（应用名 EV）、设计系统 `:ui-kit`、
-契约模块 `:plugin-api` 与若干插件模块 `:plugins:*`。**内核（core/loader/…）的语义未改动**，
+契约模块 `:host-api` 与若干插件模块 `:plugins:*`。**内核（core/loader/…）的语义未改动**，
 EV 只在其上增加宿主策略。
 
 > **内核已冻结（2026-10-25 起）。** 内核目录（loader/core/hmr/include/packages）只当依赖用，
@@ -34,12 +34,12 @@ EV 只在其上增加宿主策略。
 插件类加载器是 child-first，只有共享包从宿主解析。清单的唯一来源是
 [gradle/shared-packages.txt](gradle/shared-packages.txt)（19 项），它同时约束三件事：
 
-1. `HostPackages.shared`（插件编译期可见）——[plugin-api/.../HostPackages.kt](plugin-api/src/main/kotlin/org/cordis/api/HostPackages.kt)
+1. `HostPackages.shared`（插件编译期可见）——[host-api/.../HostPackages.kt](host-api/src/main/kotlin/org/cordis/api/HostPackages.kt)
 2. release 的 R8 `-keep`——[host/proguard-rules.pro](host/proguard-rules.pro)
 3. release dex 中该包必须有类——`:host:verifySharedPackagesInDex`
 
 漂移由单测与构建门禁双重拦截（`SharedPackagesContractTest` + `releaseGate`）。
-**加一项共享包 = 同时改清单与 `HostPackages.kt`，否则 `:plugin-api:testDebugUnitTest` 失败。**
+**加一项共享包 = 同时改清单与 `HostPackages.kt`，否则 `:host-api:testDebugUnitTest` 失败。**
 
 未列入共享清单的包**不会回落到宿主**：`IsolatedPluginClassLoader.loadClass` 的兜底是
 platform class loader（[ModuleLoader.android.kt](loader/src/androidMain/kotlin/org/cordis/loader/ModuleLoader.android.kt)），
@@ -180,7 +180,7 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 
 ```bash
 scripts/release-smoke.sh          # 单测 + releaseGate + 插件 jar + 真机清单
-:plugin-api:testDebugUnitTest     # 插件契约、共享包一致性
+:host-api:testDebugUnitTest     # 插件契约、共享包一致性
 :host-core:test                   # 校验器、权限元数据、依赖解析、存储
 :ui-kit:testDebugUnitTest         # 外观计算
 :loader:testAndroidHostTest       # Android 描述符（AGP9 需 withHostTest）
@@ -226,7 +226,7 @@ jar/json；真机问答需要一个可用的 OpenAI 兼容服务。本仓库的 
 ## 已知缺口
 
 - `:host` 是 AGP 9 application 模块，自身有 `:host:test` / `:host:testDebugUnitTest`（权限、存储、安全模式等
-  Android 接线测试）；`./gradlew test` 会聚合各模块的 `test`（含 `:host`、`:plugin-api`、`:ui-kit`），
+  Android 接线测试）；`./gradlew test` 会聚合各模块的 `test`（含 `:host`、`:host-api`、`:ui-kit`），
   CI 也跑这一步。可测的纯逻辑放在 `:host-core`
   （校验器、dex 扫描、权限元数据、依赖解析、存储、崩溃标记）。
 - `loader/src/androidInstrumentedTest` 仍需 `withDeviceTest` + androidx.test 依赖 + 真机，

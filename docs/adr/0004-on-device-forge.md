@@ -58,7 +58,7 @@
 
 1. **装完默认 disabled**，由人手动启用；
 2. `forge_install` 标 `dangerous`，走审批门 + 人工确认（来源=agent 生成、源码摘要、声明权限）；
-3. **编译期 classpath 白名单**：`core.jar`、`plugin-api.jar`、`android-stub.jar`、`annotations.jar`，
+3. **编译期 classpath 白名单**：`core.jar`、`host-api.jar`、`android-stub.jar`、`annotations.jar`，
    `kotlin-stdlib` 只作 `--lib` 参考**绝不进 dex**（否则 `DUPLICATE_PLATFORM_CLASS` 被拒）；
 4. 生成的 sidecar `apiVersion` 固定为 1；`dependencies` 必须显式写出（jar sidecar 的键是 `dependencies`，漏了会导致加载顺序错）；
 5. 不承诺沙箱——与 [ADR-0003](0003-permission-scope.md) 的权限模型一致，这里只是把"谁有权装"显式化。
@@ -132,7 +132,7 @@ OK dex=1 bytes=1892 ms=2675
 
 ## P2 落地记录（2026-10-30 深夜）
 
-**契约**：`PluginInstallService`（install / uninstall）+ `HostRestart`，`plugin-api` 只加不改；
+**契约**：`PluginInstallService`（install / uninstall）+ `HostRestart`，`host-api` 只加不改；
 判定逻辑抽到 `:host-core` 的 `InstallDecision`（8 个单测），宿主只负责搬字节和触发扫描。
 
 真机结果（一次性自检插件直接调契约）：

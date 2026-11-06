@@ -80,14 +80,14 @@ jobs:
         run: ./gradlew test --console=plain
 
       - name: Run SDK unit tests
-        run: ./gradlew :plugin-api:testDebugUnitTest :ui-kit:testDebugUnitTest --console=plain
+        run: ./gradlew :host-api:testDebugUnitTest :ui-kit:testDebugUnitTest --console=plain
 
       # The SDK modules are published artifacts: a public API change must update the committed
       # snapshot in api/*.txt in the same change. binary-compatibility-validator is not available
       # offline, so the fallback renders javap output; see gradle/api-snapshot.gradle.kts.
       # `apiSnapshot` refreshes the baseline (run locally), this step only verifies it.
       - name: Check SDK API snapshots
-        run: ./gradlew :plugin-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
+        run: ./gradlew :host-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
 
       # R8 release build plus the release-key / shared-package / forbidden-package gates. CI has no
       # release keystore and must never hold one, so it passes the gate's single explicit opt-out:

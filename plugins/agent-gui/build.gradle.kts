@@ -38,7 +38,7 @@ val agentApiClasses = rootProject.file(
 )
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     compileOnly(files(agentApiClasses))
 
@@ -47,7 +47,7 @@ dependencies {
     testImplementation(files(agentApiClasses))
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
     // ScreenService/ScreenDump 来自宿主契约；测试要用真的类型，不想再造一份假的。
-    testImplementation(project(":plugin-api"))
+    testImplementation(project(":host-api"))
     // screen_wait / screen_read_all 的轮询是 suspend 的，测试用 runBlocking 驱动。
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }

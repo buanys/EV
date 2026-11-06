@@ -8,13 +8,13 @@
 ## 1. 这是什么
 
 Android 宿主 + 插件平台。内核（`core` / `loader` / `hmr` / `include` / `packages`，派生自
-cordis-kotlin）**已冻结**，只当依赖用；业务都在 `:host`、`:ui-kit`、`:plugin-api` 和 `:plugins:*`。
+cordis-kotlin）**已冻结**，只当依赖用；业务都在 `:host`、`:ui-kit`、`:host-api` 和 `:plugins:*`。
 
 | 模块 | 职责 |
 |---|---|
 | `:host` | Android 应用（EV）：启动、插件管理、安全模式、崩溃审计 |
 | `:ui-kit` | 设计系统：`EvThemeTokens`、`EvDrawer`、通用组件 |
-| `:plugin-api` | 插件契约（`AgentService`、`AgentReply`、`AgentEvent`、`AgentProgress`…） |
+| `:host-api` | 插件契约（`AgentService`、`AgentReply`、`AgentEvent`、`AgentProgress`…） |
 | `:plugins:*` | 9 个插件，见 `settings.gradle.kts` |
 | `:plugins:agent-brain` | agent 主循环：预算、工具执行、收尾、进度事件 |
 | `:plugins:ev-ui` | 聊天界面（最重要的插件） |
@@ -56,8 +56,8 @@ ANDROID_HOME=/opt/android-sdk \
    线上表现为 `NoSuchMethodError`，而 md5 完全一致。
 4. **推设备**：`/app/export`（HTTP 桥）导出到 `Download/DSHA/`，再 `cp` 到 `/sdcard/EV/mods/`。
 5. **重启 EV**：插件在启动时复制到 `files/mods/` 再加载，**改插件必须重启进程**。
-6. **动了公共 API 就跑快照**：改 `:plugin-api` 或 `:ui-kit` 的公开声明后，
-   `gradle :plugin-api:apiSnapshot :ui-kit:apiSnapshot` 并提交 `api/*.txt`。
+6. **动了公共 API 就跑快照**：改 `:host-api` 或 `:ui-kit` 的公开声明后，
+   `gradle :host-api:apiSnapshot :ui-kit:apiSnapshot` 并提交 `api/*.txt`。
    本地单测不会管这个，`apiSnapshotCheck` 只在 CI 跑——忘了就是一条红的 main。
 
 ---
@@ -83,7 +83,7 @@ scripts/plugin.sh deploy <id>     # Android root 环境
 ## 4. 铁律
 
 - **不要改内核目录**（`loader/` `core/` `hmr/` `include/` `packages/`）。`scripts/kernel-freeze.sh` 会拦。
-- **契约只加不改**：给 `plugin-api` 的接口加方法/字段可以（带默认值），
+- **契约只加不改**：给 `host-api` 的接口加方法/字段可以（带默认值），
   改签名、删字段、加枚举值（会让已编译的 `when` 崩溃）都不行。
   真正不兼容时应当 bump `apiVersion`——这是已知缺口，目前还没做。
 - 插件类**不得**位于 `org.cordis.*`。

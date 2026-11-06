@@ -46,7 +46,7 @@ val agentApiClasses = rootProject.file(
 
 dependencies {
     compileOnly(project(":ui-kit"))
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     compileOnly(files(agentApiClasses))
     // System back for the in-plugin settings sheet: BackHandler comes from activity-compose, which
@@ -72,7 +72,7 @@ dependencies {
     // which is never packaged), and the store test needs the storage contract plus the kernel types
     // its companion ServiceKey initialises with - both are compileOnly for the container.
     testImplementation("org.json:json:20260814")
-    testImplementation(project(":plugin-api"))
+    testImplementation(project(":host-api"))
     testImplementation(project(":loader"))
     // The memory panel's state machine calls the suspend MemoryService contract, so its test needs
     // runBlocking and nothing else from coroutines.

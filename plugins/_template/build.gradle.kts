@@ -33,12 +33,12 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 }
 
 dependencies {
-    compileOnly(project(":plugin-api"))
+    compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
 
     testImplementation("junit:junit:4.13.2")
     // 契约里的 ServiceKey 在类初始化时就会建对象，JVM 单测的 classpath 也要有内核类型。
-    testImplementation(project(":plugin-api"))
+    testImplementation(project(":host-api"))
     testImplementation(project(":loader"))
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
 }

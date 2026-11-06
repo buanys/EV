@@ -100,7 +100,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":loader"))
     implementation(project(":ui-kit"))
-    implementation(project(":plugin-api"))
+    implementation(project(":host-api"))
     // Host-only logic that must not be published as part of the plugin contract (see :host-core).
     implementation(project(":host-core"))
 

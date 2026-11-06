@@ -27,7 +27,7 @@ val kernelModules = subprojects.filter {
     it.name != "packager" &&
         it.path != ":host" &&
         it.path != ":host-core" &&
-        it.path != ":plugin-api" &&
+        it.path != ":host-api" &&
         it.path != ":ui-kit" &&
         !it.path.startsWith(":plugins")
 }
@@ -92,7 +92,7 @@ configure(kernelModules) {
     }
 }
 
-// Only the kernel libraries, `:plugin-api` and `:ui-kit` are published. The host and its internal
+// Only the kernel libraries, `:host-api` and `:ui-kit` are published. The host and its internal
 // core are application-internal, and plugins are packaged as .kplugin archives, not artifacts.
 val publishableModules = subprojects.filter {
     it.path != ":host" && it.path != ":host-core" && !it.path.startsWith(":plugins")

@@ -19,14 +19,14 @@
 | 内核 | `packager` | JVM Gradle 插件，打包 `.kplugin` | `packager/src/` |
 | 内核 | `utils` / `timer` / `logger-console` | 内核辅助模块，均 `api(:core)` | 各自 `build.gradle.kts` |
 | 宿主 | `:host` | Android 应用进程：扫描、校验、加载、UI 外壳、服务提供 | `host/src/main/kotlin/ev/buan/` |
-| 宿主 | `:host-core`（T02） | 仅宿主使用的纯 JVM 逻辑：校验（`ev.buan.hostcore.validation`）、权限元数据、依赖解析；不依赖 Android，也不依赖 `:plugin-api` | `host-core/src/main/kotlin/ev/buan/hostcore/` |
-| SDK | `:plugin-api` | 宿主 ↔ 插件业务契约（`Agent*`、`AppearanceService`、`HostNavigation`、`ServiceDirectory`、`HostPermission`、`PermissionService`、`PluginStorage`、`BackgroundService`、`HostPackages`、`PLUGIN_API_VERSION`） | `plugin-api/src/main/kotlin/org/cordis/api/` |
+| 宿主 | `:host-core`（T02） | 仅宿主使用的纯 JVM 逻辑：校验（`ev.buan.hostcore.validation`）、权限元数据、依赖解析；不依赖 Android，也不依赖 `:host-api` | `host-core/src/main/kotlin/ev/buan/hostcore/` |
+| SDK | `:host-api` | 宿主 ↔ 插件业务契约（`Agent*`、`AppearanceService`、`HostNavigation`、`ServiceDirectory`、`HostPermission`、`PermissionService`、`PluginStorage`、`BackgroundService`、`HostPackages`、`PLUGIN_API_VERSION`） | `host-api/src/main/kotlin/org/cordis/api/` |
 | SDK | `:ui-kit` | 设计系统 `ev.buan.ui.*`，宿主与插件共用 | `ui-kit/src/main/kotlin/ev/buan/ui/` |
 | 插件 | `:plugins:*` | 可侧载插件；容器形态与角色见第 6 节 | `plugins/*/src/main/kotlin/` |
 | 插件（agent 层） | `:plugins:agent-api` / `agent-model` / `agent-tools` / `agent-memory` / `agent-brain` | 契约（agent-api）+ 模型/工具/记忆能力 + 编排；`ev-ui` 是唯一界面插件（EV 风格，消费 `AgentService`） | `plugins/agent-*/src/main/kotlin/`、`plugins/ev-ui/` |
 
 模块注册见 [settings.gradle.kts](../settings.gradle.kts)。内核模块由根构建的 `kernelModules` 过滤器统一套上
-KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins:*` 是 Android-only 模块
+KMP + Android library 插件；`:host`、`:host-api`、`:ui-kit` 与 `:plugins:*` 是 Android-only 模块
 （[build.gradle.kts](../build.gradle.kts)）。
 
 `demo/` 是**独立 Gradle 构建**（[demo/settings.gradle.kts](../demo/settings.gradle.kts)），不在根
@@ -39,11 +39,11 @@ KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins
 ```
 :plugins:*  --compileOnly-->  :loader  --api-->  :core
      |                          (因此插件编译期可见 org.cordis.*)
-     +--compileOnly--> :plugin-api --compileOnly--> :core
+     +--compileOnly--> :host-api --compileOnly--> :core
      |                          \--api--> :ui-kit
      +--compileOnly--> :ui-kit        （契约插件不直接声明，见下方说明）
 
-:host  --implementation--> :core, :loader, :ui-kit, :plugin-api
+:host  --implementation--> :core, :loader, :ui-kit, :host-api
 :host  --implementation--> :host-core                 （T02）
 
 内核内部：loader/utils/timer/logger-console --api--> core
@@ -55,14 +55,14 @@ KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins
 证据：各模块 `build.gradle.kts` 的 `dependencies`；插件模块统一 `compileOnly(project(":loader"))`
 并排除运行期 `kotlin-stdlib`（例如 [plugins/probe/build.gradle.kts](../plugins/probe/build.gradle.kts)）。
 
-契约插件不直接声明 `:ui-kit`；经 `:plugin-api` 的 `api` 依赖编译期仍可见 `ev.buan.ui`，
+契约插件不直接声明 `:ui-kit`；经 `:host-api` 的 `api` 依赖编译期仍可见 `ev.buan.ui`，
 但不打包、不使用。其余插件都直接 `compileOnly(project(":ui-kit"))`。
 
 两条方向性结论：
 
-- 内核**不依赖** `:host`、`:plugin-api`、`:ui-kit`、`:plugins:*`。这是冻结策略能成立的前提。
-- `:plugin-api` 只在编译期引用 `:core`（`compileOnly`），运行期 `org.cordis.*` 由宿主提供；
-  `:plugin-api` 公开签名里出现内核类型（`ServiceKey`），所以插件编译期仍需要内核在 classpath 上。
+- 内核**不依赖** `:host`、`:host-api`、`:ui-kit`、`:plugins:*`。这是冻结策略能成立的前提。
+- `:host-api` 只在编译期引用 `:core`（`compileOnly`），运行期 `org.cordis.*` 由宿主提供；
+  `:host-api` 公开签名里出现内核类型（`ServiceKey`），所以插件编译期仍需要内核在 classpath 上。
 
 ### 2.2 运行期类解析
 
@@ -77,7 +77,7 @@ KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins
 4. 平台 class loader 兜底。
 
 `sharedHostPackages` 由宿主固定注入 `HostPackages.shared`
-（[plugin-api/src/main/kotlin/org/cordis/api/HostPackages.kt](../plugin-api/src/main/kotlin/org/cordis/api/HostPackages.kt)，
+（[host-api/src/main/kotlin/org/cordis/api/HostPackages.kt](../host-api/src/main/kotlin/org/cordis/api/HostPackages.kt)，
 内容必须与 [gradle/shared-packages.txt](../gradle/shared-packages.txt) 的 19 项一致）。
 
 插件可见面因此是：
@@ -88,7 +88,7 @@ KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins
   见 [ADR-0002](adr/0002-plugin-interface.md)。
 - **SDK 可见**：`org.cordis.api.*` 在 `org.cordis` 前缀内；`ev.buan.ui.*` 显式列入共享清单。
 - **宿主实现包不可见**：`ev.buan.*`（`HostRuntime`、`PluginInstaller` 等）不在共享清单里，插件只能通过
-  `:plugin-api` 的契约（`AppearanceService`、`HostNavigation`、`ServiceDirectory`）拿宿主能力。
+  `:host-api` 的契约（`AppearanceService`、`HostNavigation`、`ServiceDirectory`）拿宿主能力。
 
 ### 2.3 宿主如何把插件接起来
 
@@ -101,7 +101,7 @@ KMP + Android library 插件；`:host`、`:plugin-api`、`:ui-kit` 与 `:plugins
 4. 启停是活操作：`setEnabled` 直接 `activate` / `deactivate`（`fiber.dispose()` + `modules.release`）。
 
 宿主**没有接线** `hmr`、`include`、`packages`、`packager`：在内核模块里 `:host` 只依赖 `:core` 与
-`:loader`（另有 `:ui-kit`、`:plugin-api`、`:host-core`），源码中没有任何 `org.cordis.hmr` 引用。
+`:loader`（另有 `:ui-kit`、`:host-api`、`:host-core`），源码中没有任何 `org.cordis.hmr` 引用。
 因此插件文件替换只在**下次进程启动的 sync** 生效，不是热替换。
 
 ## 3. 内核冻结策略（D1 = A）
@@ -143,18 +143,18 @@ T01 把签名改动回退成 `verify(descriptor)`（工作区改动，待本轮�
 | 4 | 启停 | ✅ | `HostRuntime.setEnabled` / `activate` / `deactivate`：启用即加载、停用即 `fiber.dispose()` + `modules.release`，无需重启。**依赖 hmr 的「插件替换热更新」没有实现**：替换文件只在下次启动 sync 生效 | — |
 | 5 | 依赖解析 | ✅ | T10 已落地（基线 `9ad2569` 时还是半成品）：`host-core/src/main/kotlin/ev/buan/hostcore/dependency/DependencyResolver.kt` 做拓扑排序 + 环检测（`DEPENDENCY_CYCLE`，环成员不进接受计划、依赖者报 `DEPENDENCY_MISSING`），`PluginInstaller.acceptOrder` 按依赖序而非文件名接受；APK 可声明 `cordis.dependencies`，jar/dex 的 sidecar 可声明 `dependencies`。`PluginValidator.dependencyGate` 仍要求依赖已在本轮接受。**仍无版本约束**（本轮非目标） | T10（已落地） |
 | 6 | 密钥保管 | ✅ | T11 已落地：`:host:releaseGate` = `verifyReleaseSigning` + `verifySharedPackagesInDex` + `verifyForbiddenPackages`；缺 `keystore.properties` 时几秒内失败（`assembleRelease` 被 `mustRunAfter` 排在门禁后，不会先跑一遍 R8）。`-PallowDebugSigning=true` 是唯一显式旁路，且不改变签名结果；单独 `assembleRelease` 仍可产出 debug 签名侧载包，但发布入口一律是 `releaseGate`。运行时信任锚是「当前安装包的证书」（`PluginTrust.ownCertificates`），不是 keystore 文件。详见 [docs/release-signing.md](release-signing.md) | T11（已落地） |
-| 7 | 权限仲裁 | ✅ | T05/T06 已落地：`HostPermission` + `PermissionService`（plugin-api）、`PermissionStore` / `PermissionServiceImpl`、管理页授予/撤销、激活期权限门、`verifyAtLoad(requestedPermissions)` 加载期复核；声明来自 APK 的 `cordis.permissions` 或 sidecar 的 `permissions`。**仍是同进程、同 UID 的 API 级门控，不是沙箱**（见 §7.1）。另：`NETWORK` 目前没有宿主中介 API（联网走插件直接调用共享 OkHttp），授权/撤销不改变插件能否联网；真正被门控的是 `PluginStorage`、`BACKGROUND`、`NOTIFICATIONS` 等宿主服务 | T05、T06（已落地） |
-| 8 | 后台存活 | ✅ | T09 已落地：plugin-api 提供 `BackgroundService`（`acquire(reason)` / `release()` 引用计数；未获 `BACKGROUND` 授权时 `acquire` 抛 `SecurityException`）；宿主用单进程前台服务 `EvBackgroundService` 承载（`specialUse` + `FOREGROUND_SERVICE_SPECIAL_USE`、通知渠道，Android 14+ 显式 `startForeground` 类型），至少一个插件持引用时保持存活、最后一个引用释放即停止。插件不直接启动 Service；平台仍可拒绝后台启动（抛 `IllegalStateException`，不记引用）；进程被杀后 service 与引用都不保留 | T09（已落地） |
+| 7 | 权限仲裁 | ✅ | T05/T06 已落地：`HostPermission` + `PermissionService`（host-api）、`PermissionStore` / `PermissionServiceImpl`、管理页授予/撤销、激活期权限门、`verifyAtLoad(requestedPermissions)` 加载期复核；声明来自 APK 的 `cordis.permissions` 或 sidecar 的 `permissions`。**仍是同进程、同 UID 的 API 级门控，不是沙箱**（见 §7.1）。另：`NETWORK` 目前没有宿主中介 API（联网走插件直接调用共享 OkHttp），授权/撤销不改变插件能否联网；真正被门控的是 `PluginStorage`、`BACKGROUND`、`NOTIFICATIONS` 等宿主服务 | T05、T06（已落地） |
+| 8 | 后台存活 | ✅ | T09 已落地：host-api 提供 `BackgroundService`（`acquire(reason)` / `release()` 引用计数；未获 `BACKGROUND` 授权时 `acquire` 抛 `SecurityException`）；宿主用单进程前台服务 `EvBackgroundService` 承载（`specialUse` + `FOREGROUND_SERVICE_SPECIAL_USE`、通知渠道，Android 14+ 显式 `startForeground` 类型），至少一个插件持引用时保持存活、最后一个引用释放即停止。插件不直接启动 Service；平台仍可拒绝后台启动（抛 `IllegalStateException`，不记引用）；进程被杀后 service 与引用都不保留 | T09（已落地） |
 | 9 | UI 外壳 | ✅ | `MainActivity`（应用根 = 插件主页，无主页插件时 `FallbackPage` 仍进得了管理页）、`PluginsActivity`（插件列表/启停/信任）、`SettingsActivity`、`PluginPageActivity`（插件整页渲染）；主题由 `EvTheme` 统一包裹 | — |
 | 10 | 崩溃兜底 | ✅ | T08 已落地：`EvApplication` 安装 `Thread.setDefaultUncaughtExceptionHandler`，崩溃时先写 `files/crash/last.txt` + `crash.pending`（`host-core` 的 `CrashMarker` / `CrashReport`），再交回平台默认处理器；下次启动检测到标记即进入**安全模式**（本次不加载任何插件，`HostRuntime.activate` 内另有硬门控兜底），管理页显示崩溃时间与疑似插件并可「退出安全模式」（清标记后重载已启用插件）。**限制**：Compose 没有错误边界，进程内不恢复；疑似插件只是归因提示，不是隔离；安全模式只在下次启动生效 | T08（已落地） |
-| 11 | 每个插件的存储 | ✅ | T07 已落地：`PluginStorage` 契约（plugin-api）+ host-core 的路径/配额/原子写/清理纯逻辑（`ev.buan.hostcore.storage`）+ 宿主 `PluginStorageImpl` 按 `files/plugins/<id>/`、`cache/plugins/<id>/` 注入 per-plugin scope；管理页显示占用并可清理，卸载/禁用按策略删除 | T07（已落地） |
+| 11 | 每个插件的存储 | ✅ | T07 已落地：`PluginStorage` 契约（host-api）+ host-core 的路径/配额/原子写/清理纯逻辑（`ev.buan.hostcore.storage`）+ 宿主 `PluginStorageImpl` 按 `files/plugins/<id>/`、`cache/plugins/<id>/` 注入 per-plugin scope；管理页显示占用并可清理，卸载/禁用按策略删除 | T07（已落地） |
 
 ## 5. SDK 组成
 
-SDK = `:plugin-api` + `:ui-kit`，都是 `com.android.library`（`minSdk 33`、`compileSdk 37`），
+SDK = `:host-api` + `:ui-kit`，都是 `com.android.library`（`minSdk 33`、`compileSdk 37`），
 并随根构建的 `publishableModules` 发布（groupId `io.github.meteor149`，version `0.0.1-SNAPSHOT`）。
 
-### 5.1 `:plugin-api`（插件契约）
+### 5.1 `:host-api`（插件契约）
 
 | 文件 | 内容 |
 |---|---|
@@ -171,7 +171,7 @@ SDK = `:plugin-api` + `:ui-kit`，都是 `com.android.library`（`minSdk 33`、`
 宿主内部校验不在这个模块里：`PluginValidator`、`DexClassScanner`、`HostPolicy`、`PluginCandidate`、
 `SigningState`、`ValidationResult`、`PluginRejection` 与错误码已迁到
 `:host-core` 的 `ev.buan.hostcore.validation`（T13）。`:host-core` 是纯 JVM，权限字段用 wire name 字符串；
-`HostPermission` 留在 `:plugin-api`，由宿主在边界（`PluginInstaller`、`HostRuntime`）做映射。
+`HostPermission` 留在 `:host-api`，由宿主在边界（`PluginInstaller`、`HostRuntime`）做映射。
 
 ### 5.2 `:ui-kit`（设计系统）
 
@@ -302,7 +302,7 @@ SDK 不能承诺「插件只看到 SDK」；`org.cordis` 从加载器内置共�
 ### 7.5 测试与恢复能力的空白
 
 - `:host` 是 AGP 9 application 模块，自身有 `:host:test` / `:host:testDebugUnitTest`（权限、存储、安全模式等
-  Android 接线测试）；`./gradlew test` 会按任务名聚合各模块的 `test`（含 `:host:test`、`:plugin-api` 与
+  Android 接线测试）；`./gradlew test` 会按任务名聚合各模块的 `test`（含 `:host:test`、`:host-api` 与
   `:ui-kit` 的 `testDebugUnitTest`），CI 也跑这一步。可测的纯逻辑放在 `:host-core`（校验、权限元数据、
   依赖解析、存储、崩溃标记）。
 - `loader/src/androidInstrumentedTest` 未接线（需要 `withDeviceTest` + androidx.test + 真机）。
@@ -332,9 +332,9 @@ SDK 不能承诺「插件只看到 SDK」；`org.cordis` 从加载器内置共�
 
 ```powershell
 .\gradlew.bat assembleDebug
-.\gradlew.bat test :plugin-api:testDebugUnitTest :ui-kit:testDebugUnitTest
+.\gradlew.bat test :host-api:testDebugUnitTest :ui-kit:testDebugUnitTest
 .\gradlew.bat :host:releaseGate
-.\gradlew.bat :plugin-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck   # T14：公开 API 快照
+.\gradlew.bat :host-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck   # T14：公开 API 快照
 bash scripts/kernel-freeze.sh          # T01；Windows 下用 Git Bash
 bash scripts/release-smoke.sh          # 单测 + releaseGate + 插件 jar + 真机清单
 ```
@@ -343,8 +343,8 @@ bash scripts/release-smoke.sh          # 单测 + releaseGate + 插件 jar + 真
   缺 `keystore.properties` 时 `verifyReleaseSigning` 几秒内失败（`assembleRelease` 被排在门禁之后，
   不会先跑 R8），有密钥才进入 release 构建。本地侧载冒烟可加 `-PallowDebugSigning=true` 显式放行，
   它不改变签名结果。不排斥「不带 flag」的配置缓存运行是 T02 的验收项。
-- **SDK 公开 API 快照（T14）**：`apiSnapshotCheck` 对比 `api/*.txt`。改了 `:plugin-api` 或 `:ui-kit`
-  的公开 API 后，必须跑 `.\gradlew.bat :plugin-api:apiSnapshot :ui-kit:apiSnapshot` 刷新基线并随代码提交，
+- **SDK 公开 API 快照（T14）**：`apiSnapshotCheck` 对比 `api/*.txt`。改了 `:host-api` 或 `:ui-kit`
+  的公开 API 后，必须跑 `.\gradlew.bat :host-api:apiSnapshot :ui-kit:apiSnapshot` 刷新基线并随代码提交，
   否则本地与 CI 的 `apiSnapshotCheck` 都会失败。
 - `scripts/kernel-freeze.sh` 需要基线提交 `7b13e6b` 在本地对象库里；浅克隆会直接报错退出，不会静默通过。
 - **运行环境**：Windows 下 `scripts/kernel-freeze.sh` 用 **Git Bash** 执行。若用 WSL 的 git，其换行配置

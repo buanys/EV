@@ -17,7 +17,7 @@ EV 的插件是**同进程、同 UID** 的代码：`AndroidModuleLoader` 用 `De
 <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 ```
 
-`plugin-api` 没有权限类型，宿主也没有任何 per-plugin 授权状态：装上即拥有宿主进程的全部能力。
+`host-api` 没有权限类型，宿主也没有任何 per-plugin 授权状态：装上即拥有宿主进程的全部能力。
 在「插件可侧载」的前提下，用户看不到、也控制不了插件能做什么。
 
 需要回答：EV 的权限模型要做到哪一步？是否承诺隔离不可信插件？
