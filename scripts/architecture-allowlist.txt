@@ -6,16 +6,16 @@
 # 顺序按"先拆哪个"排：越靠前越像枢纽、越该先动。
 
 host/src/main/kotlin/ev/buan/HostComposition.kt
-plugins/agent-brain/src/main/kotlin/ev/buan/plugins/agent/brain/AgentBrainService.kt
-plugins/agent-memory/src/main/kotlin/ev/buan/plugins/agent/memory/MemoryPage.kt
-plugins/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvModelProvidersScreen.kt
+plugins/feature/agent-brain/src/main/kotlin/ev/buan/plugins/agent/brain/AgentBrainService.kt
+plugins/base/agent-memory/src/main/kotlin/ev/buan/plugins/agent/memory/MemoryPage.kt
+plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvModelProvidersScreen.kt
 host/src/main/kotlin/ev/buan/PluginsActivity.kt
 host/src/main/kotlin/ev/buan/PluginInstaller.kt
-plugins/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/EvUiPlugin.kt
-plugins/agent-browse/src/main/kotlin/ev/buan/plugins/agent/browse/BrowserWebView.kt
-plugins/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvDrawer.kt
-plugins/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvComposer.kt
+plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/EvUiPlugin.kt
+plugins/feature/agent-browse/src/main/kotlin/ev/buan/plugins/agent/browse/BrowserWebView.kt
+plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvDrawer.kt
+plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvComposer.kt
 ui-kit/src/main/kotlin/ev/buan/ui/EvGlyphVectors.kt
-plugins/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvMarkdown.kt
-plugins/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvPluginCatalogScreen.kt
+plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvMarkdown.kt
+plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvPluginCatalogScreen.kt
 host/src/main/kotlin/ev/buan/intro/PaperStartup.kt

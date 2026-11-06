@@ -34,7 +34,7 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 // 项目依赖，只能对着它的编译产物编译，运行时由依赖加载器按 sidecar 的 dependencies 送达。
 // agent 契约已经并进 :host-api，这里只剩这一个后门——它属于 Phase 1 的遗留，之后再处理。
 val forgeCompilerClasses = rootProject.file(
-    "plugins/forge-compiler/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
+    "plugins/integration/forge-compiler/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
 )
 dependencies {
     compileOnly(project(":host-api"))

@@ -8,13 +8,13 @@
 #                        缺什么见 docs/adr/0004-on-device-forge.md 待办 1。
 #
 # 用法：
-#   scripts/forge-payload.sh --from-probe /sdcard/EV/mods/compileprobe.jar --out plugins/forge-compiler/payload
+#   scripts/forge-payload.sh --from-probe /sdcard/EV/mods/compileprobe.jar --out plugins/integration/forge-compiler/payload
 set -euo pipefail
 
 MODE=""
 PLUGIN_API=""
 SRC=""
-OUT="plugins/forge-compiler/payload"
+OUT="plugins/integration/forge-compiler/payload"
 
 while [ $# -gt 0 ]; do
   case "$1" in

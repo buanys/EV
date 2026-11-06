@@ -37,26 +37,30 @@ include(":host")
 // Host-only logic (validation, per-plugin storage, crash bookkeeping, dependency resolution) that
 // must not live in the published plugin contract or the design system. Plain Kotlin/JVM.
 include(":host-core")
-// 在构建内的插件：真实功能。
-include(":plugins:settings")
-include(":plugins:ev-ui")
-include(":plugins:agent-model")
-include(":plugins:agent-tools")
-include(":plugins:agent-memory")
-include(":plugins:agent-brain")
-include(":plugins:agent-prompt")
-include(":plugins:agent-log")
-include(":plugins:agent-device")
-include(":plugins:agent-gui")
-include(":plugins:agent-browse")
-include(":plugins:agent-web")
-include(":plugins:agent-shell")
-include(":plugins:linux")
-include(":plugins:forge")
-include(":plugins:forge-compiler")
+// 在构建内的插件，按"做什么"分四类（见 docs/newdocs/最高规则 §二）：
+//   base        能力提供者（工具总线、存储、日志、设备、执行、屏幕）
+//   feature     页面与行为（界面、主循环、浏览器、提示词、设置）
+//   resource    数据/主题一类的叶子节点
+//   integration 对接外部系统（模型服务、Web 门面、自编译工具链）
+include(":plugins:feature:settings")
+include(":plugins:feature:ev-ui")
+include(":plugins:integration:agent-model")
+include(":plugins:base:agent-tools")
+include(":plugins:base:agent-memory")
+include(":plugins:feature:agent-brain")
+include(":plugins:feature:agent-prompt")
+include(":plugins:base:agent-log")
+include(":plugins:base:agent-device")
+include(":plugins:base:agent-gui")
+include(":plugins:feature:agent-browse")
+include(":plugins:integration:agent-web")
+include(":plugins:base:agent-shell")
+include(":plugins:base:linux")
+include(":plugins:integration:forge")
+include(":plugins:integration:forge-compiler")
 // 主题插件：全局视觉定义的唯一来源。默认不随仓库打包，装到 mods 即生效；
 // 不喜欢它的人只换这一个插件，布局插件 ev-ui 不用动。
-include(":plugins:theme-default")
+include(":plugins:resource:theme-default")
 
 // 实验插件（hello, probe, coldapi, ping-api, ping-impl, ping-ui）已于 2026-10-25 删除：
 // 它们不参与构建，唯一的作用是每次 ui-kit 契约变更后还要跟着重编一遍。
