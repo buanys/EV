@@ -62,5 +62,5 @@ include(":plugins:theme-default")
 // 它们不参与构建，唯一的作用是每次 ui-kit 契约变更后还要跟着重编一遍。
 // frontend（旧聊天兜底）同期删除，ev-ui 是唯一界面插件。
 
-// 用 _template 造出来的第一个真插件（验证模板与 plugin.sh 的闭环）。
-include(":plugins:hello")
+// hello（模板闭环验证用）已于 2026-11-06 删除：验证目的已经达成，留着只是每次改动
+// 都要跟着重编一次。_template 仍在仓库里，需要时复制一份改名即可。
