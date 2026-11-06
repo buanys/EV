@@ -3,7 +3,12 @@ package ev.buan.plugins.agent.browse
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolSpec
 import okhttp3.OkHttpClient
+import org.cordis.api.BudgetExhausted
+import org.cordis.api.BudgetKind
+import org.cordis.api.BudgetTimeout
 import org.cordis.api.PageReader
+import org.cordis.api.RenderedPage
+import org.cordis.api.RuntimeBudgetService
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -22,6 +27,8 @@ internal class BrowseTools(
     private val client: OkHttpClient,
     /** 宿主没发布时为空：那就只剩静态抓取，JS 页面会如实报告抓不到，而不是假装成功。 */
     private val pageReader: PageReader?,
+    /** 宿主的执行预算。为空时（老宿主）渲染照旧，只是没人替它把关。 */
+    private val budget: RuntimeBudgetService? = null,
 ) {
 
     fun all(): List<Tool> = listOf(Tool_(SEARCH_SPEC) { search(it) }, Tool_(FETCH_SPEC) { fetch(it) })
@@ -105,6 +112,39 @@ internal class BrowseTools(
         .build()
 
 
+    /**
+     * 把「离屏渲染」交给宿主的执行预算再跑。
+     *
+     * 渲染是这条工具链上最贵的一步：起一个 WebView、跑完 JS、等页面稳定，十几秒，
+     * 还占着几 MB 原生内存。而它恰好是 **agent 在后台连开几次就崩** 的那种动作——
+     * 所以它归 [BudgetKind.Long]，由宿主决定这一刻能不能开。
+     *
+     * 被拒或超时都**不抛出去**：`web_fetch` 的结果里已经有静态抓取的内容，
+     * 把"这一页要渲染但现在渲染不了"如实写进 error 交给模型，比让整次工具调用失败有用得多。
+     * 模型看到这句话会改走别的路子（换 URL、只读摘要），看到异常栈则什么也做不了。
+     */
+    private suspend fun render(reader: PageReader, url: String): RenderedPage {
+        val budget = budget ?: return reader.render(url)
+        return try {
+            budget.run(BudgetKind.Long) { reader.render(url) }
+        } catch (exhausted: BudgetExhausted) {
+            RenderedPage(
+                url = url,
+                title = "",
+                text = "",
+                error = "离屏渲染已满（同时最多 ${exhausted.limit} 个），这一页先用静态抓取的结果；" +
+                    "要读脚本渲染后的正文，稍后再试一次",
+            )
+        } catch (timeout: BudgetTimeout) {
+            RenderedPage(
+                url = url,
+                title = "",
+                text = "",
+                error = "离屏渲染超过 ${timeout.maxDurationMs / 1000} 秒仍未完成，已放弃",
+            )
+        }
+    }
+
     private suspend fun fetch(args: JSONObject): String {
         val url = args.optString("url", "").trim()
         if (url.isEmpty()) return error("url 不能为空")
@@ -142,7 +182,7 @@ internal class BrowseTools(
                 save(url, static.title, static.text, saveTo, saveOverwrite),
             )
 
-        val rendered = reader.render(url)
+        val rendered = render(reader, url)
         if (rendered.text.isBlank()) {
             return payload(
                 url, static.title, static.text, "http", static.truncated,

@@ -11,6 +11,7 @@ import org.cordis.Plugin
 import org.cordis.api.AgentPage
 import org.cordis.api.AgentSurface
 import org.cordis.api.PageReader
+import org.cordis.api.RuntimeBudgetService
 import org.cordis.api.ServiceDirectory
 import org.cordis.dependencies
 
@@ -50,7 +51,7 @@ class AgentBrowsePlugin :
     override val title = "联网搜索"
     override val body = "web_search 搜索网页、web_fetch 读页面正文；需要 JS 的页面自动交给离屏浏览器。"
 
-    override val inject: Dependencies = dependencies(ServiceDirectory.Key)
+    override val inject: Dependencies = dependencies(ServiceDirectory.Key, RuntimeBudgetService.Key)
 
     override val pageTitle: String = "浏览器"
 
@@ -72,7 +73,15 @@ class AgentBrowsePlugin :
             .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
-        registry.register(PLUGIN_ID, BrowseTools(client, directory.lookup(PageReader.Key)).all())
+        registry.register(
+            PLUGIN_ID,
+            BrowseTools(
+                client = client,
+                pageReader = directory.lookup(PageReader.Key),
+                // 宿主的执行预算：渲染走 Long 档位，由宿主决定这一刻能不能开。
+                budget = ctx.require(RuntimeBudgetService.Key),
+            ).all(),
+        )
     }
 
     private companion object {

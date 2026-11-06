@@ -139,8 +139,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.20")
+    // host-app 是组装层：真正可测的逻辑住在 :host-runtime 与 :host-core，它们的单测
+    // 也就在那两个模块里（2026-11-06 从本模块搬走，解掉 internal 跨模块不可见的问题）。
 }
 
 // 内置 seed 插件已移除（实验插件 hello 于 2026-10-25 连同其他实验插件一并删除）。

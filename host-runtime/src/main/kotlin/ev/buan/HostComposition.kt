@@ -1,6 +1,8 @@
 package ev.buan
 
 import android.content.Context as AndroidContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -19,6 +21,7 @@ import org.cordis.api.HostPackages
 import org.cordis.api.HostPermission
 import org.cordis.api.PermissionService
 import org.cordis.api.PluginStorage
+import org.cordis.api.RuntimeBudgetService
 import org.cordis.api.UserDataStorage
 import org.cordis.api.ServiceDirectory
 import org.cordis.loader.AndroidModuleDescriptor
@@ -211,6 +214,19 @@ class HostComposition(private val context: AndroidContext) {
     private var pageReaderHandle: org.cordis.EffectHandle? = null
     /** 离屏渲染实例：内存压力时要能取消它正在跑的那一次。 */
     private var pageReader: HostPageReader? = null
+
+    /**
+     * 执行预算的名额表。**全宿主一份**：被抢的是设备的线程与内存，不是某一个插件的。
+     * 每插件分别计数只会让总并发放大成"插件数 × 每插件上限"，也就是没有上限。
+     */
+    private val budgetGate = RuntimeBudgetGate()
+
+    /**
+     * 每个插件的预算寿命。停用插件时先取消它，再拆 Fiber——见 [deactivate]。
+     * 用显式表而不是 `ctx.effect`：effect 是异步挂载的，插件在挂载之前就能开始干活，
+     * 而这张表在 [activate] 交出服务之前就已经填好了。
+     */
+    private val budgetJobs = ConcurrentHashMap<String, Job>()
     private var installHandle: org.cordis.EffectHandle? = null
     private var restartHandle: org.cordis.EffectHandle? = null
     private var deviceContextHandle: org.cordis.EffectHandle? = null
@@ -366,6 +382,12 @@ class HostComposition(private val context: AndroidContext) {
                     override fun pageOf(pluginId: String) = this@HostComposition.pageFor(pluginId)
                 },
             )
+            // The offscreen renderer is an optional backend: agent-browse keeps its `web_fetch`
+            // tool working without it and reports "this page needs JS" instead of pretending the
+            // page is empty. It is published here as well as provided on the Cordis context,
+            // because a consumer that treats it as optional looks it up here — an optional
+            // dependency cannot be an `inject` entry, that one would hang until the start timeout.
+            pageReader?.let { directory.publish(org.cordis.api.PageReader.Key, it) }
             serviceDirectory = directory
             directoryHandle = cordis.provide(ServiceDirectory.Key, directory)
                 .also { runCatching { it.awaitReady() } }
@@ -780,8 +802,21 @@ class HostComposition(private val context: AndroidContext) {
                 .isolate(PluginStorage.Key)
                 .isolate(UserDataStorage.Key)
                 .isolate(BackgroundService.Key)
+                // Per-plugin too: the budget service knows whose lifetime and whose name it carries,
+                // and without isolation the kernel would hand the last provided instance to every
+                // plugin that reads the key (see the note below on isolated Fibers).
+                .isolate(RuntimeBudgetService.Key)
             val permissionService = PermissionServiceImpl(plugin.id, permissions)
             pluginContext.provide(PermissionService.Key, permissionService)
+            // Bound by contract, not by convention: a plugin that wants to do work asks the host
+            // whether it may start and how long it has. The job is per-plugin so deactivation
+            // cancels everything it still had in flight (ADR-0004 验收: 卸载后任务全部被收掉).
+            val budgetLifetime = SupervisorJob()
+            budgetJobs[plugin.id] = budgetLifetime
+            pluginContext.provide(
+                RuntimeBudgetService.Key,
+                HostRuntimeBudget(plugin.id, budgetGate, budgetLifetime),
+            )
             // Storage is lent on the same isolated Context: relative paths can only resolve inside
             // this plugin's own files/plugins/<id> and cache/plugins/<id>. It is declaration-gated
             // here as well: a plugin that never declared PLUGIN_STORAGE gets no binding at all
@@ -819,6 +854,7 @@ class HostComposition(private val context: AndroidContext) {
             active[plugin.id] = scope
         } catch (timeout: TimeoutCancellationException) {
             failures[plugin.id] = "启动超时（${START_TIMEOUT_MS / 1000} 秒）"
+            budgetJobs.remove(plugin.id)?.cancel()
             runCatching { scopeFiber?.dispose() }
         } catch (error: Throwable) {
             // The card must show *why*, not just the wrapper type: a reflective loader failure
@@ -828,6 +864,7 @@ class HostComposition(private val context: AndroidContext) {
             failures[plugin.id] = generateSequence(error) { it.cause }
                 .map { "${it.javaClass.name}: ${it.message.orEmpty()}" }
                 .joinToString("  ←  ")
+            budgetJobs.remove(plugin.id)?.cancel()
             runCatching { scopeFiber?.dispose() }
         }
     }
@@ -839,6 +876,9 @@ class HostComposition(private val context: AndroidContext) {
         // A stopped plugin must not keep the host's foreground service alive; its references are
         // dropped before the scope (and therefore the plugin) goes away.
         backgroundRelease(id)
+        // Budget tasks first: cancelling the lifetime also frees the slots they hold, so the gate
+        // never counts work belonging to a plugin that is already gone.
+        budgetJobs.remove(id)?.cancel()
         // The scope Fiber owns the plugin Fiber and both providers; one dispose tears down the whole
         // per-plugin subtree. Storage is deliberately left in place: disabling keeps plugin data.
         active.remove(id)?.let { scope -> runCatching { scope.dispose() } }
