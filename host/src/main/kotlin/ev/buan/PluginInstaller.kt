@@ -99,6 +99,10 @@ class PluginInstaller(
      *
      * 曾经默认 true——侧载时方便，但它意味着"丢进目录即可执行"，一旦对外分发就是任意代码
      * 执行入口。改成 false 不会让人装不上插件：宿主启动后停在插件管理页，导入 + 确认即可。
+     *
+     * 唯一的例外是调试包：调用方按 ApplicationInfo.FLAG_DEBUGGABLE 决定是否传 true。
+     * 因为信任绑在 jar 的 sha256 上，重构期间每重编一次插件就要重新确认一遍；
+     * 正式包不会走到这条路径。
      */
     private val autoTrustUnsigned: Boolean = false,
     /**

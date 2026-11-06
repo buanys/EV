@@ -90,11 +90,25 @@ class HostRuntime(private val context: AndroidContext) {
     @Volatile
     private var startedScope: LaunchScope? = null
 
+    /**
+     * 只有调试包才自动信任未签名插件。
+     *
+     * 这不是"为了省事"，是因为插件的信任绑定在 jar 的 sha256 上：重构期间每重编一次插件，
+     * 哈希就变一次，于是每改一行代码都要在管理页点十几次"信任"。开发时这个成本高到会让人
+     * 关掉确认，而关掉确认的副作用会跟着代码一起被打包进正式版。
+     *
+     * 所以把它绑在 FLAG_DEBUGGABLE 上：调试包丢进目录即可跑，正式包仍然是"导入 + 逐个确认"。
+     * release 构建里这个值恒为 false，不存在"忘记改回来"。
+     */
+    private val autoTrustUnsigned =
+        (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
     private val installer = PluginInstaller(
         context,
         trust,
         approvals,
         permissions,
+        autoTrustUnsigned = autoTrustUnsigned,
         capabilityTrust = capabilityTrust,
     )
 
