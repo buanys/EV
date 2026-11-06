@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import org.cordis.Context as CordisContext
 import org.cordis.Fiber
 import org.cordis.Plugin
-import org.cordis.api.AgentSurface
 import org.cordis.api.AppearanceService
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +36,6 @@ import ev.buan.hostcore.validation.PluginValidator
 import ev.buan.hostcore.validation.ValidationResult
 import org.cordis.loader.AndroidModuleVerifier
 import org.cordis.plugin
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -162,7 +160,7 @@ class HostComposition(private val context: AndroidContext) {
             // 放在 IO 上也和原来一致——重载会走类加载，不该占着 Compose 线程。
             withContext(Dispatchers.IO) {
                 val plugin = installed[id]
-                if (plugin != null && isEnabled(id) && safeMode == null) {
+                if (plugin != null && inventory.isEnabled(id) && safeMode == null) {
                     deactivate(id)
                     activate(plugin)
                 }
@@ -177,6 +175,9 @@ class HostComposition(private val context: AndroidContext) {
     private val crash = CrashStore(context)
     private val preferences = context.getSharedPreferences("ev.plugins", AndroidContext.MODE_PRIVATE)
     private val appearanceStore = AppearanceStore(context)
+
+    /** 存货：装了谁、开关、占用、卡片。只管读，见 [HostInventory]。 */
+    private val inventory = HostInventory(context, permissions, capabilityTrust, preferences)
 
     /** Host-owned theme state. Plugins read it through [AppearanceService]. */
     val appearance: State<ev.buan.ui.EvAppearance> = appearanceStore.appearance
@@ -287,7 +288,7 @@ class HostComposition(private val context: AndroidContext) {
         modules = modules,
         preferences = preferences,
         pluginIds = { installed.keys },
-        isEnabled = { id -> isEnabled(id) },
+        isEnabled = { id -> inventory.isEnabled(id) },
         failureOf = { id -> failures[id] },
         onShown = { id -> lastShownPluginId = id },
     )
@@ -395,7 +396,7 @@ class HostComposition(private val context: AndroidContext) {
                     // 落账归宿主，判定归 :host-core，搬运归这个服务——三边各管一件事。
                     rescan = { rescanForInstall() },
                     activateOnly = { id -> installed[id]?.let { activate(it) } },
-                    isEnabled = { id -> isEnabled(id) },
+                    isEnabled = { id -> inventory.isEnabled(id) },
                     inSafeMode = { safeMode != null },
                     activeIds = { active.keys.toSet() },
                     uninstallKnown = { id ->
@@ -476,10 +477,10 @@ class HostComposition(private val context: AndroidContext) {
         // Uninstall cleanup: a clean sync is the only proof that a plugin is gone (an error may
         // just mean this scan missed it), and disabled plugins stay installed, so their data is
         // never touched here. Clearing on disable is deliberately not a thing.
-        if (sync.errors.isEmpty()) pruneStorageOfUninstalled()
+        if (sync.errors.isEmpty()) inventory.pruneStorage(installed.keys + pendingUnsigned.map { it.id })
         // Progress covers exactly the plugins this pass will try to activate, in activation order.
         val targets = if (safeMode == null) {
-            installed.values.filter { isEnabled(it.id) && scopeCovers(scope, it.id) }
+            installed.values.filter { inventory.isEnabled(it.id) && scopeCovers(scope, it.id) }
         } else {
             emptyList()
         }
@@ -501,9 +502,9 @@ class HostComposition(private val context: AndroidContext) {
                     // The user's enabled preference is left untouched: safe mode is this process's
                     // decision, not a persistent setting. The card explains why nothing runs.
                     deactivate(plugin.id)
-                    if (isEnabled(plugin.id)) failures[plugin.id] = SAFE_MODE_BLOCKED
+                    if (inventory.isEnabled(plugin.id)) failures[plugin.id] = SAFE_MODE_BLOCKED
                 }
-                isEnabled(plugin.id) && scopeCovers(scope, plugin.id) -> {
+                inventory.isEnabled(plugin.id) && scopeCovers(scope, plugin.id) -> {
                     activate(plugin)
                     processed++
                     publishProgress(targets.getOrNull(processed)?.let { shortPluginName(it.id) })
@@ -520,7 +521,7 @@ class HostComposition(private val context: AndroidContext) {
         // used to show as a healthy row. Say it out loud instead - before this, "enabled but never
         // imported" looked exactly like "running fine" (see the agent-prompt case).
         installed.values.forEach { plugin ->
-            if (isEnabled(plugin.id) && plugin.id !in active && plugin.id !in failures) {
+            if (inventory.isEnabled(plugin.id) && plugin.id !in active && plugin.id !in failures) {
                 failures[plugin.id] = NOT_LOADED
                 android.util.Log.e("EV", "plugin ${plugin.id} enabled but not loaded")
             }
@@ -580,10 +581,9 @@ class HostComposition(private val context: AndroidContext) {
         pendingUnsigned = sync.pending
         installed.clear()
         sync.plugins.forEach { installed[it.id] = it }
-        if (sync.errors.isEmpty()) pruneStorageOfUninstalled()
+        if (sync.errors.isEmpty()) inventory.pruneStorage(installed.keys + pendingUnsigned.map { it.id })
         return PluginScanSummary(installed.keys.toSet(), sync.pending, sync.errors)
     }
-
 
     /**
      * Deletes one plugin's stored files (management "清理") and restarts it when enabled, so the
@@ -802,74 +802,21 @@ class HostComposition(private val context: AndroidContext) {
         runCatching { modules.release(id) }
     }
 
-    /**
-     * Deletes storage of plugins that are no longer installed. Only called after a sync without
-     * errors: an error may mean the scan missed a plugin, and its data must survive that.
-     */
-    private fun pruneStorageOfUninstalled() {
-        // Renames ride first: without this a renamed plugin id reads as an uninstall, and the
-        // prune below would delete the user's history instead of carrying it across.
-        PluginStorageLayout.migrateRenames(
-            File(context.filesDir, PluginStorageLayout.ROOT_DIRECTORY),
-            RENAMED_PLUGIN_IDS,
-        )
-        PluginStorageLayout.migrateRenames(
-            File(context.cacheDir, PluginStorageLayout.ROOT_DIRECTORY),
-            RENAMED_PLUGIN_IDS,
-        )
-        // A plugin waiting for unsigned approval is still on disk, just not loaded yet. Its data must
-        // survive until the user uninstalls it; only a plugin that is truly gone may be pruned.
-        val installedIds = installed.keys + pendingUnsigned.map { it.id }
-        PluginStorageLayout.pruneUnknown(
-            File(context.filesDir, PluginStorageLayout.ROOT_DIRECTORY),
-            installedIds,
-        )
-        PluginStorageLayout.pruneUnknown(
-            File(context.cacheDir, PluginStorageLayout.ROOT_DIRECTORY),
-            installedIds,
-        )
-    }
-
-    /**
-     * Bytes used by one plugin's persistent storage; a broken area reads as zero on the card.
-     *
-     * Management path: no PermissionService, so a disabled or unprivileged plugin still reports its
-     * usage and can be cleared.
-     */
-    private fun storageUsage(id: String): Long =
-        runCatching { PluginStorageImpl(context, id).usageBytes() }.getOrDefault(0L)
-
     // ---------------------------------------------------------------- state
 
+    /** 开关存在宿主自己的 prefs 里，键名只在这里拼。 */
+    private fun key(id: String): String = "enabled:$id"
+
     private fun snapshot(): HostState = HostState(
-        cards = installed.values.map { plugin ->
-            val instance = runCatching { modules.peek(modules.moduleUrl(plugin.id)) }.getOrNull() as? Plugin<*>
-            val surface = instance as? AgentSurface
-            PluginCard(
-                id = plugin.id,
-                version = plugin.version,
-                apiVersion = plugin.apiVersion,
-                signed = plugin.signed,
-                enabled = isEnabled(plugin.id),
-                title = surface?.title ?: plugin.id,
-                body = surface?.body.orEmpty(),
-                ui = instance as? AgentUi,
-                error = failures[plugin.id],
-                requestedPermissions = plugin.requestedPermissions,
-                grantedPermissions = permissions.granted(plugin.id),
-                storageBytes = storageUsage(plugin.id),
-                shortcuts = plugin.shortcuts,
-                trustsUpdates = capabilityTrust.trustsUpdates(plugin.id),
-            )
-        },
+        cards = inventory.cards(
+            installed = installed.values,
+            failures = failures,
+            instanceOf = { id -> runCatching { modules.peek(modules.moduleUrl(id)) }.getOrNull() as? Plugin<*> },
+        ),
         errors = syncErrors,
         pending = pendingUnsigned,
         safeMode = safeMode,
     ).also { stateHolder.value = it }
-
-    private fun isEnabled(id: String): Boolean = preferences.getBoolean(key(id), true)
-
-    private fun key(id: String): String = "enabled:$id"
 
     private companion object {
         /** Upper bound for one plugin's apply(); a stuck plugin must not block the host. */
