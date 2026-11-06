@@ -287,10 +287,18 @@ class AgentBrainService internal constructor(
         }
 
         val tools = current.tools
-        val specs: List<ToolSpec> = tools?.specs().orEmpty()
-        val memory = current.memory
-        val events = mutableListOf<AgentEvent>()
-        val usages = mutableListOf<AgentUsage?>()
+        // Everything the loop has to carry from one round to the next lives here: the running
+        // prompt, the counters the budget reads, and the fingerprints that detect a repeated
+        // call. turnOnce gets it by reference, so it mutates the same values this function reads.
+        val state = TurnState(
+            memory = current.memory,
+            sessionLog = current.sessionLog,
+            sessionId = sessionId,
+            tools = tools,
+            specs = tools?.specs().orEmpty(),
+            approval = current.approval,
+            policy = current.policy,
+        )
 
         val userMessage = AgentMessage(role = AgentRole.USER, content = text)
         // The behaviour baseline plus the caller's character prompt, as one ordered message. It
@@ -302,249 +310,71 @@ class AgentBrainService internal constructor(
         // minute in the system message invalidates the cache for the whole history behind it.
         // They ride at the tail instead, appended to this turn's user message.
         val prompt = composePrompt(current.prompt, systemPrompt, sessionId)
-        val inputs = mutableListOf<AgentMessage>()
-        prompt.system?.let { inputs += AgentMessage(AgentRole.SYSTEM, it) }
-        inputs += historyOf(memory, current.sessionLog, sessionId)
-        inputs += if (prompt.volatile.isNullOrBlank()) {
+        prompt.system?.let { state.inputs += AgentMessage(AgentRole.SYSTEM, it) }
+        state.inputs += historyOf(state.memory, state.sessionLog, state.sessionId)
+        state.inputs += if (prompt.volatile.isNullOrBlank()) {
             userMessage
         } else {
             AgentMessage(AgentRole.USER, "${text}\n\n${prompt.volatile}")
         }
         // Memory keeps what the user actually typed: the volatile tail is regenerated every turn,
         // and storing it would replay a stale clock in later requests.
-        remember(memory, current.sessionLog, sessionId, userMessage)
+        remember(state.memory, state.sessionLog, state.sessionId, userMessage)
 
         val startedAt = System.nanoTime()
-        // Time the user spends deciding is not the agent's time: a phone in a pocket must not eat
-        // the wall-clock budget of the turn.
-        var approvalNanos = 0L
-
-        var rounds = 0
-        var toolCalls = 0
-        var lastReply: AgentReply? = null
-        var previousNormalized: String? = null
-        val seenResults = mutableMapOf<String, String>()
-        var repeatStreak = 0
         var stop = AgentStop(AgentStop.Reason.ROUNDS, 0, 0)
 
+        // The skeleton: check the budget, hand one round to [turnOnce], stop when it says so.
+        // Everything the user sees per round (RoundStarted, tool events, RoundFinished) is emitted
+        // from there, because it belongs to that interaction, not to this loop.
         while (true) {
-            val elapsedMs = (System.nanoTime() - startedAt - approvalNanos) / 1_000_000
-            if (rounds >= budget.maxRounds) {
-                stop = AgentStop(AgentStop.Reason.ROUNDS, rounds, toolCalls)
+            val elapsedMs = (System.nanoTime() - startedAt - state.approvalNanos) / 1_000_000
+            if (state.rounds >= budget.maxRounds) {
+                stop = AgentStop(AgentStop.Reason.ROUNDS, state.rounds, state.toolCalls)
                 break
             }
             if (elapsedMs > budget.deadlineMs) {
-                stop = AgentStop(AgentStop.Reason.DEADLINE, rounds, toolCalls)
+                stop = AgentStop(AgentStop.Reason.DEADLINE, state.rounds, state.toolCalls)
                 break
             }
-            if (promptChars(inputs) > budget.maxPromptChars) {
-                stop = AgentStop(AgentStop.Reason.ROUNDS, rounds, toolCalls, "上下文超出预算")
-                break
-            }
-
-            // 每轮开头是第一个断点：暂停中的 agent 不该再向模型发起一次调用。
-            checkpoint()
-            rounds++
-            emit(AgentProgress.RoundStarted(rounds))
-            // 等模型写答案这段时间也要有声：胶囊不能只在调工具时亮，
-            // 否则"它到底在不在动"这个问题在最长的一段等待里反而没有答案。
-            publishHud(
-                org.cordis.api.HudState(
-                    step = toolCalls,
-                    status = if (toolCalls == 0) "思考中" else "整理结果",
-                    phase = org.cordis.api.HudPhase.RUNNING,
-                ),
-            )
-            val reply = try {
-                // Streaming is the default path: deltas reach the UI while the model is still
-                // writing, and a provider that cannot stream degrades to a single delta through
-                // the contract's default implementation.
-                modelService.completeStreaming(target, inputs, specs) { delta ->
-                    emit(AgentProgress.TextDelta(rounds, delta))
-                }
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (error: Throwable) {
-                // The successful earlier rounds still consumed tokens; report what was measured.
-                emit(AgentProgress.Done(failure(target, error, AgentUsageTotals.aggregate(usages))))
-                return
-            }
-            events += reply.events
-            usages += reply.usage
-            lastReply = reply
-
-            val calls = reply.events.filter { it.kind == AgentEvent.Kind.TOOL_CALL }
-            if (calls.isEmpty()) {
-                stop = AgentStop(AgentStop.Reason.FINISHED, rounds, toolCalls)
+            if (promptChars(state.inputs) > budget.maxPromptChars) {
+                stop = AgentStop(AgentStop.Reason.ROUNDS, state.rounds, state.toolCalls, "上下文超出预算")
                 break
             }
 
-            val normalized = normalize(reply.message.content)
-            if (normalized.isNotEmpty() && normalized == previousNormalized) {
-                emit(AgentProgress.RoundFinished(rounds))
-                stop = AgentStop(AgentStop.Reason.NO_PROGRESS, rounds, toolCalls)
-                break
-            }
-            previousNormalized = normalized
-
-            // Native protocol: the assistant's tool-call turn goes back ahead of the results, so
-            // the provider sees its own calls followed by the tool messages that answer them.
-            val roundCalls = calls.mapIndexed { index, call -> toolCallOf(index, call) }
-            val assistantTurn = reply.message.copy(toolCalls = roundCalls)
-            inputs += assistantTurn
-            remember(memory, current.sessionLog, sessionId, assistantTurn)
-
-            // Every call in this turn must be answered, including the ones a guard skipped: an
-            // assistant turn with unanswered tool_calls is an invalid request for the final call.
-            val outcomes = mutableListOf<Outcome>()
-            var stopAfterRound: AgentStop? = null
-            for (call in roundCalls) {
-                val toolStartedAt = System.nanoTime()
-                emit(
-                    AgentProgress.ToolStarted(
-                        round = rounds,
-                        id = call.id,
-                        name = call.name,
-                        argsJson = call.argumentsJson,
-                        startedAt = toolStartedAt,
-                    ),
-                )
-                if (stopAfterRound != null) {
-                    outcomes += Outcome.ToolResult(call, SKIPPED_RESULT, StepState.Skipped)
-                    emit(AgentProgress.ToolFinished(call.id, StepState.Skipped, 0, null))
-                    continue
+            when (val step = turnOnce(state, modelService, target)) {
+                // The model call failed and its error reply is already on the wire: this turn has
+                // no summary to write and no TurnEnded to log, exactly as before.
+                TurnStep.Abort -> return
+                is TurnStep.Stop -> {
+                    stop = step.stop
+                    break
                 }
-                if (toolCalls >= budget.maxToolCalls) {
-                    outcomes += Outcome.ToolResult(call, SKIPPED_RESULT, StepState.Skipped)
-                    emit(AgentProgress.ToolFinished(call.id, StepState.Skipped, 0, null))
-                    stopAfterRound = AgentStop(AgentStop.Reason.TOOL_BUDGET, rounds, toolCalls)
-                    continue
-                }
-                toolCalls++
-                // 第二个断点：两个工具之间。工具执行中不硬停——点了一半的手指收不回来，
-                // 停在动作之间才是干净的。
-                checkpoint()
-                // 屏幕上的进度：用户看不见审批弹窗了，得在胶囊上看见"现在在跑哪个工具"。
-                // 走 publishHud 而不是直接 show：暂停/停止时要基于最近一次状态改，
-                // 直接 show 会让 lastHud 停在旧值上。
-                publishHud(
-                    org.cordis.api.HudState(
-                        step = toolCalls,
-                        tool = call.name,
-                        note = describe(call),
-                        status = if (call.name.startsWith("screen_")) "操作中" else "执行中",
-                        phase = org.cordis.api.HudPhase.RUNNING,
-                    ),
-                )
-                val executed = executeGuarded(
-                    registry = tools,
-                    call = call,
-                    approval = current.approval,
-                    policy = current.policy,
-                ) {
-                    emit(AgentProgress.ToolAwaitingApproval(call.id))
-                }
-                approvalNanos += executed.approvalNanos
-                // 失败要在胶囊上留痕：否则用户只看到进度停在原地，不知道是卡住了还是做完了。
-                if (executed.state == StepState.Failed) {
-                    publishHud(lastHud.copy(status = "这一步失败了", note = null))
-                }
-                val elapsedToolNanos = System.nanoTime() - toolStartedAt - executed.approvalNanos
-                val result = truncateUtf16Safe(executed.result, MAX_TOOL_RESULT_CHARS)
-                emit(
-                    AgentProgress.ToolFinished(
-                        id = call.id,
-                        state = executed.state,
-                        elapsedMs = elapsedToolNanos / 1_000_000,
-                        preview = result.take(PREVIEW_CHARS),
-                    ),
-                )
-                val fingerprint = call.name + '\u0000' + call.argumentsJson
-                val prior = seenResults.put(fingerprint, result)
-                outcomes += Outcome.ToolResult(call, result, executed.state, executed.images)
-                if (prior != null && prior == result) {
-                    repeatStreak++
-                    if (repeatStreak >= REPEAT_LIMIT) {
-                        stopAfterRound = AgentStop(
-                            reason = AgentStop.Reason.REPEATED_CALLS,
-                            rounds = rounds,
-                            toolCalls = toolCalls,
-                            detail = call.name,
-                        )
-                    } else {
-                        outcomes += Outcome.Reflection(reflection(call))
-                    }
-                }
-            }
-
-            // Order is load-bearing: every TOOL message answering this assistant turn must come
-            // first and contiguously, then at most one nudge. A user message between tool results
-            // makes the conversation invalid for strict providers:
-            //   "An assistant message with 'tool_calls' must be followed by tool messages
-            //    responding to each 'tool_call_id' (insufficient tool messages)".
-            for (outcome in outcomes.filterIsInstance<Outcome.ToolResult>()) {
-                val toolMessage = AgentMessage(
-                    role = AgentRole.TOOL,
-                    content = outcome.result,
-                    name = outcome.call.name,
-                    toolCallId = outcome.call.id,
-                )
-                inputs += toolMessage
-                remember(memory, current.sessionLog, sessionId, toolMessage)
-                events += AgentEvent(
-                    kind = AgentEvent.Kind.TOOL_RESULT,
-                    text = outcome.result,
-                    toolName = outcome.call.name,
-                    toolCallId = outcome.call.id,
-                )
-            }
-            // Images travel after every tool message and before any nudge: a picture read by a
-            // tool belongs to this tool round, and strict servers reject a user message inserted
-            // between tool results. Only the caption is stored - the base64 never reaches disk.
-            val producedImages = outcomes.filterIsInstance<Outcome.ToolResult>()
-                .flatMap { it.images }
-            if (producedImages.isNotEmpty()) {
-                val imageMessage = AgentMessage(
-                    role = AgentRole.USER,
-                    content = "以下是工具读取的 ${producedImages.size} 张图片，请直接查看。",
-                    images = producedImages,
-                )
-                inputs += imageMessage
-                remember(memory, current.sessionLog, sessionId, imageMessage)
-            }
-            // One nudge per round is enough: several identical reminders would just eat context.
-            outcomes.filterIsInstance<Outcome.Reflection>().firstOrNull()?.let { nudge ->
-                // A system message in the middle of a conversation is rejected or ignored by some
-                // OpenAI-compatible servers, so the nudge rides as a user message and says
-                // explicitly that it comes from the runtime.
-                val message = AgentMessage(AgentRole.USER, nudge.text)
-                inputs += message
-                remember(memory, current.sessionLog, sessionId, message)
-            }
-
-            emit(AgentProgress.RoundFinished(rounds))
-            stopAfterRound?.let {
-                stop = it
-                break
+                TurnStep.Continue -> Unit
             }
         }
 
         val finished = stop.reason == AgentStop.Reason.FINISHED
         val content = if (finished) {
-            lastReply?.message?.content?.takeIf { it.isNotBlank() } ?: FALLBACK_NO_TEXT
+            state.lastReply?.message?.content?.takeIf { it.isNotBlank() } ?: FALLBACK_NO_TEXT
         } else {
             emit(AgentProgress.Finalizing)
-            wrapUp(stop, inputs, target, modelService, usages, events)
+            wrapUp(stop, state.inputs, target, modelService, state.usages, state.events)
         }
         if (content.isNotBlank()) {
-            remember(memory, current.sessionLog, sessionId, AgentMessage(role = AgentRole.ASSISTANT, content = content))
+            remember(
+                state.memory,
+                state.sessionLog,
+                state.sessionId,
+                AgentMessage(role = AgentRole.ASSISTANT, content = content),
+            )
         }
 
         // 这一轮为什么停下也要落日志：只存消息的话，回放时看不出它是被预算截断的，
         // 也分不出"模型自己说完"和"我们把它掐了"。
-        current.sessionLog?.let { log ->
+        state.sessionLog?.let { log ->
             try {
-                log.append(sessionId, SessionEvent.TurnEnded(stop))
+                log.append(state.sessionId, SessionEvent.TurnEnded(stop))
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Throwable) {
@@ -557,12 +387,282 @@ class AgentBrainService internal constructor(
                 AgentReply(
                     message = AgentMessage(role = AgentRole.ASSISTANT, content = content),
                     model = target,
-                    events = events,
-                    usage = AgentUsageTotals.aggregate(usages),
+                    events = state.events,
+                    usage = AgentUsageTotals.aggregate(state.usages),
                     stop = stop,
                 ),
             ),
         )
+    }
+
+    /** What one [turnOnce] wants [turn] to do next. */
+    private sealed interface TurnStep {
+        /** The round went through: inputs are appended, run another one. */
+        data object Continue : TurnStep
+
+        /** A termination condition was hit; [stop] says which one and what it counted. */
+        data class Stop(val stop: AgentStop) : TurnStep
+
+        /**
+         * The model call failed. The error [AgentReply] is already emitted, so the turn must end
+         * right here - no summary completion, no TurnEnded event.
+         */
+        data object Abort : TurnStep
+    }
+
+    /**
+     * The mutable state one turn carries across its rounds.
+     *
+     * A holder instead of a dozen parameters because most of these are *written back* by
+     * [turnOnce] - rounds, tool count, approval time, the repeat streak. Kotlin passes Int/Long by
+     * value, so as parameters they would each need a reference wrapper; one object is honest about
+     * what they are. Its lifetime is exactly one [turn]: it is created there and never stored
+     * anywhere, so no two sessions can share one.
+     */
+    private class TurnState(
+        /** Where history is read from and messages are appended; null degrades to single-turn. */
+        val memory: MemoryService?,
+        /** The event log, the source of truth history is rebuilt from. */
+        val sessionLog: SessionLog?,
+        val sessionId: String,
+        /** The tool registry, and the specs sent with every request. */
+        val tools: ToolRegistry?,
+        val specs: List<ToolSpec>,
+        /** The approval gate and the policy that can pre-answer it. */
+        val approval: ApprovalService?,
+        val policy: ApprovalPolicy?,
+    ) {
+        /** The full request: system message?, stored history, user message, this turn's rounds. */
+        val inputs = mutableListOf<AgentMessage>()
+
+        /** Everything this turn produced, handed back as [AgentReply.events] verbatim. */
+        val events = mutableListOf<AgentEvent>()
+
+        /** One usage per model call, aggregated at the end. */
+        val usages = mutableListOf<AgentUsage?>()
+
+        /** Tool fingerprint -> the result it produced last time; drives the repeat guard. */
+        val seenResults = mutableMapOf<String, String>()
+
+        /** Rounds started so far. Read by the budget, by events, and by every [AgentStop]. */
+        var rounds = 0
+
+        /** Tools actually invoked so far; skipped calls do not count. */
+        var toolCalls = 0
+
+        /**
+         * Wall clock spent waiting for a human, subtracted from the turn's deadline: time the user
+         * spends deciding is not the agent's time, so a phone in a pocket must not eat the budget.
+         */
+        var approvalNanos = 0L
+
+        /** The last answer seen, so a FINISHED turn can return it without a second call. */
+        var lastReply: AgentReply? = null
+
+        /** Normalized text of the previous tool-calling round, for the no-progress guard. */
+        var previousNormalized: String? = null
+
+        /** Consecutive identical call + identical result pairs within this turn. */
+        var repeatStreak = 0
+    }
+
+    /**
+     * One model interaction: pause check, request, run this round's tool batch, feed the results
+     * back into [TurnState.inputs].
+     *
+     * It answers "what happened this round" and nothing else - it does not decide whether the turn
+     * goes on ([turn] owns every termination check) and it does not write the final reply. Progress
+     * events are emitted here anyway, because in time they belong to this interaction: RoundStarted
+     * before the request, ToolStarted/ToolFinished per call, RoundFinished once the results are in.
+     */
+    private suspend fun FlowCollector<AgentProgress>.turnOnce(
+        state: TurnState,
+        modelService: ModelService,
+        target: ModelRef,
+    ): TurnStep {
+        // 每轮开头是第一个断点：暂停中的 agent 不该再向模型发起一次调用。
+        checkpoint()
+        state.rounds++
+        emit(AgentProgress.RoundStarted(state.rounds))
+        // 等模型写答案这段时间也要有声：胶囊不能只在调工具时亮，
+        // 否则"它到底在不在动"这个问题在最长的一段等待里反而没有答案。
+        publishHud(
+            org.cordis.api.HudState(
+                step = state.toolCalls,
+                status = if (state.toolCalls == 0) "思考中" else "整理结果",
+                phase = org.cordis.api.HudPhase.RUNNING,
+            ),
+        )
+        val reply = try {
+            // Streaming is the default path: deltas reach the UI while the model is still
+            // writing, and a provider that cannot stream degrades to a single delta through
+            // the contract's default implementation.
+            modelService.completeStreaming(target, state.inputs, state.specs) { delta ->
+                emit(AgentProgress.TextDelta(state.rounds, delta))
+            }
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (error: Throwable) {
+            // The successful earlier rounds still consumed tokens; report what was measured.
+            emit(AgentProgress.Done(failure(target, error, AgentUsageTotals.aggregate(state.usages))))
+            return TurnStep.Abort
+        }
+        state.events += reply.events
+        state.usages += reply.usage
+        state.lastReply = reply
+
+        val calls = reply.events.filter { it.kind == AgentEvent.Kind.TOOL_CALL }
+        if (calls.isEmpty()) {
+            return TurnStep.Stop(AgentStop(AgentStop.Reason.FINISHED, state.rounds, state.toolCalls))
+        }
+
+        val normalized = normalize(reply.message.content)
+        if (normalized.isNotEmpty() && normalized == state.previousNormalized) {
+            emit(AgentProgress.RoundFinished(state.rounds))
+            return TurnStep.Stop(AgentStop(AgentStop.Reason.NO_PROGRESS, state.rounds, state.toolCalls))
+        }
+        state.previousNormalized = normalized
+
+        // Native protocol: the assistant's tool-call turn goes back ahead of the results, so
+        // the provider sees its own calls followed by the tool messages that answer them.
+        val roundCalls = calls.mapIndexed { index, call -> toolCallOf(index, call) }
+        val assistantTurn = reply.message.copy(toolCalls = roundCalls)
+        state.inputs += assistantTurn
+        remember(state.memory, state.sessionLog, state.sessionId, assistantTurn)
+
+        // Every call in this turn must be answered, including the ones a guard skipped: an
+        // assistant turn with unanswered tool_calls is an invalid request for the final call.
+        val outcomes = mutableListOf<Outcome>()
+        var stopAfterRound: AgentStop? = null
+        for (call in roundCalls) {
+            val toolStartedAt = System.nanoTime()
+            emit(
+                AgentProgress.ToolStarted(
+                    round = state.rounds,
+                    id = call.id,
+                    name = call.name,
+                    argsJson = call.argumentsJson,
+                    startedAt = toolStartedAt,
+                ),
+            )
+            if (stopAfterRound != null) {
+                outcomes += Outcome.ToolResult(call, SKIPPED_RESULT, StepState.Skipped)
+                emit(AgentProgress.ToolFinished(call.id, StepState.Skipped, 0, null))
+                continue
+            }
+            if (state.toolCalls >= budget.maxToolCalls) {
+                outcomes += Outcome.ToolResult(call, SKIPPED_RESULT, StepState.Skipped)
+                emit(AgentProgress.ToolFinished(call.id, StepState.Skipped, 0, null))
+                stopAfterRound = AgentStop(AgentStop.Reason.TOOL_BUDGET, state.rounds, state.toolCalls)
+                continue
+            }
+            state.toolCalls++
+            // 第二个断点：两个工具之间。工具执行中不硬停——点了一半的手指收不回来，
+            // 停在动作之间才是干净的。
+            checkpoint()
+            // 屏幕上的进度：用户看不见审批弹窗了，得在胶囊上看见"现在在跑哪个工具"。
+            // 走 publishHud 而不是直接 show：暂停/停止时要基于最近一次状态改，
+            // 直接 show 会让 lastHud 停在旧值上。
+            publishHud(
+                org.cordis.api.HudState(
+                    step = state.toolCalls,
+                    tool = call.name,
+                    note = describe(call),
+                    status = if (call.name.startsWith("screen_")) "操作中" else "执行中",
+                    phase = org.cordis.api.HudPhase.RUNNING,
+                ),
+            )
+            val executed = executeGuarded(
+                registry = state.tools,
+                call = call,
+                approval = state.approval,
+                policy = state.policy,
+            ) {
+                emit(AgentProgress.ToolAwaitingApproval(call.id))
+            }
+            state.approvalNanos += executed.approvalNanos
+            // 失败要在胶囊上留痕：否则用户只看到进度停在原地，不知道是卡住了还是做完了。
+            if (executed.state == StepState.Failed) {
+                publishHud(lastHud.copy(status = "这一步失败了", note = null))
+            }
+            val elapsedToolNanos = System.nanoTime() - toolStartedAt - executed.approvalNanos
+            val result = truncateUtf16Safe(executed.result, MAX_TOOL_RESULT_CHARS)
+            emit(
+                AgentProgress.ToolFinished(
+                    id = call.id,
+                    state = executed.state,
+                    elapsedMs = elapsedToolNanos / 1_000_000,
+                    preview = result.take(PREVIEW_CHARS),
+                ),
+            )
+            val fingerprint = call.name + '\u0000' + call.argumentsJson
+            val prior = state.seenResults.put(fingerprint, result)
+            outcomes += Outcome.ToolResult(call, result, executed.state, executed.images)
+            if (prior != null && prior == result) {
+                state.repeatStreak++
+                if (state.repeatStreak >= REPEAT_LIMIT) {
+                    stopAfterRound = AgentStop(
+                        reason = AgentStop.Reason.REPEATED_CALLS,
+                        rounds = state.rounds,
+                        toolCalls = state.toolCalls,
+                        detail = call.name,
+                    )
+                } else {
+                    outcomes += Outcome.Reflection(reflection(call))
+                }
+            }
+        }
+
+        // Order is load-bearing: every TOOL message answering this assistant turn must come
+        // first and contiguously, then at most one nudge. A user message between tool results
+        // makes the conversation invalid for strict providers:
+        //   "An assistant message with 'tool_calls' must be followed by tool messages
+        //    responding to each 'tool_call_id' (insufficient tool messages)".
+        for (outcome in outcomes.filterIsInstance<Outcome.ToolResult>()) {
+            val toolMessage = AgentMessage(
+                role = AgentRole.TOOL,
+                content = outcome.result,
+                name = outcome.call.name,
+                toolCallId = outcome.call.id,
+            )
+            state.inputs += toolMessage
+            remember(state.memory, state.sessionLog, state.sessionId, toolMessage)
+            state.events += AgentEvent(
+                kind = AgentEvent.Kind.TOOL_RESULT,
+                text = outcome.result,
+                toolName = outcome.call.name,
+                toolCallId = outcome.call.id,
+            )
+        }
+        // Images travel after every tool message and before any nudge: a picture read by a
+        // tool belongs to this tool round, and strict servers reject a user message inserted
+        // between tool results. Only the caption is stored - the base64 never reaches disk.
+        val producedImages = outcomes.filterIsInstance<Outcome.ToolResult>()
+            .flatMap { it.images }
+        if (producedImages.isNotEmpty()) {
+            val imageMessage = AgentMessage(
+                role = AgentRole.USER,
+                content = "以下是工具读取的 ${producedImages.size} 张图片，请直接查看。",
+                images = producedImages,
+            )
+            state.inputs += imageMessage
+            remember(state.memory, state.sessionLog, state.sessionId, imageMessage)
+        }
+        // One nudge per round is enough: several identical reminders would just eat context.
+        outcomes.filterIsInstance<Outcome.Reflection>().firstOrNull()?.let { nudge ->
+            // A system message in the middle of a conversation is rejected or ignored by some
+            // OpenAI-compatible servers, so the nudge rides as a user message and says
+            // explicitly that it comes from the runtime.
+            val message = AgentMessage(AgentRole.USER, nudge.text)
+            state.inputs += message
+            remember(state.memory, state.sessionLog, state.sessionId, message)
+        }
+
+        emit(AgentProgress.RoundFinished(state.rounds))
+        // The tool budget or the repeat guard may have fired mid-round; the break itself belongs
+        // to [turn], so report the reason instead of returning early.
+        val pending = stopAfterRound
+        return if (pending != null) TurnStep.Stop(pending) else TurnStep.Continue
     }
 
     /**
