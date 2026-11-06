@@ -117,6 +117,22 @@ class HostRuntime(private val context: AndroidContext) {
     private val ops = HostOps(
         approvals = approvals,
         capabilityTrust = capabilityTrust,
+        writeEnabled = { id, enabled -> preferences.edit().putBoolean(key(id), enabled).apply() },
+        writePermission = { id, permission, granted ->
+            if (granted) permissions.grant(id, permission) else permissions.revoke(id, permission)
+        },
+        resync = { resync() },
+        reload = { id ->
+            // 和原来的 setPermission 同一条规则：停用中、或处于安全模式，都不许把它拉起来。
+            // 放在 IO 上也和原来一致——重载会走类加载，不该占着 Compose 线程。
+            withContext(Dispatchers.IO) {
+                val plugin = installed[id]
+                if (plugin != null && isEnabled(id) && safeMode == null) {
+                    deactivate(id)
+                    activate(plugin)
+                }
+            }
+        },
         onApproved = { id, sha256 ->
             pendingUnsigned = pendingUnsigned.filterNot { it.id == id && it.sha256 == sha256 }
         },
@@ -389,7 +405,12 @@ class HostRuntime(private val context: AndroidContext) {
                     processed++
                     publishProgress(targets.getOrNull(processed)?.let { shortPluginName(it.id) })
                 }
-                else -> deactivate(plugin.id)
+                else -> {
+                    deactivate(plugin.id)
+                    // 停用之后不该再带着"安全模式拦住它"的解释：那条状态描述的是一次加载失败，
+                    // 而用户已经明确说了不要它。
+                    if (failures[plugin.id] == SAFE_MODE_BLOCKED) failures.remove(plugin.id)
+                }
             }
         }
         // Last pass: an enabled plugin that is neither active nor failed is the one state the card
@@ -437,57 +458,11 @@ class HostRuntime(private val context: AndroidContext) {
      * Enables or disables one plugin for this and future launches. While in safe mode the preference
      * is still recorded, but nothing is loaded until [exitSafeMode].
      */
-    suspend fun setEnabled(id: String, enabled: Boolean): HostState = withContext(Dispatchers.IO) {
-        preferences.edit().putBoolean(key(id), enabled).apply()
-        val plugin = installed[id]
-        if (plugin != null) {
-            when {
-                !enabled -> {
-                    deactivate(id)
-                    // The safe-mode notice is a launch policy, not an activation failure; hide it
-                    // once the user has explicitly disabled the plugin.
-                    if (failures[id] == SAFE_MODE_BLOCKED) failures.remove(id)
-                }
-                safeMode != null -> {
-                    // Recorded for after safe mode; loading is exactly what safe mode forbids.
-                    deactivate(id)
-                    failures[id] = SAFE_MODE_BLOCKED
-                }
-                else -> activate(plugin)
-            }
-        }
-        snapshot()
-    }
+    suspend fun setEnabled(id: String, enabled: Boolean): HostState = ops.setEnabled(id, enabled)
 
-    /**
-     * Grants or revokes one permission, then re-evaluates activation on the spot.
-     *
-     * Revoking stops a running plugin (its next host service call would fail anyway); granting
-     * reloads it. The store is written first, so the plugin's own [PermissionService] sees the
-     * change even when the reload fails for an unrelated reason.
-     */
     suspend fun setPermission(id: String, permission: HostPermission, granted: Boolean): HostState =
-        withContext(Dispatchers.IO) {
-            if (granted) permissions.grant(id, permission) else permissions.revoke(id, permission)
-            val plugin = installed[id]
-            // Safe mode also suppresses the reload: granting a permission must not load a plugin.
-            if (plugin != null && isEnabled(id) && safeMode == null) {
-                deactivate(id)
-                activate(plugin)
-            }
-            snapshot()
-        }
+        ops.setPermission(id, permission, granted)
 
-    /**
-     * Removes one plugin: stops it, deletes its container from the mods directory, forgets its
-     * enable preference.
-     *
-     * Storage is deliberately kept - that is what "清理" is for. A bundled plugin has no external
-     * file to delete, so it simply disappears from this launch's registry and comes back on the
-     * next start; the returned [HostState] is unchanged either way, and the caller reports what
-     * actually happened. A restart is required because other plugins may hold a live reference to
-     * the removed one.
-     */
     suspend fun uninstall(id: String): HostState = withContext(Dispatchers.IO) {
         deactivate(id)
         installed.remove(id)
