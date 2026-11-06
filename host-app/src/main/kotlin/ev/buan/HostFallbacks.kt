@@ -84,6 +84,7 @@ internal fun permissionLabel(permission: HostPermission): String = when (permiss
     HostPermission.ROOT_SHELL -> "Root Shell"
     HostPermission.SECRETS -> "凭据保管"
     HostPermission.CALENDAR -> "日历读写"
+    HostPermission.DEVICE_CONTROL -> "设备控制"
 }
 
 /** Compact, locale-stable size for the storage row. */

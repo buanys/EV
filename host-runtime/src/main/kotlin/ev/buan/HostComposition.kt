@@ -63,6 +63,9 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
      * `PermissionService`——它决定了这次调用代表哪个插件、有没有 `CALENDAR` 授权。
      */
     var calendarFactory: ((AndroidContext, PermissionService) -> org.cordis.api.CalendarService)? = null
+
+    /** 设备控制的工厂；与日历同一套"按插件提供 + 每次调用复核"的接法。 */
+    var deviceControlFactory: ((AndroidContext, PermissionService) -> org.cordis.api.DeviceControlService)? = null
     /**
      * 屏幕、HUD、后台常驻三组能力的实现在 app 层（它们长在无障碍服务与前台服务上）。
      * 运行时只拿接口，不拿实现——这正是 2f 拆模块最后挡路的三处。
@@ -252,6 +255,10 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     override fun makeCalendar(permission: PermissionService): org.cordis.api.CalendarService =
         calendarFactory?.invoke(context, permission)
             ?: error("日历服务没有在 app 层接线（EvApplication.calendarFactory）")
+
+    override fun makeDeviceControl(permission: PermissionService): org.cordis.api.DeviceControlService =
+        deviceControlFactory?.invoke(context, permission)
+            ?: error("设备控制没有在 app 层接线（EvApplication.deviceControlFactory）")
 
     override fun recordFailure(id: String, success: Boolean) {
         val current = failureScores.score(id)

@@ -88,6 +88,14 @@ enum class HostPermission {
      * 插件自己不申请也申请不到——这正是这一层存在的理由。
      */
     CALENDAR,
+
+    /**
+     * 拨设备开关、改亮度/音量/勿扰、按媒体键：`DeviceControlService` 的声明位。
+     *
+     * 这些动作用户**立刻看得见**（屏幕变亮、静音、断网），所以单独一位：
+     * 只读的设备上下文（`DeviceContextService`）不需要它，能改才需要。
+     */
+    DEVICE_CONTROL,
     ;
 
     companion object {

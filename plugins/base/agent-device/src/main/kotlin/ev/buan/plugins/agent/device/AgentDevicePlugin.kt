@@ -8,6 +8,7 @@ import org.cordis.EffectScope
 import org.cordis.Plugin
 import org.cordis.api.AgentSurface
 import org.cordis.api.DeviceContextService
+import org.cordis.api.DeviceControlService
 import org.cordis.api.ServiceDirectory
 import org.cordis.dependencies
 import java.io.File
@@ -36,6 +37,9 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
     override val inject: Dependencies = dependencies(
         ServiceDirectory.Key,
         DeviceContextService.Key,
+        // 设备控制只在声明了 DEVICE_CONTROL 时才被提供；inject 里写它意味着"没有就别起"，
+        // 这正是我们要的：一个改不了设备的设备插件没有意义。
+        DeviceControlService.Key,
     )
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
@@ -53,7 +57,8 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
         val files = DeviceFiles(root)
         val tools = DeviceTools.all(files, DeviceSearch(files, root)) +
             WriteTools.all(files) +
-            SystemTools.all { ctx.get(DeviceContextService.Key) }
+            SystemTools.all { ctx.get(DeviceContextService.Key) } +
+            ctx.get(DeviceControlService.Key)?.let { control -> ControlTools.all(control) }.orEmpty()
         registry.register(PLUGIN_ID, tools)
         android.util.Log.i("EV", "agent-device: 注册 ${tools.size} 个工具（${tools.joinToString(",") { it.spec.name }}）")
         effect.collect {

@@ -102,6 +102,9 @@ internal interface ActivationHost {
     /** 给一个插件造日历服务；授权由传进来的 permission 每次调用复核。 */
     fun makeCalendar(permission: PermissionService): org.cordis.api.CalendarService
 
+    /** 同上，设备控制。 */
+    fun makeDeviceControl(permission: PermissionService): org.cordis.api.DeviceControlService
+
     /** 后台常驻服务由 app 层接线；没接就是宿主配置错了，激活会失败并说明原因。 */
     fun makeBackgroundService(pluginId: String, permission: PermissionService?): BackgroundService
 
@@ -295,32 +298,16 @@ internal class HostActivation(private val host: ActivationHost) {
                 RuntimeBudgetService.Key,
                 host.makeBudget(plugin.id, budgetLifetime),
             )
-            // Storage is lent on the same isolated Context: relative paths can only resolve inside
-            // this plugin's own files/plugins/<id> and cache/plugins/<id>. It is declaration-gated
-            // here as well: a plugin that never declared PLUGIN_STORAGE gets no binding at all
-            // (ctx[PluginStorage.Key] stays null), while the binding handed to a declarer re-checks
-            // the grant on every data call.
-            providePluginStorageIfDeclared(
-                pluginContext,
-                plugin.requestedPermissions,
+            // 五个"按声明提供"的服务一次挂完（见 provideDeclaredServices）：规则相同，
+            // 分开写只会让这个函数继续膨胀，也不会有人真的分别审它们。
+            provideDeclaredServices(
+                pluginContext = pluginContext,
+                requested = plugin.requestedPermissions,
                 storage = { PluginStorageImpl(host.appContext, plugin.id, permissionService) },
-            )
-            // Credentials are the host's to keep: the plugin gets an API, never a path. A plugin
-            // that never declared SECRETS gets no binding at all (ctx[CredentialService.Key] is null).
-            provideCalendarIfDeclared(pluginContext, plugin.requestedPermissions) {
-                host.makeCalendar(permissionService)
-            }
-            provideCredentialIfDeclared(
-                pluginContext,
-                plugin.requestedPermissions,
                 credentials = { host.makeCredentials(plugin.id, permissionService) },
-            )
-            // The user's own data (conversations, keys, memories) lives in the host's tree, not in
-            // the plugin area: same gate, but nothing in the plugin lifecycle deletes it.
-            provideUserDataIfDeclared(
-                pluginContext,
-                plugin.requestedPermissions,
-                storage = { UserDataStorageImpl(host.appContext, plugin.id, permissionService) },
+                calendar = { host.makeCalendar(permissionService) },
+                control = { host.makeDeviceControl(permissionService) },
+                userData = { UserDataStorageImpl(host.appContext, plugin.id, permissionService) },
             )
             // Background execution is host-mediated too: the plugin takes references, the host owns
             // the process-wide foreground service and the notification the user can see.

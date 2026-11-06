@@ -68,7 +68,8 @@ tasks.register("bundlePlugin") {
               "version": "1.0.0",
               "entryClass": "ev.buan.plugins.agent.device.AgentDevicePlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.tools"]
+              "dependencies": ["ev.buan.plugins.agent.tools"],
+              "permissions": ["DEVICE_CONTROL"]
             }
         """.trimIndent()
         File(distDir.get().asFile, "agent-device.json").writeText(metadata)

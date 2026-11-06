@@ -64,7 +64,7 @@
 |---|---|---|---|
 | `ev.buan.plugins.agent.tools` | 文件读写 | `file_read` `file_list` `file_write` `file_delete` | 设置 → 工具（只读清单） |
 | `ev.buan.plugins.agent.shell` | root shell | `run_shell` | 设置 → 工具 + 独立终端页 |
-| `ev.buan.plugins.agent.device` | 设备控制 | `app_*` `screen_*` `clip_*` `device_*` `notify_*`（21 个） | 设置 → 工具 |
+| `ev.buan.plugins.agent.device` | 设备：文件、应用、剪贴板、通知，以及开关/亮度/音量/勿扰/手电筒/媒体键 | 文件 7 + 应用 3 + 剪贴板/通知 5 + 设备控制 13（共 28 个） | 设置 → 工具 |
 
 **边界**：`run_shell` 永远 `dangerous`，永远走审批；设备工具中会改变可见状态的（点击/输入/启动）也必须 dangerous。
 
