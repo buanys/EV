@@ -3,9 +3,7 @@ package ev.buan
 import android.content.Context as AndroidContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.Dispatchers
 import org.cordis.Context as CordisContext
 import org.cordis.Fiber
@@ -15,14 +13,10 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import org.cordis.api.AgentUi
 import org.cordis.api.BackgroundService
-import org.cordis.api.HostPackages
 import org.cordis.api.HostPermission
 import org.cordis.api.PermissionService
-import org.cordis.api.PluginStorage
 import org.cordis.api.RuntimeBudgetService
-import org.cordis.api.UserDataStorage
 import org.cordis.api.ServiceDirectory
-import org.cordis.loader.AndroidModuleDescriptor
 import org.cordis.loader.AndroidModuleLoader
 import org.cordis.api.PLUGIN_API_VERSION
 import org.cordis.api.DeviceContextService
@@ -47,7 +41,7 @@ class HostNavigationTargets(
     val settings: () -> Unit = {},
 )
 
-class HostComposition(private val context: AndroidContext) {
+class HostComposition(private val context: AndroidContext) : ActivationHost {
 
     /**
      * 由 app 层注入：当前可见的 Activity（离屏渲染取 WebView 容器时要用）与重启后的落点。
@@ -76,9 +70,9 @@ class HostComposition(private val context: AndroidContext) {
         )
     }
 
-    private val cordis = CordisContext()
+    override val cordis = CordisContext()
     private val trust = PluginTrust(context)
-    private val modules = AndroidModuleLoader(
+    override val modules = AndroidModuleLoader(
         context = context,
         verifier = AndroidModuleVerifier { descriptor ->
             // Second opinion at load time: sync already approved these bytes, but the file could
@@ -109,7 +103,7 @@ class HostComposition(private val context: AndroidContext) {
         },
     )
     private val approvals = UnsignedApprovalStore(context)
-    private val permissions = PermissionStore(context)
+    override val permissions = PermissionStore(context)
     /** ADR-0008：未签名插件的能力面与「信任后续版本」开关。默认全部关闭。 */
     private val capabilityTrust = CapabilityTrustStore(context)
     /** 本次进程完成启动时用的范围；null 表示还没成功启动过。 */
@@ -129,7 +123,7 @@ class HostComposition(private val context: AndroidContext) {
     private val autoTrustUnsigned =
         (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
-    private val installer = PluginInstaller(
+    override val installer = PluginInstaller(
         context,
         trust,
         approvals,
@@ -147,7 +141,7 @@ class HostComposition(private val context: AndroidContext) {
         writePermission = { id, permission, granted ->
             if (granted) permissions.grant(id, permission) else permissions.revoke(id, permission)
         },
-        stop = { id -> deactivate(id) },
+        stop = { id -> activation.deactivate(id) },
         removeFiles = { id ->
             runCatching { installer.removeExternal(id) }
             installer.removePrivate(id)
@@ -161,8 +155,8 @@ class HostComposition(private val context: AndroidContext) {
             withContext(Dispatchers.IO) {
                 val plugin = installed[id]
                 if (plugin != null && inventory.isEnabled(id) && safeMode == null) {
-                    deactivate(id)
-                    activate(plugin)
+                    activation.deactivate(id)
+                    activation.activate(plugin)
                 }
             }
         },
@@ -176,28 +170,76 @@ class HostComposition(private val context: AndroidContext) {
     private val preferences = context.getSharedPreferences("ev.plugins", AndroidContext.MODE_PRIVATE)
     private val appearanceStore = AppearanceStore(context)
 
+    /**
+     * 激活子系统。它要的那份宿主状态见 [ActivationHost]——把接口放在这里而不是传一串 lambda，
+     * 是为了让"激活依赖宿主到什么程度"一眼可见。
+     */
+    private val activation by lazy { HostActivation(this) }
+
+    override val appContext: AndroidContext get() = context
+
+    override fun isPluginEnabled(id: String): Boolean = inventory.isEnabled(id)
+
+    override fun pruneStorage(keepIds: Set<String>) = inventory.pruneStorage(keepIds)
+
+    override fun makeBudget(pluginId: String, lifetime: Job): RuntimeBudgetService =
+        HostRuntimeBudget(pluginId, budgetGate, lifetime)
+
+    override val safeModeNotice: SafeModeNotice? get() = safeMode
+
+    override fun makeBackgroundService(
+        pluginId: String,
+        permission: PermissionService?,
+    ): org.cordis.api.BackgroundService =
+        backgroundServiceFactory?.invoke(pluginId, permission, context)
+            ?: error("后台常驻服务未注入：请检查 EvApplication 的接线")
+
+    override fun releaseBackground(pluginId: String) = backgroundRelease(pluginId)
+
+    override fun recordScan(
+        installedNow: List<InstalledPlugin>,
+        errors: List<String>,
+        pending: List<PendingUnsigned>,
+    ) {
+        syncErrors = errors
+        pendingUnsigned = pending
+        installed.clear()
+        installedNow.forEach { installed[it.id] = it }
+    }
+
+    override fun reportProgress(targets: List<InstalledPlugin>, processed: Int) {
+        progressHolder.value = progressHolder.value.copy(
+            total = targets.size,
+            done = processed,
+            current = targets.getOrNull(processed)?.let { shortPluginName(it.id) },
+            names = targets.map { shortPluginName(it.id) },
+            failed = targets.filter { it.id in failures }.map { shortPluginName(it.id) }.toSet(),
+            finished = false,
+        )
+    }
+
     /** 存货：装了谁、开关、占用、卡片。只管读，见 [HostInventory]。 */
     private val inventory = HostInventory(context, permissions, capabilityTrust, preferences)
 
     /** Host-owned theme state. Plugins read it through [AppearanceService]. */
     val appearance: State<ev.buan.ui.EvAppearance> = appearanceStore.appearance
 
-    private val installed = linkedMapOf<String, InstalledPlugin>()
+    override val installed = linkedMapOf<String, InstalledPlugin>()
 
     /**
      * Per-plugin host scope Fiber, not the plugin Fiber: it owns the plugin's child Context (and the
      * permission provider installed on it), so disposing it tears down both. See [activate].
      */
-    private val active = linkedMapOf<String, Fiber<Unit>>()
+    override val active = linkedMapOf<String, Fiber<Unit>>()
 
     /** Declarations plugins made about themselves; empty until each one activates. */
-    private val pluginManifests = ConcurrentHashMap<String, org.cordis.api.PluginManifest>()
+    override val pluginManifests = ConcurrentHashMap<String, org.cordis.api.PluginManifest>()
 
     /** Settings handlers, for the plugins that let the host change their configuration. */
-    private val pluginSettings = ConcurrentHashMap<String, org.cordis.api.PluginSettings>()
-    private val failures = linkedMapOf<String, String>()
+    override val pluginSettings = ConcurrentHashMap<String, org.cordis.api.PluginSettings>()
+    override val failures = linkedMapOf<String, String>()
     private var syncErrors: List<String> = emptyList()
-    private var pendingUnsigned: List<PendingUnsigned> = emptyList()
+    override var pendingUnsigned: List<PendingUnsigned> = emptyList()
     private var appearanceHandle: org.cordis.EffectHandle? = null
     private var navigationHandle: org.cordis.EffectHandle? = null
     private var directoryHandle: org.cordis.EffectHandle? = null
@@ -219,7 +261,7 @@ class HostComposition(private val context: AndroidContext) {
      * 用显式表而不是 `ctx.effect`：effect 是异步挂载的，插件在挂载之前就能开始干活，
      * 而这张表在 [activate] 交出服务之前就已经填好了。
      */
-    private val budgetJobs = ConcurrentHashMap<String, Job>()
+    override val budgetJobs = ConcurrentHashMap<String, Job>()
     private var installHandle: org.cordis.EffectHandle? = null
     private var restartHandle: org.cordis.EffectHandle? = null
     private var deviceContextHandle: org.cordis.EffectHandle? = null
@@ -234,7 +276,7 @@ class HostComposition(private val context: AndroidContext) {
         crash = crash,
         lifecycle = lifecycle,
         setSafeMode = { notice -> safeMode = notice },
-        applyLaunch = { syncAndActivate(startedScope ?: LaunchScope.Full) },
+        applyLaunch = { activation.sync(startedScope ?: LaunchScope.Full) },
         snapshot = { snapshot() },
     )
 
@@ -307,7 +349,7 @@ class HostComposition(private val context: AndroidContext) {
         // 之前只按快捷方式加载了闭包，现在用户打开了主界面：补齐，而不是重头再来。
         if (startedScope is LaunchScope.Closure && scope is LaunchScope.Full) {
             startedScope = LaunchScope.Full
-            syncAndActivate(LaunchScope.Full)
+            activation.sync(LaunchScope.Full)
             lifecycle.completeStart(safeMode = safeMode != null)
             progressHolder.value = progressHolder.value.copy(finished = true, current = null)
             return@withContext snapshot()
@@ -395,7 +437,7 @@ class HostComposition(private val context: AndroidContext) {
                     approvals = approvals,
                     // 落账归宿主，判定归 :host-core，搬运归这个服务——三边各管一件事。
                     rescan = { rescanForInstall() },
-                    activateOnly = { id -> installed[id]?.let { activate(it) } },
+                    activateOnly = { id -> installed[id]?.let { activation.activate(it) } },
                     isEnabled = { id -> inventory.isEnabled(id) },
                     inSafeMode = { safeMode != null },
                     activeIds = { active.keys.toSet() },
@@ -423,7 +465,7 @@ class HostComposition(private val context: AndroidContext) {
             restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context, restartIntent))
                 .also { runCatching { it.awaitReady() } }
         }
-        syncAndActivate(scope)
+        activation.sync(scope)
         startedScope = scope
         // Only a pass that actually ran outside safe mode counts. Safe mode loaded no plugin, and a
         // start that throws never reaches this line, so both leave the process unable to render a
@@ -455,78 +497,10 @@ class HostComposition(private val context: AndroidContext) {
     }
 
     suspend fun resync(): HostState = withContext(Dispatchers.IO) {
-        syncAndActivate(startedScope ?: LaunchScope.Full)
+        activation.sync(startedScope ?: LaunchScope.Full)
         snapshot()
     }
 
-    /**
-     * The single pass both [start] and [resync] run: scan → publish → order → activate.
-     *
-     * Kept as one function on purpose. Two callers meant two chance for the rules to drift, and the
-     * rules here are exactly the ones a plugin author will blame the host for ("装完为什么不生效").
-     */
-    private suspend fun syncAndActivate(scope: LaunchScope = LaunchScope.Full) {
-        val sync = installer.sync()
-        syncErrors = sync.errors
-        pendingUnsigned = sync.pending
-        installed.clear()
-        sync.plugins.forEach { installed[it.id] = it }
-        // A re-sync can drop a plugin (uninstalled from EV/mods) while its Fiber is still alive;
-        // stop it before the cleanup below removes the storage it may be writing to.
-        active.keys.toList().filterNot { it in installed }.forEach { deactivate(it) }
-        // Uninstall cleanup: a clean sync is the only proof that a plugin is gone (an error may
-        // just mean this scan missed it), and disabled plugins stay installed, so their data is
-        // never touched here. Clearing on disable is deliberately not a thing.
-        if (sync.errors.isEmpty()) inventory.pruneStorage(installed.keys + pendingUnsigned.map { it.id })
-        // Progress covers exactly the plugins this pass will try to activate, in activation order.
-        val targets = if (safeMode == null) {
-            installed.values.filter { inventory.isEnabled(it.id) && scopeCovers(scope, it.id) }
-        } else {
-            emptyList()
-        }
-        var processed = 0
-        fun publishProgress(current: String?) {
-            progressHolder.value = progressHolder.value.copy(
-                total = targets.size,
-                done = processed,
-                current = current,
-                names = targets.map { shortPluginName(it.id) },
-                failed = targets.filter { it.id in failures }.map { shortPluginName(it.id) }.toSet(),
-                finished = false,
-            )
-        }
-        publishProgress(targets.firstOrNull()?.let { shortPluginName(it.id) })
-        installed.values.forEach { plugin ->
-            when {
-                safeMode != null -> {
-                    // The user's enabled preference is left untouched: safe mode is this process's
-                    // decision, not a persistent setting. The card explains why nothing runs.
-                    deactivate(plugin.id)
-                    if (inventory.isEnabled(plugin.id)) failures[plugin.id] = SAFE_MODE_BLOCKED
-                }
-                inventory.isEnabled(plugin.id) && scopeCovers(scope, plugin.id) -> {
-                    activate(plugin)
-                    processed++
-                    publishProgress(targets.getOrNull(processed)?.let { shortPluginName(it.id) })
-                }
-                else -> {
-                    deactivate(plugin.id)
-                    // 停用之后不该再带着"安全模式拦住它"的解释：那条状态描述的是一次加载失败，
-                    // 而用户已经明确说了不要它。
-                    if (failures[plugin.id] == SAFE_MODE_BLOCKED) failures.remove(plugin.id)
-                }
-            }
-        }
-        // Last pass: an enabled plugin that is neither active nor failed is the one state the card
-        // used to show as a healthy row. Say it out loud instead - before this, "enabled but never
-        // imported" looked exactly like "running fine" (see the agent-prompt case).
-        installed.values.forEach { plugin ->
-            if (inventory.isEnabled(plugin.id) && plugin.id !in active && plugin.id !in failures) {
-                failures[plugin.id] = NOT_LOADED
-                android.util.Log.e("EV", "plugin ${plugin.id} enabled but not loaded")
-            }
-        }
-    }
 
     /**
      * Records the user's approval for one unsigned container, bound to this exact hash.
@@ -643,164 +617,14 @@ class HostComposition(private val context: AndroidContext) {
         if (startedScope is LaunchScope.Full) return
         withContext(Dispatchers.IO) {
             startedScope = LaunchScope.Full
-            syncAndActivate(LaunchScope.Full)
+            activation.sync(LaunchScope.Full)
         }
     }
 
-    /** 这个 id 是否落在此次启动范围内。 */
-    private fun scopeCovers(scope: LaunchScope, id: String): Boolean = when (scope) {
-        LaunchScope.Full -> true
-        is LaunchScope.Closure -> id in closureOf(scope.root)
-    }
 
-    /** [root] 的依赖闭包（含它自己）。环会被 [linkedSetOf] 挡住。 */
-    private fun closureOf(root: String): Set<String> {
-        val result = linkedSetOf<String>()
-        fun visit(id: String) {
-            if (!result.add(id)) return
-            installed[id]?.dependencies?.forEach { visit(it) }
-        }
-        visit(root)
-        return result
-    }
 
-    private suspend fun activate(plugin: InstalledPlugin) {
-        if (active.containsKey(plugin.id)) return
-        // Process-wide gate: even a caller that forgot to check [safeMode] cannot load a plugin.
-        // [exitSafeMode] clears the mode before it activates anything, so this never blocks recovery.
-        if (safeMode != null) {
-            failures[plugin.id] = SAFE_MODE_BLOCKED
-            return
-        }
-        failures.remove(plugin.id)
-        // Capability gate before any loading work: an ungranted declaration means the plugin may
-        // not run, and the card says why so the user can grant it.
-        val missing = PermissionGate.missing(plugin.requestedPermissions, permissions.granted(plugin.id))
-        if (missing.isNotEmpty()) {
-            failures[plugin.id] = PermissionGate.denialMessage(plugin.id, missing)
-            return
-        }
-        // The sync pass already hashed these bytes and the private copy is verified across the copy
-        // and locked read-only afterwards, so re-reading every container here (27 MB twice over)
-        // only added to startup time. A private copy that somehow changed still fails the loader's
-        // own expectedSha256 check, because it is compared against this value.
-        val hash = plugin.sha256
-        val descriptor = AndroidModuleDescriptor(
-            id = plugin.id,
-            version = plugin.version,
-            entryClass = plugin.entryClass,
-            file = plugin.file,
-            expectedSha256 = hash,
-            // Without this the loader never links a plugin to its dependency loader.
-            dependencies = plugin.dependencies,
-            sharedHostPackages = HostPackages.shared,
-        )
-        var scopeFiber: Fiber<Unit>? = null
-        try {
-            modules.register(descriptor)
-            val instance = modules.import(modules.moduleUrl(plugin.id), null) as? Plugin<Unit>
-                ?: error("入口 ${plugin.entryClass} 未实现 org.cordis.Plugin")
-            // A declaration is recorded before the plugin can fail later: the point of the manifest
-            // is to describe the container, and it stays true even if the plugin then throws.
-            (instance as? org.cordis.api.PluginSettings)?.let { pluginSettings[plugin.id] = it }
-            (instance as? org.cordis.api.ManifestProvider)?.manifest?.let { declared ->
-                if (declared.id == plugin.id) pluginManifests[plugin.id] = declared
-            }
-            // One host-owned Fiber per plugin, and the provider is installed on it. Providing from
-            // `cordis.extend { isolate(...) }` installs the binding on the *root* Fiber's service
-            // snapshot, and the kernel resolver then hands the last provided instance to any plugin
-            // that reads the key without declaring `inject` (measured in the T06 spike). A dedicated
-            // Fiber keeps the provider reachable only from this plugin's descendants.
-            val scope = cordis.plugin(scopePlugin(plugin.id), Unit)
-            scopeFiber = scope
-            withTimeout(START_TIMEOUT_MS) { scope.await() }
-            val pluginContext = scope.ctx
-                .isolate(PermissionService.Key)
-                .isolate(PluginStorage.Key)
-                .isolate(UserDataStorage.Key)
-                .isolate(BackgroundService.Key)
-                // Per-plugin too: the budget service knows whose lifetime and whose name it carries,
-                // and without isolation the kernel would hand the last provided instance to every
-                // plugin that reads the key (see the note below on isolated Fibers).
-                .isolate(RuntimeBudgetService.Key)
-            val permissionService = PermissionServiceImpl(plugin.id, permissions)
-            pluginContext.provide(PermissionService.Key, permissionService)
-            // Bound by contract, not by convention: a plugin that wants to do work asks the host
-            // whether it may start and how long it has. The job is per-plugin so deactivation
-            // cancels everything it still had in flight (ADR-0004 验收: 卸载后任务全部被收掉).
-            val budgetLifetime = SupervisorJob()
-            budgetJobs[plugin.id] = budgetLifetime
-            pluginContext.provide(
-                RuntimeBudgetService.Key,
-                HostRuntimeBudget(plugin.id, budgetGate, budgetLifetime),
-            )
-            // Storage is lent on the same isolated Context: relative paths can only resolve inside
-            // this plugin's own files/plugins/<id> and cache/plugins/<id>. It is declaration-gated
-            // here as well: a plugin that never declared PLUGIN_STORAGE gets no binding at all
-            // (ctx[PluginStorage.Key] stays null), while the binding handed to a declarer re-checks
-            // the grant on every data call. See [providePluginStorageIfDeclared].
-            providePluginStorageIfDeclared(
-                pluginContext,
-                plugin.requestedPermissions,
-                storage = { PluginStorageImpl(context, plugin.id, permissionService) },
-            )
-            // The user's own data (conversations, keys, memories) lives in the host's tree, not in the
-            // plugin area: same gate, but nothing in the plugin lifecycle deletes it.
-            provideUserDataIfDeclared(
-                pluginContext,
-                plugin.requestedPermissions,
-                storage = { UserDataStorageImpl(context, plugin.id, permissionService) },
-            )
-            // Background execution is host-mediated too: the plugin takes references, the host owns
-            // the process-wide foreground service and the notification the user can see.
-            pluginContext.provide(
-                BackgroundService.Key,
-                backgroundServiceFactory?.invoke(plugin.id, permissionService, context)
-                    ?: error("后台常驻服务未注入：请检查 EvApplication 的接线"),
-            )
-            val fiber = pluginContext.plugin(instance, Unit)
-            // A plugin that never finishes applying must not hold the whole host hostage.
-            withTimeout(START_TIMEOUT_MS) { fiber.await() }
-            // PENDING is the state a fiber is born in and only a started transition leaves. An
-            // inject list that was never provided leaves it exactly there: apply() is skipped,
-            // await() returns immediately, and activation would otherwise "succeed" with a plugin
-            // that registered nothing - which is how agent-shell lost run_shell without a trace.
-            if (fiber.state == org.cordis.FiberState.PENDING) {
-                error("插件没有启动：inject 声明的服务没有被提供，apply 从未执行")
-            }
-            active[plugin.id] = scope
-        } catch (timeout: TimeoutCancellationException) {
-            failures[plugin.id] = "启动超时（${START_TIMEOUT_MS / 1000} 秒）"
-            budgetJobs.remove(plugin.id)?.cancel()
-            runCatching { scopeFiber?.dispose() }
-        } catch (error: Throwable) {
-            // The card must show *why*, not just the wrapper type: a reflective loader failure
-            // surfaces as InvocationTargetException whose cause names the missing class or method,
-            // and that cause is the only actionable part of the report.
-            android.util.Log.e("EV", "plugin ${plugin.id} activation failed", error)
-            failures[plugin.id] = generateSequence(error) { it.cause }
-                .map { "${it.javaClass.name}: ${it.message.orEmpty()}" }
-                .joinToString("  ←  ")
-            budgetJobs.remove(plugin.id)?.cancel()
-            runCatching { scopeFiber?.dispose() }
-        }
-    }
 
-    /** Empty plugin whose only job is to own the per-plugin scope Fiber. */
-    private fun scopePlugin(id: String): Plugin<Unit> = plugin(name = "host/scope/$id") { _, _ -> }
 
-    private suspend fun deactivate(id: String) {
-        // A stopped plugin must not keep the host's foreground service alive; its references are
-        // dropped before the scope (and therefore the plugin) goes away.
-        backgroundRelease(id)
-        // Budget tasks first: cancelling the lifetime also frees the slots they hold, so the gate
-        // never counts work belonging to a plugin that is already gone.
-        budgetJobs.remove(id)?.cancel()
-        // The scope Fiber owns the plugin Fiber and both providers; one dispose tears down the whole
-        // per-plugin subtree. Storage is deliberately left in place: disabling keeps plugin data.
-        active.remove(id)?.let { scope -> runCatching { scope.dispose() } }
-        runCatching { modules.release(id) }
-    }
 
     // ---------------------------------------------------------------- state
 
