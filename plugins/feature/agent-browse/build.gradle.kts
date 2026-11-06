@@ -74,7 +74,7 @@ tasks.register("bundlePlugin") {
         val metadata = """
             {
               "id": "ev.buan.plugins.agent.browse",
-              "version": "1.1.0",
+              "version": "1.2.0",
               "entryClass": "ev.buan.plugins.agent.browse.AgentBrowsePlugin",
               "apiVersion": 1,
               "dependencies": ["ev.buan.plugins.agent.tools@1.1.0"],

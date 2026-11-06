@@ -24,6 +24,8 @@ data class InstalledPlugin(
     val entryClass: String,
     val apiVersion: Int,
     val file: File,
+    /** 它在外部投放目录里的文件名；回滚写回时要用它，而不是私有副本的名字。 */
+    val sourceName: String = "",
     val signed: Boolean,
     /** Plugin ids this container links against; fed into the module descriptor. */
     val dependencies: List<String> = emptyList(),
@@ -131,6 +133,9 @@ class PluginInstaller(
     fun importExternal(source: File, fileName: String, overwrite: Boolean): File? =
         files.importExternal(source, fileName, overwrite)
 
+    fun rollback(id: String, jarName: String): List<String> = files.restorePrevious(id, jarName)
+    fun hasRollback(id: String): Boolean = files.hasPrevious(id)
+
     suspend fun sync(): SyncResult = withContext(Dispatchers.IO) {
         val errors = mutableListOf<String>()
         files.beginSync()
@@ -188,8 +193,7 @@ class PluginInstaller(
         val byId = sources.groupBy { it.meta.id }
         // Two containers claiming one id are separated by the identity gate, not here; the first
         // one discovered (bundled before external) supplies the id's declared dependencies.
-        // 排序只认 id：`id@1.2` 里的版本段属于装配检查（PluginValidator.dependencyGate），
-        // 留在这里会让依赖边被当成未知 id 丢掉，加载顺序静默退化。
+        // 排序只认 id：版本段归装配检查，留在这里会让依赖边被当成未知 id 丢掉。
         val declared = byId.mapValues { (_, candidates) ->
             candidates.first().meta.dependencies
                 .mapNotNull { ev.buan.hostcore.dependency.PluginDependency.parse(it)?.id }
@@ -362,10 +366,10 @@ class PluginInstaller(
     ) {
         val target = files.targetFor(meta.id)
         val installed = target.takeIf { it.isFile }?.let { existing ->
-            // A cached source hash means these bytes were published unchanged last time; with the
-            // same length the private copy is the same file, so it does not need a third full read.
+            // 缓存命中且长度相同：私有副本就是同一份，不必再整读一遍。
             if (reused && existing.length() == source.length()) hash else androidModuleHash(existing)
         }
+        // 存档只留字节：外部 sidecar 已被新版本覆盖（见 restorePrevious）。
         if (installed != hash) files.publish(target, source, meta.id, hash)
 
         hashes[meta.id] = hash
@@ -376,6 +380,7 @@ class PluginInstaller(
             entryClass = meta.entryClass,
             apiVersion = meta.apiVersion,
             file = target,
+            sourceName = source.name,
             signed = candidate.signing is ev.buan.hostcore.validation.SigningState.Signed,
             sha256 = hash,
             dependencies = meta.dependencies,

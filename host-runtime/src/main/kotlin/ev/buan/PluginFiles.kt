@@ -115,7 +115,10 @@ internal class PluginFiles(
      * 不直接覆盖目标：加载器可能正拿着旧文件，且 rename 在同一文件系统上是原子的——
      * 要么是完整的旧版本，要么是完整的新版本，不会有半个 jar 被读到。
      */
-    fun publish(target: File, source: File, id: String, hash: String) {
+    fun publish(target: File, source: File, id: String, hash: String, previousSidecar: String? = null) {
+        // 覆盖之前先留一份上一版：回滚是恢复章里唯一的"退回去"手段，
+        // 而旧字节一旦被 rename 覆盖就再也拿不回来。
+        if (target.isFile) archivePrevious(id, target, previousSidecar)
         val temporary = File(privateRoot, PluginId.stagingFileName(id))
         delete(temporary)
         source.inputStream().use { input -> temporary.outputStream().use(input::copyTo) }
@@ -123,6 +126,56 @@ internal class PluginFiles(
         temporary.setReadOnly()
         delete(target)
         check(temporary.renameTo(target)) { "无法发布 $target" }
+    }
+
+    /** 上一版存档的位置；与私有容器同根，但 `prune` 跳过目录，不会被当成陈旧文件删掉。 */
+    private fun previousRoot(): File = File(privateRoot, "previous").apply { mkdirs() }
+
+    /**
+     * 把即将被覆盖的字节连同它的 sidecar 存一份。
+     *
+     * sidecar 由调用方按当前运行中的元数据重建——私有目录里只有 jar，原本的 json 早就在外部
+     * 被新版本盖掉了。重建出来的一对文件足以让回滚后的容器重新装载。
+     */
+    private fun archivePrevious(id: String, jar: File, sidecar: String?) {
+        val dir = previousRoot()
+        val name = PluginId.fileName(id)
+        runCatching {
+            jar.copyTo(File(dir, "$name.jar"), overwrite = true)
+            // sidecar 只是附带的线索（人看得出版本号），回滚不依赖它：
+            // 外部那份 json 在扫描到新版本时已经被覆盖，宿主手里没有"上一版的声明"。
+            if (sidecar != null) File(dir, "$name.json").writeText(sidecar)
+        }
+    }
+
+    /** 这个插件有没有可回滚的上一版。 */
+    fun hasPrevious(id: String): Boolean =
+        File(previousRoot(), "${PluginId.fileName(id)}.jar").isFile
+
+    /** 上一版的容器字节；没有存档时返回 null。 */
+    fun previousOf(id: String): File? =
+        File(previousRoot(), "${PluginId.fileName(id)}.jar").takeIf { it.isFile }
+
+    /**
+     * 把上一版字节写回外部投放目录，返回写进去的文件名；没有存档时返回空列表。
+     *
+     * **只回退字节，不改 sidecar**：外部那份 json 在扫描到新版本时就被覆盖了，宿主手里
+     * 没有"上一版的声明"可恢复。所以回滚后用的还是当前 sidecar（版本号、依赖都是新的），
+     * 只有 jar 是旧的。新版本起不来、类没变这一类场景够用；如果新版本改过依赖，回滚后
+     * 要人再看一眼。
+     *
+     * 写回**外部**而不是私有目录是刻意的：下一次 sync 从外部扫描，私有副本只是它的镜像，
+     * 只改私有那份会在下一轮被外部的新版本重新覆盖，等于回滚没发生。
+     */
+    fun restorePrevious(id: String, jarName: String): List<String> {
+        val jar = previousOf(id) ?: return emptyList()
+        if (!externalRoot.isDirectory && !externalRoot.mkdirs()) return emptyList()
+        val written = mutableListOf<String>()
+        runCatching {
+            jar.copyTo(File(externalRoot, jarName), overwrite = true)
+            written += jarName
+        }
+        return written
     }
 
     /** Read-only files cannot be deleted directly, so reopen them first. */

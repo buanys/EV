@@ -205,6 +205,9 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostComposition) {
                                     state = HostUiState.Ready(runtime.setPermission(id, permission, granted))
                                 }
                             },
+                            onRollback = { id ->
+                                scope.launch { state = HostUiState.Ready(runtime.rollback(id)) }
+                            },
                             onResetFailures = { id ->
                                 scope.launch { state = HostUiState.Ready(runtime.resetFailureScore(id)) }
                             },

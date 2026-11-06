@@ -240,7 +240,14 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     private val failureScores = FailureScoreStoreImpl(preferences)
 
     /** 存货：装了谁、开关、占用、卡片。只管读，见 [HostInventory]。 */
-    private val inventory = HostInventory(context, permissions, capabilityTrust, preferences, failureScores)
+    private val inventory = HostInventory(
+        context,
+        permissions,
+        capabilityTrust,
+        preferences,
+        failureScores,
+        hasRollback = { id -> installer.hasRollback(id) },
+    )
 
     /** Host-owned theme state. Plugins read it through [AppearanceService]. */
     val appearance: State<ev.buan.ui.EvAppearance> = appearanceStore.appearance
@@ -586,6 +593,21 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
      * the plugin's data.
      */
     suspend fun clearStorage(id: String): HostState = ops.clearStorage(id)
+
+    /**
+     * 回滚到上一版容器字节：写回 `EV/mods` 后重扫。
+     *
+     * 只回退字节，不改 sidecar（外部那份 json 在扫描到新版本时就被覆盖了）。
+     * 没有存档时什么也不做，返回当前状态。
+     */
+    suspend fun rollback(id: String): HostState = withContext(Dispatchers.IO) {
+        // 用**外部**那个文件的名字：`file` 是私有副本（<id>.apk），写回 mods 会多出一个没人认识的文件。
+        val jarName = installed[id]?.sourceName?.takeIf { it.isNotBlank() } ?: "$id.jar"
+        installer.rollback(id, jarName)
+        resync()
+    }
+
+    fun hasRollback(id: String): Boolean = installer.hasRollback(id)
 
     /**
      * 重置一个插件的失败计数并重新激活它。

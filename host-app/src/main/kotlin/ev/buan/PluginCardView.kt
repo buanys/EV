@@ -56,6 +56,8 @@ internal fun PluginSection(
     onClearStorage: (String) -> Unit,
     /** 重置失败计数并重试；只有失败过的插件才需要它。 */
     onResetFailures: (String) -> Unit,
+    /** 把上一版字节写回 EV/mods 并重扫；只有宿主存过档才有。 */
+    onRollback: (String) -> Unit,
     onOpenPage: (String) -> Unit,
     onUninstall: (String) -> Unit,
     onConfirmUninstall: () -> Unit,
@@ -254,6 +256,10 @@ internal fun PluginSection(
                 Spacer(Modifier.width(10.dp))
             }
             CardAction(label = "清理") { onClearStorage(card.id) }
+            if (card.hasRollback) {
+                Spacer(Modifier.width(10.dp))
+                CardAction(label = "回滚") { onRollback(card.id) }
+            }
             Spacer(Modifier.weight(1f))
             CardAction(label = "卸载", danger = true) { onUninstall(card.id) }
         }

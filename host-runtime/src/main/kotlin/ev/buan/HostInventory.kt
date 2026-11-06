@@ -23,6 +23,7 @@ internal class HostInventory(
     private val capabilityTrust: CapabilityTrustStore,
     private val preferences: SharedPreferences,
     private val failureScores: FailureScoreStoreImpl,
+    private val hasRollback: (String) -> Boolean,
 ) {
 
     fun isEnabled(id: String): Boolean = preferences.getBoolean(key(id), true)
@@ -65,6 +66,7 @@ internal class HostInventory(
             shortcuts = plugin.shortcuts,
             trustsUpdates = capabilityTrust.trustsUpdates(plugin.id),
             failureCount = failureScores.score(plugin.id).count,
+            hasRollback = hasRollback(plugin.id),
         )
     }
 
