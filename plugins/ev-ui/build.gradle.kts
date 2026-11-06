@@ -40,15 +40,10 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 // The agent contract lives in another plugin. AGP refuses a project dependency on an application
 // module, so this compiles against that module's class output: the contract itself stays out of this
 // container and arrives at runtime through the dependency loader declared in the metadata.
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
-
 dependencies {
     compileOnly(project(":ui-kit"))
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
-    compileOnly(files(agentApiClasses))
     // System back for the in-plugin settings sheet: BackHandler comes from activity-compose, which
     // the host already ships (`androidx.activity` is a shared package). compileOnly like the rest of
     // the host surface, so no second copy is ever packaged into the container. The navigationevent
@@ -62,7 +57,7 @@ dependencies {
     // tests need the agent contract, JUnit and the stdlib and nothing the host injects at runtime -
     // Compose or otherwise.
     testImplementation("junit:junit:4.13.2")
-    testImplementation(files(agentApiClasses))
+    testImplementation(project(":host-api"))
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
     // The Compose compiler plugin is applied to every compilation of this module, test sources
     // included, and refuses to run without the runtime on the classpath. The tests themselves
@@ -109,7 +104,7 @@ tasks.register("bundlePlugin") {
               "version": "1.1.0",
               "entryClass": "ev.buan.plugins.ev.ui.EvUiPlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.api"],
+              "dependencies": [],
               "permissions": ["PLUGIN_STORAGE"]
             }
         """.trimIndent()
@@ -119,8 +114,3 @@ tasks.register("bundlePlugin") {
 
 apply(from = rootProject.file("gradle/plugin-verify.gradle.kts"))
 
-// The agent-api class jar is produced by another project and only exists after its compile step, so
-// a clean build needs this ordering edge; without it the two builds race.
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

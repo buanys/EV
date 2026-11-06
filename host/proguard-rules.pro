@@ -22,6 +22,7 @@
 
 # Host <-> plugin business types: AgentSurface, AgentUi, HostPackages, AppearanceService.
 -keep class ev.buan.api.** { *; }
+-keep class ev.buan.plugins.agent.api.** { *; }
 -keep class org.cordis.api.** { *; }
 
 # Design system plugins compose with: EvTheme, EvCard, EvPage, EvPreference*, EvAppearance.

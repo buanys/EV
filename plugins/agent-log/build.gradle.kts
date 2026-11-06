@@ -33,17 +33,12 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 
 // 会话事件流的契约在 agent-api 里。AGP 不允许一个 application 模块依赖另一个 application
 // 模块，所以对着它的编译产物编译；契约不会被打进这个容器，只可能在运行时由依赖加载器送进来。
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
-
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
-    compileOnly(files(agentApiClasses))
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation(files(agentApiClasses))
+    testImplementation(project(":host-api"))
     // 单测要在普通 JVM 上解析 PluginStorage 与 ServiceKey。
     testImplementation(project(":host-api"))
     testImplementation(project(":loader"))
@@ -80,7 +75,7 @@ tasks.register("bundlePlugin") {
               "version": "1.0.0",
               "entryClass": "ev.buan.plugins.agent.log.AgentLogPlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.api"],
+              "dependencies": [],
               "permissions": ["PLUGIN_STORAGE"]
             }
         """.trimIndent()
@@ -88,7 +83,3 @@ tasks.register("bundlePlugin") {
     }
 }
 
-// agent-api 的 class jar 由另一个工程产出，clean build 时先有它才能编译这里。
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

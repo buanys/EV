@@ -11,8 +11,5 @@
         <meta-data
             android:name="cordis.permissions"
             android:value="NETWORK,PLUGIN_STORAGE" />
-        <meta-data
-            android:name="cordis.dependencies"
-            android:value="[&quot;ev.buan.plugins.agent.api&quot;]" />
     </application>
 </manifest>

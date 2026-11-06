@@ -12,8 +12,5 @@
             android:name="cordis.permissions"
             android:value="PLUGIN_STORAGE" />
         <!-- The chat page consumes the AgentService contract; the brain plugin may be absent. -->
-        <meta-data
-            android:name="cordis.dependencies"
-            android:value="[&quot;ev.buan.plugins.agent.api&quot;]" />
     </application>
 </manifest>

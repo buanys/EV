@@ -44,16 +44,13 @@ dependencies {
 }
 
 /*
- * 需要用到 agent 契约（AgentService / ToolRegistry / SessionLog / ApprovalPolicy…）时，
- * 取消下面这段的注释，并在 dependencies 里加上 compileOnly(files(agentApiClasses))。
+ * agent 契约（AgentService / ToolRegistry / SessionLog / ApprovalPolicy…）和宿主契约已经在同一个
+ * 模块里：直接 compileOnly(project(":host-api"))。
  *
- * 为什么不能写 project(":plugins:agent-api")：AGP 不允许 application 模块依赖另一个
- * application 模块，只能对着它的编译产物编译，运行时由 sidecar 的 dependencies 送进来。
- * 忘了写 sidecar 依赖，线上表现是 ClassNotFoundException 而不是编译错误。
+ * 以前它们装在 plugins/agent-api 这个空壳插件里，靠 AGP 的 classes.jar + sidecar 依赖送进
+ * 运行时——忘了写 sidecar 依赖，线上是 ClassNotFoundException 而不是编译错误。现在这些类型
+ * 就在宿主 APK 里，按共享包路径解析，漏不掉。
  */
-// val agentApiClasses = rootProject.file(
-//     "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-// )
 
 val pluginDist = layout.buildDirectory.dir("dist")
 
@@ -95,6 +92,3 @@ apply(from = rootProject.file("gradle/plugin-verify.gradle.kts"))
 
 // agent-api 的 class jar 由另一个工程产出，clean build 时先有它才能编译这里。
 // 没有用到 agent 契约就删掉这段。
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

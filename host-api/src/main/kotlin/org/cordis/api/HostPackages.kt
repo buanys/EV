@@ -35,5 +35,8 @@ object HostPackages {
         "org.luckypray.dexkit",
         "org.lsposed.hiddenapibypass",
         "io.github.libxposed",
+        // 插件契约本身（ToolSpec、AgentService…）。这类原来靠 agent-api 这个空壳插件
+        // 把 dex 塞进别的插件的 classpath；现在它们就在宿主 APK 里，走同一条共享包路径。
+        "ev.buan.plugins.agent.api",
     )
 }

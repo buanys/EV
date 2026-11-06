@@ -35,16 +35,11 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
 }
 
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
-
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     compileOnly(project(":ui-kit"))
     compileOnly("androidx.activity:activity-compose:1.13.0")
-    compileOnly(files(agentApiClasses))
     // 宿主已打包 okhttp3 与 jsoup（gradle/shared-packages.txt）；这里只借用编译期签名。
     compileOnly("com.squareup.okhttp3:okhttp:5.5.0")
     compileOnly("org.jsoup:jsoup:1.23.2")
@@ -53,7 +48,7 @@ dependencies {
     testImplementation("org.json:json:20260814")
     // 这个模块带 Compose 页面，测试编译时 Compose 编译器要求 classpath 上有 runtime。
     testImplementation("androidx.compose.runtime:runtime:1.12.0")
-    testImplementation(files(agentApiClasses))
+    testImplementation(project(":host-api"))
     testImplementation("org.jsoup:jsoup:1.23.2")
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
 }
@@ -92,8 +87,3 @@ tasks.register("bundlePlugin") {
     }
 }
 
-// The agent-api class jar is produced by another project and only exists after its compile step, so
-// a clean build needs this ordering edge; without it the two builds race.
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

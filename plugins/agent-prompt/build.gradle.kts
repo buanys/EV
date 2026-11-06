@@ -35,17 +35,12 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 // The agent contract lives in another plugin. AGP refuses a project dependency on an application
 // module, so this compiles against that module's class output instead: the contract stays out of this
 // container and can only arrive at runtime through the dependency loader, as the sidecar declares.
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
-
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
-    compileOnly(files(agentApiClasses))
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation(files(agentApiClasses))
+    testImplementation(project(":host-api"))
     // The plugin container must not carry a stdlib (the host provides it), but the JVM test needs one.
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
 }
@@ -78,7 +73,7 @@ tasks.register("bundlePlugin") {
               "version": "1.0.4",
               "entryClass": "ev.buan.plugins.agent.prompt.AgentPromptPlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.api"],
+              "dependencies": [],
               "permissions": []
             }
         """.trimIndent()
@@ -88,8 +83,3 @@ tasks.register("bundlePlugin") {
 
 apply(from = rootProject.file("gradle/plugin-verify.gradle.kts"))
 
-// The agent-api class jar is produced by another project and only exists after its compile step, so
-// a clean build needs this ordering edge; without it the two builds race.
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

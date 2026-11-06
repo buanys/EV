@@ -4,7 +4,7 @@ plugins {
     kotlin("jvm")
 }
 
-// Host-only logic lives here, not in the published SDK modules: `:plugin-api` is the plugin
+// Host-only logic lives here, not in the published SDK modules: `:host-api` is the plugin
 // contract and `:ui-kit` is the design system. Pure JVM on purpose - no Android dependency - so
 // the logic stays unit-testable without a device.
 dependencies {

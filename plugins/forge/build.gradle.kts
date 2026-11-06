@@ -30,19 +30,15 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
 }
 
-// 两个契约都在别的插件里（AGP 不允许对 application 模块建项目依赖），编译期用它们的类输出，
-// 运行时由依赖加载器按 sidecar 的 dependencies 排序到达——与 agent-device 同一套做法。
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
+// forge 的编译契约（forge-compiler）仍然装在另一个插件里：AGP 不允许对 application 模块建
+// 项目依赖，只能对着它的编译产物编译，运行时由依赖加载器按 sidecar 的 dependencies 送达。
+// agent 契约已经并进 :host-api，这里只剩这一个后门——它属于 Phase 1 的遗留，之后再处理。
 val forgeCompilerClasses = rootProject.file(
     "plugins/forge-compiler/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
 )
-
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
-    compileOnly(files(agentApiClasses))
     compileOnly(files(forgeCompilerClasses))
 
     testImplementation("junit:junit:4.13.2")
@@ -82,9 +78,5 @@ tasks.register("bundlePlugin") {
 }
 
 // 两份前置类输出都来自别的项目，干净树上要先把它们编出来，否则两个构建会抢跑。
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-    dependsOn(":plugins:forge-compiler:bundleDebugClassesToCompileJar")
-}
 
 apply(from = rootProject.file("gradle/plugin-verify.gradle.kts"))

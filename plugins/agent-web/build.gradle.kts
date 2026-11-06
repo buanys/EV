@@ -34,18 +34,13 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 
 // The agent contract lives in another plugin; see agent-tools' build script for why this compiles
 // against that module's class output instead of a project dependency.
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
-
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
-    compileOnly(files(agentApiClasses))
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
-    testImplementation(files(agentApiClasses))
+    testImplementation(project(":host-api"))
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
 }
 
@@ -72,7 +67,7 @@ tasks.register("bundlePlugin") {
               "version": "1.0.0",
               "entryClass": "ev.buan.plugins.agent.web.AgentWebPlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.api"],
+              "dependencies": [],
               "permissions": ["NETWORK", "PLUGIN_STORAGE"]
             }
         """.trimIndent()
@@ -82,6 +77,3 @@ tasks.register("bundlePlugin") {
 
 apply(from = rootProject.file("gradle/plugin-verify.gradle.kts"))
 
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

@@ -7,8 +7,5 @@
         <meta-data
             android:name="cordis.api"
             android:value="1" />
-        <meta-data
-            android:name="cordis.dependencies"
-            android:value="[&quot;ev.buan.plugins.agent.api&quot;]" />
     </application>
 </manifest>

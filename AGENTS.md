@@ -52,7 +52,7 @@ ANDROID_HOME=/opt/android-sdk \
 2. **打包**：改动的插件跑 `:plugins:<id>:bundlePlugin`，产物在 `plugins/<id>/build/dist/<id>.jar`。
 3. **验产物**：`unzip -p ... | strings classes*.dex | grep <新符号>`。
    ⚠️ **只对 md5 是没用的**——md5 只能证明"传过去的是本地那份"，证明不了"本地那份是对的"。
-   曾经因为漏打 `agent-api` 的 bundlePlugin，推上去的 jar 里没有新增的 `sendStreaming`，
+   曾经因为漏打某个插件的 bundlePlugin，推上去的 jar 里没有新增的 `sendStreaming`，
    线上表现为 `NoSuchMethodError`，而 md5 完全一致。
 4. **推设备**：`/app/export`（HTTP 桥）导出到 `Download/DSHA/`，再 `cp` 到 `/sdcard/EV/mods/`。
 5. **重启 EV**：插件在启动时复制到 `files/mods/` 再加载，**改插件必须重启进程**。

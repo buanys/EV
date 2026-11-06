@@ -37,14 +37,9 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 // The agent contracts ship as their own container. Compiling against that module's class output
 // (rather than a project dependency) keeps its classes out of this container: at runtime they can
 // only arrive through the dependency loader, which is what the sidecar `dependencies` asks for.
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
-
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
-    compileOnly(files(agentApiClasses))
     // Declared per plugin on purpose: compileOnly keeps them out of the jar, the host supplies them.
     compileOnly("com.squareup.okhttp3:okhttp:5.5.0")
     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
@@ -54,7 +49,7 @@ dependencies {
     // The provider code is pure JSON/selection/HTTP-interpretation logic; the serialization runtime
     // is a host-shared package, so it is compileOnly above and only the test JVM needs a real copy.
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    testImplementation(files(agentApiClasses))
+    testImplementation(project(":host-api"))
     // The contract interfaces initialize their companion ServiceKeys at class-init time and the
     // tests run suspend functions, so the JVM test classpath also needs the kernel types.
     testImplementation(project(":loader"))
@@ -90,7 +85,7 @@ tasks.register("bundlePlugin") {
               "version": "1.0.1",
               "entryClass": "ev.buan.plugins.agent.model.AgentModelPlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.api"],
+              "dependencies": [],
               "permissions": ["NETWORK", "PLUGIN_STORAGE"]
             }
         """.trimIndent()
@@ -108,8 +103,3 @@ tasks.named("bundlePlugin") {
 
 apply(from = rootProject.file("gradle/plugin-verify.gradle.kts"))
 
-// The agent-api class jar is produced by another project. Its path only exists after that project's
-// compile step, so a clean build needs this ordering edge; without it the two builds race.
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

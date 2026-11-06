@@ -28,3 +28,4 @@ org.tukaani.xz
 org.luckypray.dexkit
 org.lsposed.hiddenapibypass
 io.github.libxposed
+ev.buan.plugins.agent.api

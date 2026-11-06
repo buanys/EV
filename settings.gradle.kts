@@ -40,7 +40,6 @@ include(":host-core")
 // 在构建内的插件：真实功能。
 include(":plugins:settings")
 include(":plugins:ev-ui")
-include(":plugins:agent-api")
 include(":plugins:agent-model")
 include(":plugins:agent-tools")
 include(":plugins:agent-memory")

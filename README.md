@@ -136,24 +136,22 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 
 | 插件 | id | 发布 | 依赖 | 权限 |
 |---|---|---|---|---|
-| agent-api | `ev.buan.plugins.agent.api` | 契约（接口/数据类） | — | — |
-| agent-model | `ev.buan.plugins.agent.model` | `ModelService` + `ModelProviderService`（多 Provider/模型，OpenAI 兼容 chat completions） | agent-api | `NETWORK`、`PLUGIN_STORAGE` |
-| agent-tools | `ev.buan.plugins.agent.tools` | `ToolRegistry`（插件存储区文件工具） | agent-api | `PLUGIN_STORAGE` |
-| agent-memory | `ev.buan.plugins.agent.memory` | `MemoryService`（JSON 会话记忆） | agent-api | `PLUGIN_STORAGE` |
-| agent-brain | `ev.buan.plugins.agent.brain` | `AgentService`（模型 + 工具 + 记忆编排） | agent-api | — |
+| agent-model | `ev.buan.plugins.agent.model` | `ModelService` + `ModelProviderService`（多 Provider/模型，OpenAI 兼容 chat completions） | 宿主契约 | `NETWORK`、`PLUGIN_STORAGE` |
+| agent-tools | `ev.buan.plugins.agent.tools` | `ToolRegistry`（插件存储区文件工具） | 宿主契约 | `PLUGIN_STORAGE` |
+| agent-memory | `ev.buan.plugins.agent.memory` | `MemoryService`（JSON 会话记忆） | 宿主契约 | `PLUGIN_STORAGE` |
+| agent-brain | `ev.buan.plugins.agent.brain` | `AgentService`（模型 + 工具 + 记忆编排） | 宿主契约 | — |
 
 界面层另有独立插件：
 
 | 插件 | id | 角色 | 依赖 | 权限 |
 |---|---|---|---|---|
-| ev-ui | `ev.buan.plugins.ev.ui` | **默认主页**（唯一界面插件）：EV 风格首页/抽屉/聊天/会话历史，消费 `AgentService` | agent-api | `PLUGIN_STORAGE` |
+| ev-ui | `ev.buan.plugins.ev.ui` | **默认主页**（唯一界面插件）：EV 风格首页/抽屉/聊天/会话历史，消费 `AgentService` | 宿主契约 | `PLUGIN_STORAGE` |
 
-- **安装**：把上表 5 个 agent jar + `ev-ui`（默认主页）的 jar 与同名 json
-  一起放进 `EV/mods`；依赖顺序由 sidecar 的 `dependencies` 决定，与文件名无关。`ev-ui` 依赖 agent-api（消费
-  `AgentService`），单独放界面插件会被 `DEPENDENCY_MISSING` 拒绝。ev-ui 还需在管理页授予
-  「插件存储」才会激活（用于 `sessions.json`）；未授予时主页落到宿主兜底页。agent-api 的 `send` 增加
-  可选 `systemPrompt` 后 JVM 签名有变化：agent-api、ev-ui、agent-brain 必须同代重新打包/投放，
-  不能混装旧 jar。
+- **安装**：把上表 4 个 agent jar + `ev-ui`（默认主页）的 jar 与同名 json
+  一起放进 `EV/mods`；依赖顺序由 sidecar 的 `dependencies` 决定，与文件名无关。
+  契约（`AgentService`、`ToolRegistry`…）已经并进宿主 APK，不再是需要单独安装的插件。
+  ev-ui 仍需在管理页授予「插件存储」才会激活（用于 `sessions.json`），未授予时主页落到宿主兜底页。
+  升级时宿主 APK 与插件要同代投放：契约签名一旦变化，旧 jar 会在类加载期失败，而不是静默降级。
 - **配置模型**：插件管理 → `ev.buan.plugins.agent.model` 卡片 → 授予「网络访问」「插件存储」；
   再到 `ev-ui` 设置 → 模型服务，配置 Provider/Key/模型并设为当前。旧版单配置
   `config/model.json` 会在首次读取时迁移为「默认」Provider；旧卡片表单已删除。
@@ -190,9 +188,9 @@ scripts/release-smoke.sh          # 单测 + releaseGate + 插件 jar + 真机�
 agent 层容器（jar + sidecar）用对应模块的 `bundlePlugin` 构建：
 
 ```bash
-:plugins:agent-api:bundlePlugin :plugins:agent-model:bundlePlugin \
-:plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
-:plugins:agent-brain:bundlePlugin :plugins:ev-ui:bundlePlugin
+./gradlew :plugins:agent-model:bundlePlugin \
+  :plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
+  :plugins:agent-brain:bundlePlugin :plugins:ev-ui:bundlePlugin
 ```
 
 ## 真机验收清单（agent 层）

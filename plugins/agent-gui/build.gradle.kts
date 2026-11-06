@@ -33,18 +33,13 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 
 // 工具契约在另一个插件（AGP 不允许对 application 模块建项目依赖），编译期用它的类输出，
 // 运行时通过依赖加载器到达——与 agent-tools / agent-memory 同一套做法。
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
-
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
-    compileOnly(files(agentApiClasses))
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
-    testImplementation(files(agentApiClasses))
+    testImplementation(project(":host-api"))
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
     // ScreenService/ScreenDump 来自宿主契约；测试要用真的类型，不想再造一份假的。
     testImplementation(project(":host-api"))
@@ -84,8 +79,3 @@ tasks.register("bundlePlugin") {
     }
 }
 
-// The agent-api class jar is produced by another project and only exists after its compile step, so
-// a clean build needs this ordering edge; without it the two builds race.
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

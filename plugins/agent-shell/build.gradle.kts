@@ -41,21 +41,16 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 // The agent contract lives in another plugin. AGP refuses a project dependency on an application
 // module, so this compiles against that module's class output instead: the contract stays out of this
 // container and can only arrive at runtime through the dependency loader, as the sidecar declares.
-val agentApiClasses = rootProject.file(
-    "plugins/agent-api/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
-)
-
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
     // The console wears the shared design system; ui-kit itself is supplied by the host at runtime.
     compileOnly(project(":ui-kit"))
-    compileOnly(files(agentApiClasses))
 
     // Local unit tests run the tool logic against a fake shell: argument validation, timeout capping
     // and result encoding need the contract classes, the stdlib, coroutines (runBlocking) and org.json.
     testImplementation("junit:junit:4.13.2")
-    testImplementation(files(agentApiClasses))
+    testImplementation(project(":host-api"))
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     testImplementation("org.json:json:20260814")
@@ -93,7 +88,7 @@ tasks.register("bundlePlugin") {
               "version": "1.1.0",
               "entryClass": "ev.buan.plugins.agent.shell.AgentShellPlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.api", "ev.buan.plugins.agent.tools"],
+              "dependencies": ["ev.buan.plugins.agent.tools"],
               "permissions": ["ROOT_SHELL"]
             }
         """.trimIndent()
@@ -103,8 +98,3 @@ tasks.register("bundlePlugin") {
 
 apply(from = rootProject.file("gradle/plugin-verify.gradle.kts"))
 
-// The agent-api class jar is produced by another project and only exists after its compile step, so
-// a clean build needs this ordering edge; without it the two builds race.
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(":plugins:agent-api:bundleDebugClassesToCompileJar")
-}

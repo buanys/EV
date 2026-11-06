@@ -73,9 +73,9 @@ val preparePayload = tasks.register<Exec>("prepareCompilerPayload") {
     group = "distribution"
     description = "把编译器载荷搬进 payload/（Tier 1：从已验证的探针产物搬运）"
     val out = payloadDir.asFile
-    // 契约 jar 取当前构建产物：探针里的 plugin-api 冻结在 2026-10-27，没有后续新增的契约。
-    val pluginApiJar = rootProject.file("plugin-api/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar")
-    dependsOn(":plugin-api:bundleLibCompileToJarDebug")
+    // 契约 jar 取当前构建产物：探针里的契约冻结在 2026-10-27，没有后续新增的类型。
+    val pluginApiJar = rootProject.file("host-api/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar")
+    dependsOn(":host-api:bundleLibCompileToJarDebug")
     commandLine(
         "bash", rootProject.file("scripts/forge-payload.sh").absolutePath,
         "--from-probe", probeJar.get(),
