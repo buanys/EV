@@ -38,6 +38,7 @@
 | [0006](adr/0006-session-event-log.md) | 会话事件流 | 事件流是历史的唯一真相源，memory 是派生物 |
 | [0007](adr/0007-approval-policy-and-guards.md) | 审批分层 | "策略"预判 + "人工"确认两层，工具前缀硬规则 |
 | [0008](adr/0008-trust-by-capability-surface.md) | 未签名的信任 | 按**能力面**判定，不按字节 |
+| [0009](adr/0009-trust-tiers.md) | 信任三档 | 来源+签名+批准定档；受限档的子进程 broker 未实现，**正式包 fail-closed** |
 
 新决策开新编号，旧 ADR 只追加状态，不改写历史。
 

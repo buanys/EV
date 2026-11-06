@@ -55,6 +55,7 @@ internal class HostInventory(
             version = plugin.version,
             apiVersion = plugin.apiVersion,
             signed = plugin.signed,
+            trust = plugin.trust,
             enabled = isEnabled(plugin.id),
             title = surface?.title ?: plugin.id,
             body = surface?.body.orEmpty(),

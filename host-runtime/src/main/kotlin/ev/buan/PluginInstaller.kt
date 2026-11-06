@@ -38,6 +38,9 @@ data class InstalledPlugin(
      * re-check them against the grants currently stored by the host (T06).
      */
     val requestedPermissions: Set<HostPermission> = emptySet(),
+    /** 来源与安装时判定的信任档位：激活门和卡片都读它们，没有第二个来源。 */
+    val origin: ev.buan.hostcore.trust.PluginOrigin = ev.buan.hostcore.trust.PluginOrigin.EXTERNAL,
+    val trust: ev.buan.hostcore.trust.TrustDecision,
 )
 
 
@@ -110,18 +113,6 @@ class PluginInstaller(
 
     private val collector = PluginCollector(context, files, metadata)
 
-
-
-    /**
-     * 删掉这个 id 在私有目录里的镜像副本。
-     *
-     * 卸载时用：外部那份删掉之后，私有这份要等到下一次 [sync] 才被 prune，
-     * 中间它继续占着几十 MB（载荷类容器一份 27 MB），插件页里也还是一张卡片。
-     * 路径必须走 [privateFileFor]——与写入时同一个函数，拼字符串错一次就是"删了个寂寞"。
-     */
-
-
-
     // 文件搬运的实现搬进了 PluginFiles；这四个仍是安装器的公开面（宿主与插件页在用）。
 
     fun hasAllFilesAccess(): Boolean = files.hasAllFilesAccess()
@@ -155,7 +146,7 @@ class PluginInstaller(
             // accept loop, and the plugin simply vanished from every list with no message. A bad
             // container must cost exactly its own slot.
             runCatching {
-                accept(source.file, source.meta, accepted, hashes, pending, errors)
+                accept(source, accepted, hashes, pending, errors)
             }.onFailure { error ->
                 errors += "${source.file.name}: ${error.javaClass.name}: ${error.message.orEmpty()}"
             }
@@ -173,8 +164,6 @@ class PluginInstaller(
     }
 
     // ---------------------------------------------------------------- sources
-
-
 
     /**
      * Puts the collected containers in the order they may be accepted: dependencies first.
@@ -220,13 +209,15 @@ class PluginInstaller(
      * not this function.
      */
     private fun accept(
-        source: File,
-        meta: PluginMeta,
+        source: PluginSource,
         accepted: MutableMap<String, InstalledPlugin>,
         hashes: MutableMap<String, String>,
         pending: MutableList<PendingUnsigned>,
         errors: MutableList<String>,
     ) {
+        val file = source.file
+        val meta = source.meta
+        val origin = source.origin
         // Unknown declarations are a metadata rejection, not a runtime surprise: this host can
         // never gate a capability it does not understand, so fail closed before hashing/copying.
         if (!meta.permissions.isWellFormed) {
@@ -237,15 +228,15 @@ class PluginInstaller(
         // A container that has not changed since the last launch keeps its scan result: hashing and
         // the dex scan are the two expensive steps here, and neither can differ for identical
         // bytes. A changed container re-runs both, so an edit is always re-validated.
-        val size = source.length()
-        val modified = source.lastModified()
-        val cached = scanCache.get(source.absolutePath, size, modified)
-        val hash = cached?.sha256 ?: androidModuleHash(source)
+        val size = file.length()
+        val modified = file.lastModified()
+        val cached = scanCache.get(file.absolutePath, size, modified)
+        val hash = cached?.sha256 ?: androidModuleHash(file)
         val violations = cached?.violations
-            ?: DexClassScanner.violations(source, PluginPolicy.reservedPrefixes()).map { it.className }
+            ?: DexClassScanner.violations(file, PluginPolicy.reservedPrefixes()).map { it.className }
         if (cached == null) {
             scanCache.put(
-                source.absolutePath,
+                file.absolutePath,
                 PluginScanCache.Entry(size, modified, hash, violations),
             )
         }
@@ -255,7 +246,8 @@ class PluginInstaller(
             entryClass = meta.entryClass,
             apiVersion = meta.apiVersion,
             sha256 = hash,
-            signing = trust.signingState(source),
+            origin = origin,
+            signing = trust.signingState(file),
             platformClassViolations = violations,
             // 带版本交给校验器：`id@1.2.0` 由 PluginValidator.dependencyGate 检查。
             // 剥版本只发生在交给内核 descriptor 的那一处（见 HostActivation）。
@@ -294,13 +286,13 @@ class PluginInstaller(
                         id = meta.id,
                         version = meta.version,
                         sha256 = decision.sha256,
-                        fileName = source.name,
+                        fileName = file.name,
                         reason = reason,
                     )
-                    tracePlugin("pending ${meta.id} (${source.name}) · $reason")
+                    tracePlugin("pending ${meta.id} (${file.name}) · $reason")
                     return
                 }
-                tracePlugin("auto-approved ${meta.id} (${source.name}) · ${CapabilityTrust.describe(outcome)}")
+                tracePlugin("auto-approved ${meta.id} (${file.name}) · ${CapabilityTrust.describe(outcome)}")
             }
             approvals.approve(decision.pluginId, decision.sha256)
             capabilityTrust.record(meta.id, surface)
@@ -310,14 +302,14 @@ class PluginInstaller(
             )
         }
         when (decision) {
-            ValidationResult.Accepted -> {
+            is ValidationResult.Accepted -> {
                 // 人工批准过的未签名插件，下次启动因 sha256 匹配直接到这里——此时补记能力面，
                 // 作为它下一次更新时的比对基准。已存在就不覆盖，避免把扩权写进基准。
                 if (approvals.approved().containsKey(meta.id)) {
                     capabilityTrust.recordIfAbsent(meta.id, surface)
                 }
-                publish(source, meta, hash, candidate, accepted, hashes, reused = cached != null)
-                tracePlugin("accepted ${meta.id} (${source.name})")
+                publish(file, meta, hash, candidate, accepted, hashes, reused = cached != null)
+                tracePlugin("accepted ${meta.id} (${file.name})")
             }
             is ValidationResult.Rejected ->
                 if (decision.rejection.code == PluginRejectionCode.PERMISSION_DENIED) {
@@ -325,14 +317,14 @@ class PluginInstaller(
                     // the user can grant the missing permissions; HostComposition.activate is the gate
                     // that decides whether it may actually load. The permission gate is the last
                     // one in the validator, so every trust/content/identity check already passed.
-                    publish(source, meta, hash, candidate, accepted, hashes, reused = cached != null)
-                    tracePlugin("accepted-with-denied-permissions ${meta.id} (${source.name})")
+                    publish(file, meta, hash, candidate, accepted, hashes, reused = cached != null)
+                    tracePlugin("accepted-with-denied-permissions ${meta.id} (${file.name})")
                 } else {
                     errors += "${decision.rejection.code}: ${decision.rejection.message}"
                     // 只打 code 等于把人赶去读 validator：缺哪个依赖、那个依赖现在是什么状态，
                     // 这里其实全都知道。
                     tracePlugin(
-                        "rejected ${meta.id} (${source.name}): ${decision.rejection.code}" +
+                        "rejected ${meta.id} (${file.name}): ${decision.rejection.code}" +
                             " · ${decision.rejection.message}",
                     )
                     if (decision.rejection.code == PluginRejectionCode.DEPENDENCY_MISSING) {
@@ -349,7 +341,7 @@ class PluginInstaller(
                 }
 
             is ValidationResult.NeedsUnsignedApproval ->
-                pending += PendingUnsigned(meta.id, meta.version, decision.sha256, source.name)
+                pending += PendingUnsigned(meta.id, meta.version, decision.sha256, file.name)
         }
     }
 
@@ -374,6 +366,15 @@ class PluginInstaller(
 
         hashes[meta.id] = hash
         accepted[meta.id] = InstalledPlugin(
+            origin = candidate.origin,
+            // 重新读一次批准的存储，而不是复用 accept() 开头那份：未签名容器可能刚被批准。
+            trust = ev.buan.hostcore.trust.TrustGate.decide(
+                origin = candidate.origin,
+                signing = candidate.signing,
+                sha256 = hash,
+                approvedSha256 = approvals.approved()[meta.id],
+                hostCertificateSha256 = trust.hostCertificateHashes,
+            ),
             id = meta.id,
             shortcuts = meta.shortcuts,
             version = meta.version,
@@ -390,11 +391,4 @@ class PluginInstaller(
         )
     }
 
-    // ---------------------------------------------------------------- maintenance
-
-
-
-    // ---------------------------------------------------------------- metadata
-
-    // ---------------------------------------------------------------- files
 }

@@ -60,6 +60,15 @@ internal interface ActivationHost {
     /** 非空表示本次启动处于安全模式：一个插件都不许加载。 */
     val safeModeNotice: SafeModeNotice?
 
+    /**
+     * 受限档位能不能在这个进程里跑。
+     *
+     * 正式包必须是 false：受限档位的定义就是「隔离执行」，同进程运行等于没有隔离。
+     * 调试包放开——那个包本身就已经不可信（可调试即等于整机可接管），隔离它换不来安全性，
+     * 而每改一行代码都要重新确认插件会让开发瘫痪。
+     */
+    val allowsRestrictedInProcess: Boolean
+
     /** 把这一轮扫描的结果落账（`installed` / `syncErrors` / `pendingUnsigned`）。 */
     fun recordScan(installedNow: List<InstalledPlugin>, errors: List<String>, pending: List<PendingUnsigned>)
 
@@ -202,6 +211,21 @@ internal class HostActivation(private val host: ActivationHost) {
             return
         }
         host.failures.remove(plugin.id)
+        // 信任门：不可信的一档不执行；受限的一档要隔离执行，没有隔离环境时同样不执行。
+        // 档位在安装期判定过（InstalledPlugin.trust），这里只处置，不重算。
+        val trust = plugin.trust
+        when (trust.tier) {
+            ev.buan.hostcore.trust.TrustTier.TRUSTED -> Unit
+            ev.buan.hostcore.trust.TrustTier.UNTRUSTED -> {
+                host.failures[plugin.id] = "不可信（${trust.reason}），拒绝执行"
+                return
+            }
+
+            ev.buan.hostcore.trust.TrustTier.RESTRICTED -> if (!host.allowsRestrictedInProcess) {
+                host.failures[plugin.id] = "受限（${trust.reason}）：需要子进程隔离，本版尚未实现，不执行"
+                return
+            }
+        }
         // Capability gate before any loading work: an ungranted declaration means the plugin may
         // not run, and the card says why so the user can grant it.
         val missing = PermissionGate.missing(

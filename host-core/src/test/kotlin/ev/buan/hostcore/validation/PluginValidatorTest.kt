@@ -27,12 +27,14 @@ class PluginValidatorTest {
         violations: List<String> = emptyList(),
         dependencies: List<String> = emptyList(),
         permissions: Set<String> = emptySet(),
+        origin: ev.buan.hostcore.trust.PluginOrigin = ev.buan.hostcore.trust.PluginOrigin.EXTERNAL,
     ) = PluginCandidate(
         id = id,
         version = "1.0.0",
         entryClass = "test.Plugin",
         apiVersion = apiVersion,
         sha256 = sha256,
+        origin = origin,
         signing = signing,
         platformClassViolations = violations,
         dependencies = dependencies,
@@ -42,11 +44,53 @@ class PluginValidatorTest {
     private fun rejectionOf(result: ValidationResult): PluginRejection =
         assertIs<ValidationResult.Rejected>(result).rejection
 
+    // ---- trust tier ---------------------------------------------------------
+
+    @Test
+    fun `内置容器不需要批准就是可信`() {
+        val result = PluginValidator.validate(
+            candidate(origin = ev.buan.hostcore.trust.PluginOrigin.BUILT_IN, signing = SigningState.Unsigned),
+            policy,
+        )
+        val accepted = assertIs<ValidationResult.Accepted>(result)
+        assertEquals(ev.buan.hostcore.trust.TrustTier.TRUSTED, accepted.trust.tier)
+    }
+
+    @Test
+    fun `批准过的未签名容器是受限`() {
+        val hash = "22".repeat(32)
+        val result = PluginValidator.validate(
+            candidate(sha256 = hash, signing = SigningState.Unsigned),
+            policy.copy(approvedUnsignedHashes = mapOf("plugin.test" to hash)),
+        )
+        val accepted = assertIs<ValidationResult.Accepted>(result)
+        assertEquals(ev.buan.hostcore.trust.TrustTier.RESTRICTED, accepted.trust.tier)
+    }
+
+    @Test
+    fun `同签名走的是可信而不是受限`() {
+        val accepted = assertIs<ValidationResult.Accepted>(PluginValidator.validate(candidate(), policy))
+        assertEquals(ev.buan.hostcore.trust.TrustTier.TRUSTED, accepted.trust.tier)
+    }
+
+    @Test
+    fun `未批准的内置签名容器仍然可信`() {
+        // 内置容器的完整性由 APK 签名担保：它自己的证书是谁的并不改变这一点。
+        val result = PluginValidator.validate(
+            candidate(
+                origin = ev.buan.hostcore.trust.PluginOrigin.BUILT_IN,
+                signing = SigningState.Signed(setOf("bb".repeat(32))),
+            ),
+            policy,
+        )
+        assertTrue(result is ValidationResult.Accepted)
+    }
+
     // ---- signature ----------------------------------------------------------
 
     @Test
     fun `同签名通过`() {
-        assertEquals(ValidationResult.Accepted, PluginValidator.validate(candidate(), policy))
+        assertTrue((PluginValidator.validate(candidate(), policy)) is ValidationResult.Accepted)
     }
 
     @Test
@@ -78,7 +122,7 @@ class PluginValidatorTest {
             approvedUnsignedHashes = mapOf("plugin.test" to "11".repeat(32)),
         )
         val result = PluginValidator.validate(candidate(signing = SigningState.Unsigned), approved)
-        assertEquals(ValidationResult.Accepted, result)
+        assertTrue((result) is ValidationResult.Accepted)
     }
 
     @Test
@@ -94,7 +138,7 @@ class PluginValidatorTest {
 
     @Test
     fun `API 版本一致通过`() {
-        assertEquals(ValidationResult.Accepted, PluginValidator.validate(candidate(apiVersion = 1), policy))
+        assertTrue((PluginValidator.validate(candidate(apiVersion = 1), policy)) is ValidationResult.Accepted)
     }
 
     @Test
@@ -116,12 +160,12 @@ class PluginValidatorTest {
             candidate(permissions = setOf("NETWORK", "PLUGIN_STORAGE")),
             granted,
         )
-        assertEquals(ValidationResult.Accepted, result)
+        assertTrue((result) is ValidationResult.Accepted)
     }
 
     @Test
     fun `未声明权限的插件不需要授予就通过`() {
-        assertEquals(ValidationResult.Accepted, PluginValidator.validate(candidate(), policy))
+        assertTrue((PluginValidator.validate(candidate(), policy)) is ValidationResult.Accepted)
     }
 
     @Test
@@ -192,7 +236,7 @@ class PluginValidatorTest {
 
     @Test
     fun `无平台类重复通过`() {
-        assertEquals(ValidationResult.Accepted, PluginValidator.validate(candidate(violations = emptyList()), policy))
+        assertTrue((PluginValidator.validate(candidate(violations = emptyList()), policy)) is ValidationResult.Accepted)
     }
 
     @Test
@@ -209,7 +253,7 @@ class PluginValidatorTest {
     @Test
     fun `同 id 同哈希通过`() {
         val withInstalled = policy.copy(installedHashes = mapOf("plugin.test" to "11".repeat(32)))
-        assertEquals(ValidationResult.Accepted, PluginValidator.validate(candidate(), withInstalled))
+        assertTrue((PluginValidator.validate(candidate(), withInstalled)) is ValidationResult.Accepted)
     }
 
     @Test
@@ -247,7 +291,7 @@ class PluginValidatorTest {
         val result = PluginValidator.verifyAtLoad(
             "plugin.test", "11".repeat(32), SigningState.Unsigned, installed,
         )
-        assertEquals(ValidationResult.Accepted, result)
+        assertTrue((result) is ValidationResult.Accepted)
     }
 
     @Test
@@ -294,7 +338,7 @@ class PluginValidatorTest {
             "plugin.test", "11".repeat(32), SigningState.Unsigned, installed,
             requestedPermissions = setOf("PLUGIN_STORAGE"),
         )
-        assertEquals(ValidationResult.Accepted, result)
+        assertTrue((result) is ValidationResult.Accepted)
     }
 
     @Test
@@ -336,7 +380,7 @@ class PluginValidatorTest {
         val result = PluginValidator.validate(
             candidate(dependencies = listOf("ev.buan.plugins.ping.api")), withDep,
         )
-        assertEquals(ValidationResult.Accepted, result)
+        assertTrue((result) is ValidationResult.Accepted)
     }
 
 

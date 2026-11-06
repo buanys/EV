@@ -18,7 +18,12 @@ import java.io.File
  */
 
 /** One container that parsed cleanly and is waiting for its place in the accept order. */
-internal data class PluginSource(val file: File, val meta: PluginMeta)
+internal data class PluginSource(
+    val file: File,
+    val meta: PluginMeta,
+    /** 谁把它放进来的：assets 还是外部目录。信任判定要用，且只有这里知道。 */
+    val origin: ev.buan.hostcore.trust.PluginOrigin,
+)
 
 internal class PluginCollector(
     private val context: Context,
@@ -41,7 +46,7 @@ fun bundled(sources: MutableList<PluginSource>, errors: MutableList<String>) {
             // The id becomes a private file name and a loader module id; reject it before
             // anything is copied or written. The error stays per-asset, not a crash.
             PluginId.requireValid(meta.id)
-            sources += PluginSource(staged, meta)
+            sources += PluginSource(staged, meta, ev.buan.hostcore.trust.PluginOrigin.BUILT_IN)
             tracePlugin("scanned (bundled) ${meta.id}")
         }.onFailure { errors += "内置插件 $name: $it" }
     }
@@ -72,7 +77,7 @@ fun external(sources: MutableList<PluginSource>, errors: MutableList<String>) {
                 // Fail closed before accept/publish: an id containing a path separator, `..`,
                 // a drive prefix or control characters must never become a file name.
                 PluginId.requireValid(meta.id)
-                sources += PluginSource(source, meta)
+                sources += PluginSource(source, meta, ev.buan.hostcore.trust.PluginOrigin.EXTERNAL)
                 tracePlugin("scanned ${meta.id} from ${source.name}")
             }.onFailure { errors += "${source.name}: $it" }
         }

@@ -69,6 +69,13 @@ data class PluginCard(
     val version: String,
     val apiVersion: Int,
     val signed: Boolean,
+    /**
+     * 信任档位与理由。
+     *
+     * 卡片必须显示它：同一批字节在「可信」和「受限」下能做的事不一样，而用户看到的
+     * 如果只有"能跑/不能跑"，就永远不知道自己在承担什么。
+     */
+    val trust: ev.buan.hostcore.trust.TrustDecision,
     val enabled: Boolean,
     val title: String,
     val body: String,

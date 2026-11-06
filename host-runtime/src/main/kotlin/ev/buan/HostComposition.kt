@@ -97,6 +97,7 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
                 ),
                 requestedPermissions = plugin?.requestedPermissions.orEmpty()
                     .mapTo(LinkedHashSet()) { it.name },
+                origin = plugin?.origin ?: ev.buan.hostcore.trust.PluginOrigin.EXTERNAL,
             )
             if (decision is ValidationResult.Rejected) {
                 throw SecurityException("${decision.rejection.code}: ${decision.rejection.message}")
@@ -123,6 +124,14 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
      */
     private val autoTrustUnsigned =
         (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    /**
+     * 受限档位能不能在这个进程里跑：与"自动信任未签名"同一个开关。
+     *
+     * 两者都是"这个包本身已经不可信"的同一件事：可调试图层的安全性归零，隔离插件换不来
+     * 任何东西；正式包不使用它，受限档位就真的只能等隔离实现之后再跑。
+     */
+    override val allowsRestrictedInProcess: Boolean get() = autoTrustUnsigned
 
     override val installer = PluginInstaller(
         context,

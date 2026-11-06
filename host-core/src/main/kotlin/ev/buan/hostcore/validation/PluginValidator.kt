@@ -2,6 +2,10 @@ package ev.buan.hostcore.validation
 
 import ev.buan.hostcore.dependency.DependencyCheck
 import ev.buan.hostcore.dependency.PluginDependency
+import ev.buan.hostcore.trust.PluginOrigin
+import ev.buan.hostcore.trust.TrustDecision
+import ev.buan.hostcore.trust.TrustGate
+import ev.buan.hostcore.trust.TrustTier
 
 
 /**
@@ -72,6 +76,13 @@ data class PluginCandidate(
     val entryClass: String,
     val apiVersion: Int,
     val sha256: String,
+    /**
+     * 容器从哪来：随包内置，还是外部投放目录。
+     *
+     * 默认 [PluginOrigin.EXTERNAL]——**默认值是"少信任"的那一侧**：忘了传的调用方会得到
+     * 一次真正的判定，而不是一次免费的放行。
+     */
+    val origin: PluginOrigin = PluginOrigin.EXTERNAL,
     val signing: SigningState,
     /** Classes this container defines inside a reserved package, already measured. */
     val platformClassViolations: List<String> = emptyList(),
@@ -114,7 +125,14 @@ data class HostPolicy(
 }
 
 sealed interface ValidationResult {
-    data object Accepted : ValidationResult
+    /**
+     * 通过，并且带上信任判定。
+     *
+     * 判定跟"能不能装"是同一个决定的两面：把它留给调用方再算一遍，就会出现"装的时候
+     * 算一次、跑的时候算另一次"的分裂，而这两次不一致时受苦的是用户（卡片说可信、
+     * 激活门说不），所以它跟着结果一起走。
+     */
+    data class Accepted(val trust: TrustDecision) : ValidationResult
 
     data class Rejected(val rejection: PluginRejection) : ValidationResult
 
@@ -141,13 +159,14 @@ sealed interface ValidationResult {
 object PluginValidator {
 
     fun validate(candidate: PluginCandidate, policy: HostPolicy): ValidationResult {
-        signatureGate(candidate, policy)?.let { return it }
+        val trust = decideTrust(candidate, policy)
+        signatureGate(candidate, trust)?.let { return it }
         dependencyGate(candidate, policy)?.let { return it }
         apiGate(candidate, policy)?.let { return it }
         contentGate(candidate)?.let { return it }
         identityGate(candidate, policy)?.let { return it }
         permissionGate(candidate, policy)?.let { return it }
-        return ValidationResult.Accepted
+        return ValidationResult.Accepted(trust)
     }
 
     /**
@@ -167,6 +186,11 @@ object PluginValidator {
         signing: SigningState,
         policy: HostPolicy,
         requestedPermissions: Set<String> = emptySet(),
+        /**
+         * 同 [PluginCandidate.origin]，默认外部：加载期能拿到的事实只会比安装期少，
+         * 所以默认必须是少信任的那一侧。
+         */
+        origin: PluginOrigin = PluginOrigin.EXTERNAL,
     ): ValidationResult {
         val expected = policy.installedHashes[id]
             ?: return ValidationResult.Rejected(
@@ -185,68 +209,68 @@ object PluginValidator {
                 ),
             )
         }
-        val signatureDecision = when (signing) {
-            is SigningState.Signed -> if (signing.certificateSha256.any { it in policy.hostCertificateSha256 }) {
-                ValidationResult.Accepted
-            } else {
-                ValidationResult.Rejected(
-                    PluginRejection(
-                        PluginRejectionCode.SIGNATURE_HOST_MISMATCH,
-                        id,
-                        "加载期签名与宿主不一致，拒绝加载",
-                    ),
-                )
-            }
-
-            SigningState.Unsigned -> if (policy.approvedUnsignedHashes[id] == sha256) {
-                ValidationResult.Accepted
-            } else {
-                ValidationResult.Rejected(
-                    PluginRejection(
-                        PluginRejectionCode.UNSIGNED_NOT_APPROVED,
-                        id,
-                        "未签名插件未获批准（或哈希已变更），拒绝加载",
-                    ),
-                )
-            }
+        val trust = TrustGate.decide(
+            origin = origin,
+            signing = signing,
+            sha256 = sha256,
+            approvedSha256 = policy.approvedUnsignedHashes[id],
+            hostCertificateSha256 = policy.hostCertificateSha256,
+        )
+        if (trust.tier == TrustTier.UNTRUSTED) {
+            // 两种失败分开报：没签名是"没批过这批字节"，签了但不是我们的
+            // 是"这个文件不该在这里"。卡片上的下一步不一样。
+            val unsigned = signing is SigningState.Unsigned
+            return ValidationResult.Rejected(
+                PluginRejection(
+                    if (unsigned) PluginRejectionCode.UNSIGNED_NOT_APPROVED
+                    else PluginRejectionCode.SIGNATURE_HOST_MISMATCH,
+                    id,
+                    if (unsigned) "未签名插件未获批准（或哈希已变更），拒绝加载"
+                    else "加载期签名与宿主不一致，拒绝加载",
+                    trust.reason,
+                ),
+            )
         }
-        if (signatureDecision is ValidationResult.Rejected) return signatureDecision
-        return permissionRejection(id, requestedPermissions, policy) ?: signatureDecision
+        return permissionRejection(id, requestedPermissions, policy)
+            ?: ValidationResult.Accepted(trust)
     }
 
-    private fun signatureGate(candidate: PluginCandidate, policy: HostPolicy): ValidationResult? =
-        when (val signing = candidate.signing) {
-            is SigningState.Signed -> when {
-                signing.certificateSha256.isEmpty() -> ValidationResult.Rejected(
-                    PluginRejection(
-                        PluginRejectionCode.SIGNATURE_EMPTY,
-                        candidate.id,
-                        "插件没有签名证书",
-                    ),
-                )
-
-                signing.certificateSha256.none { it in policy.hostCertificateSha256 } -> ValidationResult.Rejected(
-                    PluginRejection(
-                        PluginRejectionCode.SIGNATURE_HOST_MISMATCH,
-                        candidate.id,
-                        "插件签名与宿主不一致",
-                        "证书 ${signing.certificateSha256.first().take(16)}… 不在宿主信任列表",
-                    ),
-                )
-
-                else -> null
-            }
-
-            SigningState.Unsigned -> {
-                val approved = policy.approvedUnsignedHashes[candidate.id]
-                if (approved == candidate.sha256) {
-                    null
-                } else {
-                    // First sight, or the bytes changed since approval: ask again.
-                    ValidationResult.NeedsUnsignedApproval(candidate.id, candidate.sha256)
-                }
-            }
+    /**
+     * 信任门：只问一件事——这批字节在设计上是"可信"、"受限"还是"不可信"。
+     *
+     * 判定的全部输入都在 [PluginCandidate] 和 [HostPolicy] 里，算法在 `TrustGate`（纯函数）。
+     * 这一层不重复实现它，否则安装期的档位和加载期的档位会各自漂移。
+     */
+    private fun signatureGate(
+        candidate: PluginCandidate,
+        trust: TrustDecision,
+    ): ValidationResult? {
+        if (trust.tier != TrustTier.UNTRUSTED) return null
+        val signing = candidate.signing
+        // 没有 Android 签名不等于"签名不对"：jar / dex 根本装不下签名，这两类容器的
+        // 唯一出路是人确认这批字节。签坏了的 APK 才是拒绝。
+        if (signing is SigningState.Unsigned) {
+            return ValidationResult.NeedsUnsignedApproval(candidate.id, candidate.sha256)
         }
+        val empty = (signing as SigningState.Signed).certificateSha256.isEmpty()
+        return ValidationResult.Rejected(
+            PluginRejection(
+                if (empty) PluginRejectionCode.SIGNATURE_EMPTY else PluginRejectionCode.SIGNATURE_HOST_MISMATCH,
+                candidate.id,
+                if (empty) "插件没有签名证书" else "插件签名与宿主不一致",
+                trust.reason,
+            ),
+        )
+    }
+
+    private fun decideTrust(candidate: PluginCandidate, policy: HostPolicy): TrustDecision =
+        TrustGate.decide(
+            origin = candidate.origin,
+            signing = candidate.signing,
+            sha256 = candidate.sha256,
+            approvedSha256 = policy.approvedUnsignedHashes[candidate.id],
+            hostCertificateSha256 = policy.hostCertificateSha256,
+        )
 
     /**
      * A dependency must already be accepted. The loader can resolve classes from a dependency

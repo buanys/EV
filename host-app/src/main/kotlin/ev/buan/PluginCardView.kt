@@ -90,7 +90,12 @@ internal fun PluginSection(
                     text = buildString {
                         append("版本 ").append(card.version)
                         append("  ·  api ").append(card.apiVersion)
-                        if (!card.signed) append("  ·  未签名")
+                        // 档位是一眼层唯一的"这意味着什么"：可信不写（它是常态，写满反而噪音），
+                        // 其余两档必须写，因为它们的后果不一样。
+                        if (card.trust.tier != ev.buan.hostcore.trust.TrustTier.TRUSTED) {
+                            append("  ·  ")
+                            append(ev.buan.hostcore.trust.TrustGate.label(card.trust.tier))
+                        }
                         // 一眼层只加一个词：开了才显示，没开不制造噪音。
                         if (card.trustsUpdates) append("  ·  自动信任")
                     },
@@ -116,6 +121,28 @@ internal fun PluginSection(
         }
 
         if (expanded) {
+            // 信任档位：一句话说清"这批字节是谁担保的"，以及它在运行时换来什么。
+            // 放在最上面，因为它决定下面那些权限开关的意义。
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "信任",
+                style = MiuixTheme.textStyles.footnote1,
+                color = colors.onSurfaceVariantSummary,
+            )
+            Text(
+                text = buildString {
+                    append(ev.buan.hostcore.trust.TrustGate.label(card.trust.tier))
+                    append("  ·  ").append(card.trust.reason)
+                    append("\n").append(ev.buan.hostcore.trust.TrustGate.meaning(card.trust.tier))
+                },
+                style = MiuixTheme.textStyles.footnote1,
+                color = if (card.trust.tier == ev.buan.hostcore.trust.TrustTier.TRUSTED) {
+                    colors.onSurfaceVariantSummary
+                } else {
+                    StatusWarning
+                },
+                modifier = Modifier.padding(top = 4.dp),
+            )
             val requested = HostPermission.entries.filter { it in card.requestedPermissions }
             if (requested.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
