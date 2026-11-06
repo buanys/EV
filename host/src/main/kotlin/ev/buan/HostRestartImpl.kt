@@ -17,10 +17,14 @@ import org.cordis.api.HostRestart
  * 这是给**替换已加载容器**用的：类加载器攥着旧 dex，就地换文件不会换掉已经在跑的类。
  * 首次安装不需要它——[org.cordis.api.PluginInstallService.install] 在当前进程里就能激活。
  */
-internal class HostRestartImpl(private val context: AndroidContext) : HostRestart {
+internal class HostRestartImpl(
+    private val context: AndroidContext,
+    /** 重启后的落点由 app 层决定；运行时只负责排程与自杀。 */
+    private val restartIntent: (AndroidContext) -> Intent,
+) : HostRestart {
 
     override fun request(reason: String): Boolean = runCatching {
-        val intent = Intent(context, MainActivity::class.java)
+        val intent = restartIntent(context)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         val relaunch = PendingIntent.getActivity(
             context,

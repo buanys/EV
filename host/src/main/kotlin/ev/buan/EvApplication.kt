@@ -2,6 +2,7 @@ package ev.buan
 
 import android.app.Activity
 import android.app.Application
+import android.content.Intent
 import android.os.Bundle
 import android.os.Process
 import java.lang.ref.WeakReference
@@ -52,7 +53,13 @@ class EvApplication : Application() {
     /** Creates the runtime on first use; safe to call from any component. */
     val runtime: HostComposition
         get() = synchronized(this) {
-            reference ?: HostComposition(this).also { reference = it }
+            reference ?: HostComposition(this).also { runtime ->
+                runtime.activityProvider = { currentActivity?.get() }
+                runtime.restartIntent = { ctx ->
+                    Intent(ctx, MainActivity::class.java)
+                }
+                reference = runtime
+            }
         }
 
     /**

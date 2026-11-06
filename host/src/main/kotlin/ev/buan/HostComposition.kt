@@ -50,6 +50,20 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class HostComposition(private val context: AndroidContext) {
 
+    /**
+     * 由 app 层注入：当前可见的 Activity（离屏渲染取 WebView 容器时要用）与重启后的落点。
+     *
+     * 运行时不该认识 Activity 类，也不该知道 `MainActivity` 叫什么——那是 :host-app 的事。
+     * 拆模块时这两条正好是挡路的依赖，所以先在本模块里把它们变成注入点。
+     */
+    var activityProvider: () -> android.app.Activity? = { null }
+    var restartIntent: (android.content.Context) -> android.content.Intent = { ctx ->
+        android.content.Intent(
+            ctx,
+            Class.forName("ev.buan.MainActivity"),
+        )
+    }
+
     private val cordis = CordisContext()
     private val trust = PluginTrust(context)
     private val modules = AndroidModuleLoader(
@@ -298,7 +312,7 @@ class HostComposition(private val context: AndroidContext) {
             // 这里只在需要时才起 WebView，服务本身不持有任何实例。
             pageReaderHandle = cordis.provide(
                 org.cordis.api.PageReader.Key,
-                HostPageReader(context) { (context as? EvApplication)?.currentActivity() },
+                HostPageReader(context) { activityProvider() },
             ).also { runCatching { it.awaitReady() } }
         }
         if (directoryHandle == null) {
@@ -345,7 +359,7 @@ class HostComposition(private val context: AndroidContext) {
                 .also { runCatching { it.awaitReady() } }
             hudHandle = cordis.provide(org.cordis.api.HudService.Key, HudServiceImpl { serviceDirectory })
                 .also { runCatching { it.awaitReady() } }
-            restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context))
+            restartHandle = cordis.provide(HostRestart.Key, HostRestartImpl(context, restartIntent))
                 .also { runCatching { it.awaitReady() } }
         }
         syncAndActivate(scope)
