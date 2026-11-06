@@ -1,35 +1,15 @@
 package ev.buan.plugins.agent.browse
 
-import android.Manifest
-import android.app.AlertDialog
-import android.app.DownloadManager
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Color
 import android.net.Uri
-import android.os.Environment
-import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.webkit.JsPromptResult
-import android.webkit.JsResult
 import android.webkit.PermissionRequest
-import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,24 +28,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 
 /**
- * 平台 WebView 的宿主：创建、配置、回调转发、销毁。
+ * 浏览面板的挂载点：Compose 状态 + `AndroidView` + 全屏覆盖层。
  *
- * 这个文件是「网页能用到什么程度」的总闸。手机上任何一个正常站点都会用到下面这些，
- * 少一个的表现都是"这个站点了没反应"，而不是报错：
+ * 这个文件只做三件事：
  *
- * | 能力 | 少了它 | 回调 |
- * |---|---|---|
- * | 新窗口 | `target=_blank` 点了没反应 | `onCreateWindow` |
- * | 加载失败 | 断网白屏 | `onReceivedError` |
- * | JS 对话框 | `alert` 挂住后续脚本 | `onJsAlert` / `onJsConfirm` / `onJsPrompt` |
- * | 文件上传 | 选择器不弹 | `onShowFileChooser` |
- * | 摄像头/麦克风 | `getUserMedia` 永远 pending | `onPermissionRequest` |
- * | 全屏视频 | 只能在小窗口里看 | `onShowCustomView` |
- * | 下载 | 点了无声无息 | `setDownloadListener` |
- * | 证书错误 | 白屏，且默认行为不可见 | `onReceivedSslError` |
+ * 1. **两段式请求的状态**——文件选择器和运行时权限都是"发出去 → 等 Activity 回来"，
+ *    回调必须先存住，两段之间的那段空隙只有 Compose 侧能守；
+ * 2. **全屏覆盖层**——页面给的视图要参与重组才画得出来，所以它的状态必须留在这里；
+ * 3. **挂上/放下那个 WebView**——`AndroidView` 的 factory 与 `DisposableEffect`。
  *
- * 另外两件"看不见但一直在错"的事：进度条用的是假动画（真值在 `onProgressChanged`），
- * 返回按钮的可用状态只在 `onPageFinished` 同步（真正的时机是 `doUpdateVisitedHistory`）。
+ * 回调本身（哪个事件该干什么、返回 true 还是 false）在 [BrowserClients]，
+ * 平台开关（JS、混合内容、多窗口、外部 scheme、权限映射、证书文案）在 [BrowserPlatform]。
+ * 这个文件里不应该再出现"这个站点为什么不能用"的判断——只出现"状态挂在哪"。
  */
 @Composable
 internal fun BrowserWebView(
@@ -77,21 +51,7 @@ internal fun BrowserWebView(
     // 文件选择与网页权限请求都是"发出去 → 等 Activity 回来"的两段式，回调必须先存住。
     val pendingFile = remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
     val pendingPermission = remember { mutableStateOf<PermissionRequest?>(null) }
-    var customView by remember { mutableStateOf<View?>(null) }
-    var customCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
-
-    /** 页面自己结束全屏（视频播完）：不回调，否则会和 WebView 互相重入。 */
-    fun clearFullscreen() {
-        customView?.let { view -> (view.parent as? ViewGroup)?.removeView(view) }
-        customView = null
-        customCallback = null
-    }
-
-    /** 用户按返回、或面板要拆掉时退出全屏：先告诉 WebView 一声。 */
-    fun leaveFullscreen() {
-        customCallback?.let { callback -> runCatching { callback.onCustomViewHidden() } }
-        clearFullscreen()
-    }
+    val fullscreen = remember { FullscreenHost() }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -118,281 +78,59 @@ internal fun BrowserWebView(
         runCatching { if (refused) request.deny() else request.grant(resources) }
     }
 
+    /**
+     * 回调板：四件事在这里落地，其余在 [browserChromeClient] / [browserWebViewClient]。
+     *
+     * `remember` 是为了让客户端拿到的始终是同一个实例——它们是 WebView 的属性，只在 factory
+     * 里赋一次值；重建实例不会换掉 WebView 上那个，只会让人以为它变了。
+     */
+    val callbacks = remember {
+        object : BrowserCallbacks {
+            override fun requestFile(
+                callback: ValueCallback<Array<Uri>>,
+                params: WebChromeClient.FileChooserParams,
+            ): Boolean {
+                // 上一次没回的必须先结掉：WebView 同一时刻只允许一个文件选择请求。
+                pendingFile.value?.onReceiveValue(null)
+                pendingFile.value = callback
+                return runCatching {
+                    filePicker.launch(params.createIntent())
+                    true
+                }.getOrElse {
+                    // 选择器都没起来：这次请求就当用户取消，否则这个页面再也弹不出来。
+                    pendingFile.value = null
+                    callback.onReceiveValue(null)
+                    false
+                }
+            }
+
+            override fun requestPermissions(
+                request: PermissionRequest,
+                androidPermissions: Array<String>,
+            ) {
+                pendingPermission.value = request
+                permissionAsker.launch(androidPermissions)
+            }
+
+            override fun showFullscreen(view: View, callback: WebChromeClient.CustomViewCallback) {
+                fullscreen.show(view, callback)
+            }
+
+            override fun hideFullscreen() {
+                fullscreen.hide()
+            }
+        }
+    }
+
     Box(modifier) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { webViewContext ->
                 WebView(webViewContext).apply {
-                    // JS 与 DOM storage 是普通网站能用的前提。文件访问保持关闭：
-                    // 开着它，页面就能用 file:// 读到这个应用的私有目录。
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.allowFileAccess = false
-                    settings.allowContentAccess = false
-                    // 混合内容按最严格处理：https 页面里的 http 资源会被直接拦掉。
-                    // 放行一次等于让运营商可以往加密页面里塞东西。
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    // 手机版的网页需要这两个，否则桌面版页面会缩成一条。
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = true
-                    // 双指缩放：开着，但不要那个又老又丑的 +/- 悬浮按钮。
-                    settings.builtInZoomControls = true
-                    settings.displayZoomControls = false
-                    // 没有它，target=_blank 的链接根本不会进 onCreateWindow。
-                    settings.setSupportMultipleWindows(true)
-                    settings.javaScriptCanOpenWindowsAutomatically = false
-                    // 透明，让面板自己的背景在第一帧页面到达前可见。
-                    setBackgroundColor(Color.TRANSPARENT)
-
-                    webViewClient = object : WebViewClient() {
-                        /**
-                         * http(s) 一律留在面板里——这个面板就是浏览器。
-                         *
-                         * 其余 scheme（`tel:` `mailto:` `market:` `intent:`）面板处理不了，
-                         * 交给系统。`isRedirect` 必须放行：OAuth 回跳、短链都是重定向，
-                         * 在这里吃掉它们，登录流程会断在"回到你的应用"那一步。
-                         */
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView,
-                            request: WebResourceRequest,
-                        ): Boolean {
-                            val scheme = request.url.scheme?.lowercase() ?: return false
-                            if (scheme in IN_PANEL_SCHEMES) return false
-                            if (!request.isForMainFrame || request.isRedirect) return false
-                            return openExternally(view.context, request.url)
-                        }
-
-                        override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                            session.onStarted(url)
-                        }
-
-                        override fun onPageFinished(view: WebView, url: String?) {
-                            session.onFinished(url, view.title)
-                        }
-
-                        /**
-                         * 前进/后退能力在这里就变了，比 onPageFinished 早。
-                         * 只在 onPageFinished 同步，返回按钮会晚一拍才亮起来。
-                         */
-                        override fun doUpdateVisitedHistory(
-                            view: WebView,
-                            url: String?,
-                            isReload: Boolean,
-                        ) {
-                            session.syncControls()
-                        }
-
-                        /**
-                         * 只处理主框架。子资源（图片、广告、统计）失败不该把整页判死——
-                         * 那会让一个本来能读的页面看起来彻底坏了。
-                         */
-                        override fun onReceivedError(
-                            view: WebView,
-                            request: WebResourceRequest,
-                            error: WebResourceError,
-                        ) {
-                            if (!request.isForMainFrame) return
-                            val description = error.description?.toString().orEmpty()
-                            session.onFailed(
-                                description.ifBlank { "无法打开这个页面（错误码 ${error.errorCode}）" },
-                            )
-                        }
-
-                        /**
-                         * 证书不被信任：取消，并且说清楚为什么。
-                         *
-                         * 永远不 `handler.proceed()`。放行一次的意思是「把这一页的密码和
-                         * cookie 交给中间人」，而这个按钮一旦存在，人就会点。系统默认实现
-                         * 是静默取消，用户看到的就是白屏——所以这里要留一句话。
-                         */
-                        override fun onReceivedSslError(
-                            view: WebView,
-                            handler: SslErrorHandler,
-                            error: android.net.http.SslError,
-                        ) {
-                            handler.cancel()
-                            session.onFailed(sslMessage(error.primaryError))
-                        }
-                    }
-
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onReceivedTitle(view: WebView?, title: String?) {
-                            session.onTitle(title)
-                        }
-
-                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                            session.onProgress(newProgress)
-                        }
-
-                        /**
-                         * 新窗口：单标签面板把它接管到当前 WebView。
-                         *
-                         * 系统会先给一个空 WebView 让我们把目标地址转走；不实现这个回调时，
-                         * `target=_blank` 的链接点了完全没反应——这是旧版最容易被撞到的缺陷。
-                         */
-                        override fun onCreateWindow(
-                            view: WebView?,
-                            isDialog: Boolean,
-                            isUserGesture: Boolean,
-                            resultMsg: Message?,
-                        ): Boolean {
-                            val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
-                            val host = view ?: return false
-                            val probe = WebView(host.context).apply {
-                                webViewClient = object : WebViewClient() {
-                                    override fun shouldOverrideUrlLoading(
-                                        v: WebView,
-                                        request: WebResourceRequest,
-                                    ): Boolean {
-                                        session.navigate(request.url.toString())
-                                        // 不能在回调里直接 destroy：这一帧还在用它。
-                                        post { destroy() }
-                                        return true
-                                    }
-                                }
-                            }
-                            transport.webView = probe
-                            resultMsg.sendToTarget()
-                            return true
-                        }
-
-                        override fun onJsAlert(
-                            view: WebView,
-                            url: String,
-                            message: String,
-                            result: JsResult,
-                        ): Boolean {
-                            showDialog(
-                                context = view.context,
-                                message = message,
-                                positiveLabel = "确定",
-                                onPositive = { result.confirm() },
-                                onDismiss = { result.cancel() },
-                            )
-                            return true
-                        }
-
-                        override fun onJsConfirm(
-                            view: WebView,
-                            url: String,
-                            message: String,
-                            result: JsResult,
-                        ): Boolean {
-                            showDialog(
-                                context = view.context,
-                                message = message,
-                                positiveLabel = "确定",
-                                negativeLabel = "取消",
-                                onPositive = { result.confirm() },
-                                onDismiss = { result.cancel() },
-                            )
-                            return true
-                        }
-
-                        /**
-                         * `prompt()` 和 alert/confirm 是同一类：不回答，页面之后的脚本全停。
-                         * 比它们更容易被忽略，因为会用到 prompt 的页面看起来更"高级"。
-                         */
-                        override fun onJsPrompt(
-                            view: WebView,
-                            url: String,
-                            message: String,
-                            defaultValue: String,
-                            result: JsPromptResult,
-                        ): Boolean {
-                            showPrompt(
-                                context = view.context,
-                                message = message,
-                                defaultValue = defaultValue,
-                                onResult = { input ->
-                                    if (input == null) result.cancel() else result.confirm(input)
-                                },
-                            )
-                            return true
-                        }
-
-                        /**
-                         * 上传按钮：网页点"选择文件"要走这里。
-                         *
-                         * 上一次没回的 callback 必须先结掉——WebView 同一时刻只允许一个
-                         * 文件选择请求，漏回一次，这个页面以后再也弹不出选择器。
-                         */
-                        override fun onShowFileChooser(
-                            view: WebView,
-                            filePathCallback: ValueCallback<Array<Uri>>,
-                            fileChooserParams: FileChooserParams,
-                        ): Boolean {
-                            pendingFile.value?.onReceiveValue(null)
-                            pendingFile.value = filePathCallback
-                            return runCatching {
-                                filePicker.launch(fileChooserParams.createIntent())
-                                true
-                            }.getOrElse {
-                                pendingFile.value = null
-                                filePathCallback.onReceiveValue(null)
-                                false
-                            }
-                        }
-
-                        /**
-                         * `getUserMedia`（扫码、录音、视频通话）。
-                         *
-                         * 两件事都要过：网页这一层的 grant，和 Android 运行时权限。
-                         * 只做前者，页面的摄像头会打开失败；只做后者，请求一直挂着。
-                         */
-                        override fun onPermissionRequest(request: PermissionRequest) {
-                            val needed = request.resources
-                                .mapNotNull(::androidPermissionFor)
-                                .distinct()
-                            val missing = needed.filter { permission ->
-                                context.checkSelfPermission(permission) !=
-                                    PackageManager.PERMISSION_GRANTED
-                            }
-                            if (missing.isEmpty()) {
-                                runCatching { request.grant(request.resources) }
-                            } else {
-                                pendingPermission.value = request
-                                permissionAsker.launch(missing.toTypedArray())
-                            }
-                        }
-
-                        override fun onShowCustomView(
-                            view: View,
-                            callback: CustomViewCallback,
-                        ) {
-                            // 同一时刻只允许一个自定义视图；旧的先摘掉，否则两个 view 抢父容器。
-                            customView?.let { old -> (old.parent as? ViewGroup)?.removeView(old) }
-                            customView = view
-                            customCallback = callback
-                        }
-
-                        override fun onHideCustomView() {
-                            clearFullscreen()
-                        }
-                    }
-
-                    setDownloadListener { url, _, contentDisposition, mimeType, _ ->
-                        enqueueDownload(context, url, contentDisposition, mimeType)
-                    }
-
-                    // 长按链接：能复制、能分享。没有它，长按会落在文字选择上，
-                    // 而"我想把这个链接发出去"是这个面板里最常发生的事之一。
-                    setOnLongClickListener { view ->
-                        // 这个回调的入参是 View，不是 WebView；不转一下就拿不到 hitTestResult。
-                        val web = view as? WebView ?: return@setOnLongClickListener false
-                        val hit = web.hitTestResult
-                        val url = hit.extra
-                        if (url.isNullOrBlank()) return@setOnLongClickListener false
-                        when (hit.type) {
-                            WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
-                                showLinkMenu(web.context, url, session.pageTitle)
-                                true
-                            }
-
-                            else -> false
-                        }
-                    }
-
+                    configureWebView(this)
+                    webViewClient = browserWebViewClient(session)
+                    webChromeClient = browserChromeClient(context, session, callbacks)
+                    attachWebViewListeners(this, session)
                     session.attach(this)
                 }
             },
@@ -401,17 +139,17 @@ internal fun BrowserWebView(
         // 全屏视频：一个盖住整块面板的黑底容器，页面给的视图挂进去。
         // 用单独的 AndroidView 而不是往当前布局里塞，是为了让 WebView 的位置和尺寸不变——
         // 挪动 WebView 会让网页重新排版，退出全屏时看着像跳了一下。
-        val fullscreen = customView
-        if (fullscreen != null) {
-            BackHandler { leaveFullscreen() }
+        val overlay = fullscreen.view
+        if (overlay != null) {
+            BackHandler { fullscreen.leave() }
             AndroidView(
                 modifier = Modifier.fillMaxSize().background(UiColor.Black),
                 factory = { ctx -> FrameLayout(ctx) },
                 update = { host ->
-                    if (fullscreen.parent !== host) {
-                        (fullscreen.parent as? ViewGroup)?.removeView(fullscreen)
+                    if (overlay.parent !== host) {
+                        (overlay.parent as? ViewGroup)?.removeView(overlay)
                         host.addView(
-                            fullscreen,
+                            overlay,
                             FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT),
                         )
                     }
@@ -424,7 +162,7 @@ internal fun BrowserWebView(
     // 再从父容器移除，最后 destroy——挂在父容器上的 WebView 会泄漏。
     DisposableEffect(Unit) {
         onDispose {
-            leaveFullscreen()
+            fullscreen.leave()
             session.view?.let { view ->
                 view.stopLoading()
                 view.webViewClient = WebViewClient()
@@ -437,45 +175,41 @@ internal fun BrowserWebView(
     }
 }
 
-/** 面板自己处理、不交给系统的 scheme。 */
-private val IN_PANEL_SCHEMES = setOf(
-    "http", "https", "about", "data", "file", "content", "javascript", "blob",
-)
-
 /**
- * `tel:` `mailto:` `market:` `intent:` 交给系统。
+ * 全屏覆盖层的状态：页面给的视图 + 它等着我们回答的回调。
  *
- * `intent://` 要单独解析：`ACTION_VIEW` 不认识它。解析出来的 Intent 必须清掉
- * component/selector——否则一个网页可以指定要启动哪个 Activity 的哪个组件。
+ * 三个动作的差别不是随手写的：
+ *
+ * - [show] 页面要全屏：先摘掉上一块。同一时刻只允许一个自定义视图，两个 view 会抢父容器。
+ * - [hide] 页面**自己**退出（视频播完）：只清状态，不回声——这一支本来就是 WebView 在
+ *   通知我们"我退出了"，再回调 `onCustomViewHidden()` 会互相重入。
+ * - [leave] 用户按返回键 / 面板要拆掉：这条得先告诉 WebView 一声，否则它以为还全屏着。
  */
-private fun openExternally(context: Context, uri: Uri): Boolean {
-    if (uri.scheme.equals("intent", ignoreCase = true)) {
-        val parsed = runCatching {
-            Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME)
-        }.getOrNull() ?: return false
-        parsed.component = null
-        parsed.selector = null
-        parsed.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return runCatching { context.startActivity(parsed) }.isSuccess
+private class FullscreenHost {
+    var view by mutableStateOf<View?>(null)
+        private set
+
+    var callback by mutableStateOf<WebChromeClient.CustomViewCallback?>(null)
+        private set
+
+    fun show(view: View, callback: WebChromeClient.CustomViewCallback) {
+        detach()
+        this.view = view
+        this.callback = callback
     }
-    return runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }.isSuccess
-}
 
-/** 网页资源名 → Android 运行时权限；不相干的（如 DRM）返回 null，表示不需要系统权限。 */
-private fun androidPermissionFor(resource: String): String? = when (resource) {
-    PermissionRequest.RESOURCE_VIDEO_CAPTURE -> Manifest.permission.CAMERA
-    PermissionRequest.RESOURCE_AUDIO_CAPTURE -> Manifest.permission.RECORD_AUDIO
-    else -> null
-}
+    fun hide() {
+        detach()
+        view = null
+        callback = null
+    }
 
-/** 证书错误说人话。只解释 "为什么不让你进"，不给"继续"这个选项。 */
-private fun sslMessage(primaryError: Int): String = when (primaryError) {
-    android.net.http.SslError.SSL_DATE_INVALID -> "这个网站的证书已经过期，连接不安全。"
-    android.net.http.SslError.SSL_EXPIRED -> "这个网站的证书过期了，连接不安全。"
-    android.net.http.SslError.SSL_IDMISMATCH -> "证书上的域名和这个网站的域名对不上，可能是伪装站点。"
-    android.net.http.SslError.SSL_NOTYETVALID -> "这个网站的证书还没生效。"
-    android.net.http.SslError.SSL_UNTRUSTED -> "签发这个网站证书的机构不被系统信任。"
-    else -> "这个网站的证书有问题，连接不安全。"
+    fun leave() {
+        callback?.let { callback -> runCatching { callback.onCustomViewHidden() } }
+        hide()
+    }
+
+    private fun detach() {
+        view?.let { view -> (view.parent as? ViewGroup)?.removeView(view) }
+    }
 }
