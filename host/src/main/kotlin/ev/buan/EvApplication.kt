@@ -58,6 +58,18 @@ class EvApplication : Application() {
                 runtime.restartIntent = { ctx ->
                     Intent(ctx, MainActivity::class.java)
                 }
+                // 这四项是 2f 的注入点：实现留在 app 层，运行时只拿接口。
+                // 少一条，对应服务就不发布，装配链在 provide 处抛错，界面插件起不来。
+                runtime.screenFactory = { ctx: android.content.Context -> ScreenServiceImpl(ctx) }
+                runtime.hudFactory = { directory: () -> org.cordis.api.ServiceDirectory? ->
+                    HudServiceImpl(directory)
+                }
+                runtime.backgroundServiceFactory = { id: String, permissions: org.cordis.api.PermissionService?, ctx: android.content.Context ->
+                    BackgroundServiceImpl(id, permissions ?: error("后台服务需要 PermissionService"), ctx)
+                }
+                runtime.backgroundRelease = { id: String ->
+                    BackgroundSessions.releaseAll(applicationContext, id)
+                }
                 reference = runtime
             }
         }
