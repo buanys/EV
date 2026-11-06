@@ -232,17 +232,28 @@ android-library 插件会打架。
   撤销它不会让插件失去联网能力。
 - 权限只能门控**宿主提供的服务**：`PluginStorage`（未声明时不 provide；声明未授权时激活闸门拒绝；
   已注入实例的每次调用再 `require`）、`BackgroundService`（未授权时 `acquire` 抛 `SecurityException`）。
-- 不承诺隔离恶意插件。独立进程 / Binder 沙箱是 5c，见 §7.2。
+- 不承诺隔离恶意插件。**换一个 UID 这条路也堵死**：跨 UID 就是跨应用，而插件必须由宿主进程
+  加载（类身份与 `inject` 绑定都在进程内），`isolatedProcess` 那种真隔离进程又没有任何权限可用。
+  论证见 [ADR-0003](adr/0003-permission-scope.md) 与 [ADR-0009](adr/0009-trust-tiers.md)。
 
-### 7.2 信任只有两态，没有三档
+### 7.2 信任三档，与它的执行环境
 
 规则要求三档：可信（内置 + 签名）→ 同进程；受限（用户确认的第三方）→ 子进程 + broker；
-不可信 → 默认拒绝。
+不可信 → 默认拒绝。**三档都实现了**（[ADR-0009](adr/0009-trust-tiers.md)）：
 
-**实际只有"签名 / 未签名"**：`autoTrustUnsigned` 绑在 `FLAG_DEBUGGABLE` 上——调试包自动信任，
-正式包逐个确认（按 id + sha256，字节一变就要重新确认）。所有插件仍同进程、同 UID、能调 `su`。
+- **判定**：`TrustGate.decide`（`host-core`，纯函数）按来源 + 签名 + 用户批准过的字节定档，
+  输入没有一条来自插件自述；`ValidationResult.Accepted` 带着判定穿过安装期走到卡片。
+- **受限的执行环境**：sidecar 声明 `"isolation": "separate-process"` 的插件跑在 `:plugin` 进程，
+  宿主只经 Binder 三个动作（装载 / 调用 / 卸载）跟它说话，工具以代理形式挂到宿主的 `ToolRegistry`；
+  子进程死掉时 `DeathRecipient` 撤工具 + 记一次失败。
+- **不可信**：不执行。未签名未批准的按 `autoTrustUnsigned`（绑 `FLAG_DEBUGGABLE`）处理：
+  调试包自动信任，正式包逐个确认（按 id + sha256，字节一变就要重新确认）。
 
-这是整份规则里最大的结构缺口，也就是没做的 5c。
+能不能进子进程由 `RestrictedProfile` 判定：**必须由插件声明**（宿主看不出它经 `ServiceDirectory`
+查了谁，按权限推断的后果是真机上 12 个插件被误判可隔离后集体失败），再叠加三条机械约束——
+只声明 `NETWORK`/`PLUGIN_STORAGE`、无桌面入口、无插件依赖。
+
+**仍是同 UID 的子进程**：它换来故障隔离与生命周期独立，不是权限隔离（同 SELinux 域，照样能 `su`）。
 
 ### 7.3 插件直接依赖内核 API
 

@@ -31,7 +31,7 @@
 | [0001](adr/0001-kernel-consumption.md) | 内核消费方式 | 同仓源码 + 冻结门禁 + 发布快照，不拆仓 |
 | [0002](adr/0002-host-runtime-split.md) | 宿主拆分 | 拆成装配 / 运维 / 路由 / 生命周期四块 |
 | [0002](adr/0002-plugin-interface.md) | 插件接口 | 插件直接实现 `org.cordis.Plugin`，不加适配层 |
-| [0003](adr/0003-permission-scope.md) | 权限范围 | 声明 + 授权 + 门控 + 审计，**不承诺 OS 级沙箱** |
+| [0003](adr/0003-permission-scope.md) | 权限范围 | 声明 + 授权 + 门控 + 审计，**不承诺 OS 级沙箱**；换 UID 这条路也堵死（类身份 + 加载） |
 | [0004](adr/0004-on-device-forge.md) | 设备端锻造 | 编译器独立成能力包（默认关闭）；安装契约由宿主提供 |
 | [0004](adr/0004-runtime-budget.md) | 执行预算与内存压力 | 宿主只回答"能不能开、多久必须结束"；隔离档位待 5c |
 | [0005](adr/0005-system-prompt-plugin.md) | 系统提示词做成插件 | 分层 + 可裁剪 |
