@@ -75,13 +75,19 @@ internal class HostBrowserSession(
             }
         }
         activityProvider()?.let { activity ->
+            // 挂在屏幕**左侧外面**而不是 alpha=0 的 1×1 容器里：
+            //  alpha=0 的 View 不参与绘制，`draw(Canvas)` 出来的截图是一张空白；
+            //  1×1 的尺寸则让点击命中与滚动都没有意义。放到画布外既不可见又是真实渲染。
+            val metrics = activity.resources.displayMetrics
+            val width = metrics.widthPixels.coerceAtLeast(720)
+            val height = metrics.heightPixels.coerceAtLeast(1280)
             val host = FrameLayout(activity).apply {
-                alpha = 0f
-                layoutParams = ViewGroup.LayoutParams(1, 1)
+                layoutParams = ViewGroup.LayoutParams(width, height)
+                translationX = -(width + 400f)
             }
             runCatching {
                 (activity.window?.decorView as? ViewGroup)?.addView(host)
-                host.addView(created, FrameLayout.LayoutParams(1, 1))
+                host.addView(created, FrameLayout.LayoutParams(width, height))
                 container = host
             }
         }
@@ -162,24 +168,24 @@ internal class HostBrowserSession(
         )
     }
 
-    override suspend fun back(): PageState = withContext(Dispatchers.Main) {
-        val web = ensureView()
-        if (!web.canGoBack()) return@withContext stateNow(web)
-        val done = CompletableDeferred<Unit>()
-        pending = done
-        web.goBack()
-        withTimeoutOrNull(NAV_TIMEOUT_MS) { done.await() }
-        pending = null
-        delay(SETTLE_DELAY_MS)
-        stateNow(web)
-    }
+    override suspend fun back(): PageState = historyStep(-1)
 
-    override suspend fun forward(): PageState = withContext(Dispatchers.Main) {
+    override suspend fun forward(): PageState = historyStep(1)
+
+    /**
+     * 前进/后退走页面自己的 `history`，不走 WebView 的 `goBack()`。
+     *
+     * 原因：点击链接是我们用 `location.href = ...` 驱动的，那一步在页面 history 里一定有一条；
+     * 而 WebView 的 `canGoBack()` 在这条会话上始终是 false（实测），用它做判断会永远"没有可退回的页面"。
+     */
+    private suspend fun historyStep(delta: Int): PageState = withContext(Dispatchers.Main) {
         val web = ensureView()
-        if (!web.canGoForward()) return@withContext stateNow(web)
+        val before = evaluate(web, "(function(){return String(history.length)})()")
+        val length = before?.toIntOrNull() ?: 1
+        if (length <= 1) return@withContext stateNow(web)
         val done = CompletableDeferred<Unit>()
         pending = done
-        web.goForward()
+        evaluate(web, "(function(){history.go($delta);return 'ok'})()")
         withTimeoutOrNull(NAV_TIMEOUT_MS) { done.await() }
         pending = null
         delay(SETTLE_DELAY_MS)
@@ -280,6 +286,10 @@ internal class HostBrowserSession(
               var el = document.querySelector('[data-cordis-idx="$index"]');
               if (!el) return 'missing';
               el.scrollIntoView({block:'center'});
+              // 链接直接改 location：el.click() 对 target=_blank 会在一个新窗口里打开，
+              // 而会话里只有一个 WebView，用户看到的就是"点了没反应"。
+              var tag = el.tagName.toLowerCase();
+              if (tag === 'a' && el.href) { window.location.href = el.href; return 'ok'; }
               el.click();
               return 'ok';
             })()
@@ -338,7 +348,7 @@ internal class HostBrowserSession(
     override suspend fun screenshot(): String? = withContext(Dispatchers.Main) {
         val web = ensureView()
         if (web.width <= 1) {
-            // 会话挂在 1×1 的不可见容器里：截图前按手机比例量一次，否则只能拿到一个像素。
+            // 没有 Activity 可挂时退化成这个分支：按手机比例量一次，否则只能拿到一个像素。
             val width = 1080
             val height = 2400
             web.measure(
