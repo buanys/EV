@@ -185,6 +185,15 @@ class HostRuntime(private val context: AndroidContext) {
     /** Start-pass bookkeeping; the public answer is [hasStarted]. */
     private val lifecycle = HostLifecycle()
 
+    /** 恢复：安全模式与崩溃标记（见 ADR-0002 "恢复只调用机制"）。 */
+    private val recovery = HostRecovery(
+        crash = crash,
+        lifecycle = lifecycle,
+        setSafeMode = { notice -> safeMode = notice },
+        applyLaunch = { syncAndActivate(startedScope ?: LaunchScope.Full) },
+        snapshot = { snapshot() },
+    )
+
     /**
      * Whether a full sync + activation pass finished in this process outside safe mode.
      *
@@ -597,17 +606,7 @@ class HostRuntime(private val context: AndroidContext) {
      * plugin crashes the process again, the marker comes back and the following launch enters safe
      * mode again - this is a next-launch recovery path, not in-process supervision.
      */
-    suspend fun exitSafeMode(): HostState = withContext(Dispatchers.IO) {
-        crash.clearPending()
-        safeMode = null
-        installed.values.forEach { plugin ->
-            if (isEnabled(plugin.id)) activate(plugin) else deactivate(plugin.id)
-        }
-        // The recovery path completes the same activation pass a normal start does, so from here on
-        // the process may serve plugin pages (the management page links to them).
-        lifecycle.completeStart(safeMode = false)
-        snapshot()
-    }
+    suspend fun exitSafeMode(): HostState = recovery.leaveSafeMode()
 
     /**
      * The plugin page used as the app root.
