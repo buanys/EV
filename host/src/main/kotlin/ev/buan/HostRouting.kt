@@ -13,7 +13,7 @@ import org.cordis.loader.AndroidModuleLoader
  * 这是宿主里唯一"知道插件叫什么、页面长什么样"的地方，所以它只读：
  * 页面归属发生变化必须经 Ops → 重扫，不能在这里改（见 ADR-0002 不变量 2）。
  *
- * 依赖用函数传进来而不是直接拿 `HostRuntime`：路由只需要四个问题
+ * 依赖用函数传进来而不是直接拿 `HostComposition`：路由只需要四个问题
  * （有哪些插件、启没启用、有没有失败、被展示时通知谁），不该握住整个宿主。
  */
 internal class HostRouting(

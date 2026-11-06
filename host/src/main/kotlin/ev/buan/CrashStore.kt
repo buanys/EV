@@ -26,7 +26,7 @@ data class SafeModeNotice(
  * Host-side wiring of the crash marker under `files/crash/`.
  *
  * The marker is written from the uncaught-exception handler (see [EvApplication]) and read by
- * [HostRuntime.start]; this class only supplies the Android `filesDir` and the report text. The
+ * [HostComposition.start]; this class only supplies the Android `filesDir` and the report text. The
  * read/write decision itself lives in `host-core` (`CrashMarker`) so it is unit-tested on the JVM.
  *
  * Recovery is next-launch only. Compose has no error boundary, so an exception thrown by a plugin's

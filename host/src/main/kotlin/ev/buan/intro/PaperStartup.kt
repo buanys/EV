@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import ev.buan.HostRuntime
+import ev.buan.HostComposition
 import ev.buan.hasAllFilesAccess
 import ev.buan.ui.evSystemBarsPadding
 import kotlinx.coroutines.delay
@@ -98,7 +98,7 @@ private fun Act.en(): String = when (this) {
 
 @Composable
 fun PaperStartup(
-    runtime: HostRuntime,
+    runtime: HostComposition,
     /**
      * 这次启动要加载多少插件。
      *

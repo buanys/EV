@@ -5,7 +5,7 @@
 #
 # 顺序按"先拆哪个"排：越靠前越像枢纽、越该先动。
 
-host/src/main/kotlin/ev/buan/HostRuntime.kt
+host/src/main/kotlin/ev/buan/HostComposition.kt
 plugins/agent-brain/src/main/kotlin/ev/buan/plugins/agent/brain/AgentBrainService.kt
 plugins/agent-memory/src/main/kotlin/ev/buan/plugins/agent/memory/MemoryPage.kt
 plugins/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvModelProvidersScreen.kt

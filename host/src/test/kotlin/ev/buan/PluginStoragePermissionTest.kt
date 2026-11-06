@@ -135,7 +135,7 @@ class PluginStoragePermissionTest {
         try {
             val fixture = fixture(permissions = null)
 
-            // HostRuntime.storageUsage/clearStorage pass no PermissionService; the instance is not
+            // HostComposition.storageUsage/clearStorage pass no PermissionService; the instance is not
             // handed to a plugin, so usage accounting stays independent from its grants.
             fixture.storage.write("host-managed.txt", byteArrayOf(1, 2, 3))
             assertEquals(3L, fixture.storage.usageBytes())

@@ -423,7 +423,7 @@ class PluginInstaller(
             is ValidationResult.Rejected ->
                 if (decision.rejection.code == PluginRejectionCode.PERMISSION_DENIED) {
                     // Install is not run. Publish so the management page can list the plugin and
-                    // the user can grant the missing permissions; HostRuntime.activate is the gate
+                    // the user can grant the missing permissions; HostComposition.activate is the gate
                     // that decides whether it may actually load. The permission gate is the last
                     // one in the validator, so every trust/content/identity check already passed.
                     publish(source, meta, hash, candidate, accepted, hashes, reused = cached != null)

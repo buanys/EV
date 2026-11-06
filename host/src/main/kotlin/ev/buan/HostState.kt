@@ -97,7 +97,7 @@ data class HostState(
     val pending: List<PendingUnsigned> = emptyList(),
     /**
      * Non-null while this process skipped loading every plugin because the previous run crashed.
-     * [HostRuntime.exitSafeMode] clears it.
+     * [HostComposition.exitSafeMode] clears it.
      */
     val safeMode: SafeModeNotice? = null,
 )

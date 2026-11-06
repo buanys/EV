@@ -12,10 +12,10 @@ import org.cordis.api.PluginManagerService
  * Every call delegates to the same routines the host's own manager page uses, so the two surfaces
  * cannot drift: enabling from a plugin page is exactly enabling from [PluginsActivity]. The calls are
  * suspend underneath and fire-and-forget here, because a settings row cannot await; the resulting
- * state flows back through [HostRuntime.state] like any other change.
+ * state flows back through [HostComposition.state] like any other change.
  */
 internal class HostPluginManager(
-    private val runtime: HostRuntime,
+    private val runtime: HostComposition,
     private val scope: CoroutineScope,
 ) : PluginManagerService {
 

@@ -69,7 +69,7 @@ class SettingsActivity : ComponentActivity() {
 }
 
 @Composable
-private fun SettingsContent(runtime: HostRuntime, onBack: () -> Unit) {
+private fun SettingsContent(runtime: HostComposition, onBack: () -> Unit) {
     val appearance = runtime.appearance.value
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Row(

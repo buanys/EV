@@ -48,7 +48,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class HostRuntime(private val context: AndroidContext) {
+class HostComposition(private val context: AndroidContext) {
 
     private val cordis = CordisContext()
     private val trust = PluginTrust(context)
@@ -316,7 +316,7 @@ class HostRuntime(private val context: AndroidContext) {
             directory.publish(
                 org.cordis.api.PluginManagerService.Key,
                 HostPluginManager(
-                    this@HostRuntime,
+                    this@HostComposition,
                     kotlinx.coroutines.CoroutineScope(
                         kotlinx.coroutines.Dispatchers.Main.immediate +
                             kotlinx.coroutines.SupervisorJob(),
@@ -328,7 +328,7 @@ class HostRuntime(private val context: AndroidContext) {
             directory.publish(
                 org.cordis.api.PluginPageService.Key,
                 object : org.cordis.api.PluginPageService {
-                    override fun pageOf(pluginId: String) = this@HostRuntime.pageFor(pluginId)
+                    override fun pageOf(pluginId: String) = this@HostComposition.pageFor(pluginId)
                 },
             )
             serviceDirectory = directory
@@ -572,7 +572,7 @@ class HostRuntime(private val context: AndroidContext) {
         override suspend fun uninstall(pluginId: String): Boolean = withContext(Dispatchers.IO) {
             val known = installed.containsKey(pluginId) || pendingUnsigned.any { it.id == pluginId }
             if (!known) return@withContext false
-            this@HostRuntime.uninstall(pluginId)
+            this@HostComposition.uninstall(pluginId)
             true
         }
     }

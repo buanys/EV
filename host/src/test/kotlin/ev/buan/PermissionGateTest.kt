@@ -44,8 +44,8 @@ class PermissionGateTest {
     }
 
     /**
-     * The management-page sequence, at the level HostRuntime uses: default deny, grant to recover,
-     * revoke to stop again. Kept here because HostRuntime itself needs an Android device.
+     * The management-page sequence, at the level HostComposition uses: default deny, grant to recover,
+     * revoke to stop again. Kept here because HostComposition itself needs an Android device.
      */
     @Test
     fun `默认拒绝 撤销拒绝 授权恢复`() {

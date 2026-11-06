@@ -7,7 +7,7 @@ import android.os.Process
 import java.lang.ref.WeakReference
 
 /**
- * Process-scoped owner of [HostRuntime].
+ * Process-scoped owner of [HostComposition].
  *
  * The runtime used to live in a mutable singleton that MainActivity assigned. That made the
  * runtime's existence depend on an Activity, so a plugin page restored by the system after the
@@ -16,7 +16,7 @@ import java.lang.ref.WeakReference
  */
 class EvApplication : Application() {
 
-    private var reference: HostRuntime? = null
+    private var reference: HostComposition? = null
     private val crashStore by lazy { CrashStore(this) }
 
     override fun onCreate() {
@@ -50,9 +50,9 @@ class EvApplication : Application() {
     fun currentActivity(): Activity? = currentActivity?.get()
 
     /** Creates the runtime on first use; safe to call from any component. */
-    val runtime: HostRuntime
+    val runtime: HostComposition
         get() = synchronized(this) {
-            reference ?: HostRuntime(this).also { reference = it }
+            reference ?: HostComposition(this).also { reference = it }
         }
 
     /**
@@ -62,7 +62,7 @@ class EvApplication : Application() {
      * every plugin; callers that need plugins must treat null as "go back to the host screen and
      * start over". Safe-mode exit sets it once the plugins are loaded again.
      */
-    val startedRuntime: HostRuntime?
+    val startedRuntime: HostComposition?
         get() = synchronized(this) { reference?.takeIf { it.hasStarted } }
 
     /**
@@ -72,7 +72,7 @@ class EvApplication : Application() {
      *
      * The marker only buys a next-launch decision, never in-process recovery: Compose has no error
      * boundary, so an exception thrown by a plugin's composable ends the process before any host
-     * code could catch it. The next start reads the marker in [HostRuntime.start] and enters safe
+     * code could catch it. The next start reads the marker in [HostComposition.start] and enters safe
      * mode with every plugin skipped.
      */
     private fun installCrashHandler() {

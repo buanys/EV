@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeShell(activity: ComponentActivity, runtime: HostRuntime) {
+private fun HomeShell(activity: ComponentActivity, runtime: HostComposition) {
     var granted by remember { mutableStateOf(hasAllFilesAccess()) }
     var failure by remember { mutableStateOf<String?>(null) }
     // The runtime publishes every state change here, including an exit from safe mode performed on

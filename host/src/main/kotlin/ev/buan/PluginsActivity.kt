@@ -95,7 +95,7 @@ private sealed interface HostUiState {
 }
 
 @Composable
-private fun HostRoot(activity: ComponentActivity, runtime: HostRuntime) {
+private fun HostRoot(activity: ComponentActivity, runtime: HostComposition) {
     var granted by remember { mutableStateOf(hasAllFilesAccess()) }
     var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(activity)) }
     var state by remember { mutableStateOf<HostUiState>(HostUiState.Loading) }

@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
  * the root Fiber's service snapshot. The kernel resolver then hands the *last* provided instance to
  * any plugin that reads the key without declaring `inject` in [Plugin.inject], i.e. one plugin could
  * observe another plugin's [PermissionService]. The host now gives each plugin a dedicated scope
- * Fiber ([HostRuntime.scopePlugin]) and installs the provider there; the cases below pin that.
+ * Fiber ([HostComposition.scopePlugin]) and installs the provider there; the cases below pin that.
  */
 class PermissionScopeTest {
 
@@ -120,7 +120,7 @@ class PermissionScopeTest {
 
     // ---------------------------------------------------------------- helpers
 
-    /** Mirrors HostRuntime.activate: a host Fiber owns the provider, the plugin lives below it. */
+    /** Mirrors HostComposition.activate: a host Fiber owns the provider, the plugin lives below it. */
     private suspend fun hostScope(
         root: Context,
         id: String,
