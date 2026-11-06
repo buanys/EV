@@ -6,15 +6,14 @@
 **新对话 / 新成员入口：[project-overview.md](project-overview.md)**——项目交接档案，
 2026-11-06 重写，是本文之外唯一可以当"当前事实"读的现状文档。
 
-> 冲突时以 `project-overview.md` 为准。根 `README.md` 与 `architecture.md` 有部分内容
-> 是重构前的（见下文标注）。
+> 冲突时以 `project-overview.md` 为准（现状）与 `architecture.md`（结构）为准。
 
 ## 现状
 
 | 文档 | 内容 | 状态 |
 |---|---|---|
 | [project-overview.md](project-overview.md) | **项目现状总览**：是什么、仓库地图、六阶段进度、17 个插件、门禁、已知缺口、操作经验、踩过的坑 | ✅ 2026-11-06 |
-| [architecture.md](architecture.md) | 四层架构总览：内核 / 宿主 / SDK / 插件，真实依赖图，职责边界 | ⚠️ 部分过时：还写"插件三类"、`demo/` 冻结、`hmr` 在用 |
+| [architecture.md](architecture.md) | **架构总览**：四层、真实依赖图、运行期类解析、宿主职责、不承诺什么 | ✅ 2026-11-06 重写 |
 | [build-on-device.md](build-on-device.md) | **在这台手机上编译 EV**：转译层、容器、离线构建、验产物、推设备与 12 条故障对照 | ✅ |
 | [plugin-ui-composition.md](plugin-ui-composition.md) | 插件 UI 如何组合进宿主界面 | ✅ |
 | [release-signing.md](release-signing.md) | 发布签名方案 | ✅ |
