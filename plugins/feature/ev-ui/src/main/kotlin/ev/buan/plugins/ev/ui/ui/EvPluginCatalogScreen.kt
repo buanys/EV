@@ -1,14 +1,9 @@
 package ev.buan.plugins.ev.ui.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,23 +11,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Text
-import ev.buan.ui.EvGlyph
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvSettingsDivider
 import ev.buan.ui.EvSettingsGroup
 import ev.buan.ui.EvSettingsRow
 import ev.buan.ui.EvSettingsSection
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.window.Dialog
 import ev.buan.ui.EvSettingsTrailing
 import ev.buan.ui.EvThemeTokens
 import org.cordis.api.PluginCapability
@@ -307,84 +293,6 @@ private fun SettingRow(
                         editing = false
                         onWrite(written)
                     },
-                )
-            }
-        }
-    }
-}
-
-/** One editor for both text and a fixed option list; both end in "save this value". */
-@Composable
-private fun ValueDialog(
-    title: String,
-    options: List<String>,
-    initial: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    val tokens = EvThemeTokens.colors
-    var text by remember { mutableStateOf(initial) }
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(EvThemeTokens.radii.large))
-                .background(tokens.surface2)
-                .padding(20.dp),
-        ) {
-            Text(text = title, style = EvThemeTokens.type.title.style(tokens.textPrimary))
-            Spacer(Modifier.height(12.dp))
-            if (options.isEmpty()) {
-                BasicTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    singleLine = true,
-                    textStyle = EvThemeTokens.type.body.style(tokens.textPrimary),
-                    cursorBrush = SolidColor(tokens.accent),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
-                        .background(tokens.surface1)
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                )
-            } else {
-                options.forEach { option ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
-                            .clickable { text = option }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = option,
-                            style = EvThemeTokens.type.body.style(
-                                if (option == text) tokens.textPrimary else tokens.textSecondary,
-                            ),
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text(
-                    text = "取消",
-                    style = EvThemeTokens.type.label.style(tokens.textSecondary),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
-                        .clickable(onClick = onDismiss)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "保存",
-                    style = EvThemeTokens.type.label.style(tokens.onAccent),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(EvThemeTokens.radii.medium))
-                        .background(tokens.accent)
-                        .clickable { onConfirm(text) }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
         }

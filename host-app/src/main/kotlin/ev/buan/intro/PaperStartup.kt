@@ -1,9 +1,6 @@
 package ev.buan.intro
 
 import ev.buan.LaunchScope
-import android.content.Context
-import android.os.VibrationEffect
-import android.os.VibratorManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,9 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -71,7 +64,8 @@ import kotlinx.coroutines.delay
  */
 private enum class Act { Permission, Reading, Verified, Welcome }
 
-private object Paper {
+/** 纸与墨的色板。跨文件给同包的视觉零件用，仍然不对外。 */
+internal object Paper {
     val bg = Color(0xFFE5E3DF)
     val bg2 = Color(0xFFECEAE6)
     val ink = Color(0xFF0A0A0A)
@@ -319,84 +313,5 @@ fun PaperStartup(
 
         if (washAlpha > 0f) Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = washAlpha)))
         if (exitBlack > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = exitBlack)))
-    }
-}
-
-/* ── reticle ───────────────────────────────────────────────────────────────── */
-
-@Composable
-private fun Reticle(elapsed: Float, alpha: Float) {
-    Canvas(Modifier.fillMaxSize()) {
-        if (alpha <= 0f) return@Canvas
-        val d = minOf(size.width * 0.52f, size.height * 0.34f)
-        val c = Offset(size.width / 2f, size.height * 0.47f)
-        val sw = d * 0.010f
-        drawArc(
-            color = Paper.ink.copy(alpha = 0.85f * alpha),
-            startAngle = elapsed * 40f + 120f,
-            sweepAngle = 300f,
-            useCenter = false,
-            topLeft = Offset(c.x - d / 2f, c.y - d / 2f),
-            size = Size(d, d),
-            style = Stroke(width = sw, cap = StrokeCap.Butt),
-        )
-        val d2 = d * 0.92f
-        drawArc(
-            color = Paper.inkSoft.copy(alpha = 0.75f * alpha),
-            startAngle = -elapsed * 66f + 130f,
-            sweepAngle = 280f,
-            useCenter = false,
-            topLeft = Offset(c.x - d2 / 2f, c.y - d2 / 2f),
-            size = Size(d2, d2),
-            style = Stroke(width = sw * 0.36f, cap = StrokeCap.Butt),
-        )
-        val b = d * 0.56f
-        val len = d * 0.07f
-        listOf(
-            Triple(Offset(c.x - b, c.y - b), 1f, 1f),
-            Triple(Offset(c.x + b, c.y - b), -1f, 1f),
-            Triple(Offset(c.x - b, c.y + b), 1f, -1f),
-            Triple(Offset(c.x + b, c.y + b), -1f, -1f),
-        ).forEach { (p, dx, dy) ->
-            drawLine(Paper.ink.copy(alpha = 0.6f * alpha), p, Offset(p.x + dx * len, p.y), sw * 0.3f)
-            drawLine(Paper.ink.copy(alpha = 0.6f * alpha), p, Offset(p.x, p.y + dy * len), sw * 0.3f)
-        }
-    }
-}
-
-/* ── helpers ───────────────────────────────────────────────────────────────── */
-
-@Composable
-private fun TypedLine(text: String, local: Float, style: TextStyle) {
-    Row {
-        text.forEachIndexed { i, ch ->
-            val a = ((local - i * 0.055f) / 0.32f).coerceIn(0f, 1f)
-            BasicText(
-                ch.toString(),
-                modifier = Modifier.graphicsLayer {
-                    alpha = a
-                    translationY = (1f - a) * 10f
-                },
-                style = style,
-            )
-        }
-    }
-}
-
-private fun lerpBlackToPaper(t: Float): Color {
-    val k = t.coerceIn(0f, 1f)
-    return Color(
-        red = Paper.bg.red * k,
-        green = Paper.bg.green * k,
-        blue = Paper.bg.blue * k,
-        alpha = 1f,
-    )
-}
-
-private fun Context.thump(ms: Long) {
-    runCatching {
-        getSystemService(VibratorManager::class.java)
-            ?.defaultVibrator
-            ?.vibrate(VibrationEffect.createOneShot(ms, 120))
     }
 }

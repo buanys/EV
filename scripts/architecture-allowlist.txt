@@ -13,6 +13,3 @@ plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/EvUiPlugin.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvDrawer.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvComposer.kt
 ui-kit/src/main/kotlin/ev/buan/ui/EvGlyphVectors.kt
-plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvMarkdown.kt
-plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvPluginCatalogScreen.kt
-host-app/src/main/kotlin/ev/buan/intro/PaperStartup.kt
