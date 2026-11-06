@@ -48,6 +48,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/** 导航目标由 app 层注入。 */
+class HostNavigationTargets(
+    val pluginManager: () -> Unit = {},
+    val settings: () -> Unit = {},
+)
+
 class HostComposition(private val context: AndroidContext) {
 
     /**
@@ -57,6 +63,10 @@ class HostComposition(private val context: AndroidContext) {
      * 拆模块时这两条正好是挡路的依赖，所以先在本模块里把它们变成注入点。
      */
     var activityProvider: () -> android.app.Activity? = { null }
+
+    /** 导航目标与设备上下文服务由 app 层注入：运行时不该认识 Activity / 无障碍服务。 */
+    var navigation = HostNavigationTargets()
+    var deviceContextFactory: ((AndroidContext) -> org.cordis.api.DeviceContextService)? = null
     /**
      * 屏幕、HUD、后台常驻三组能力的实现在 app 层（它们长在无障碍服务与前台服务上）。
      * 运行时只拿接口，不拿实现——这正是 2f 拆模块最后挡路的三处。
@@ -311,8 +321,8 @@ class HostComposition(private val context: AndroidContext) {
             navigationHandle = cordis.provide(
                 org.cordis.api.HostNavigation.Key,
                 object : org.cordis.api.HostNavigation {
-                    override fun openPluginManager() = openActivity(PluginsActivity::class.java)
-                    override fun openSettings() = openActivity(SettingsActivity::class.java)
+                    override fun openPluginManager() = navigation.pluginManager()
+                    override fun openSettings() = navigation.settings()
                 },
             ).also { runCatching { it.awaitReady() } }
         }
@@ -362,8 +372,10 @@ class HostComposition(private val context: AndroidContext) {
             // 安装契约：插件把容器字节交给宿主装上去（forge 的产物走这条路，不再靠人工拷文件）。
             installHandle = cordis.provide(PluginInstallService.Key, InstallService())
                 .also { runCatching { it.awaitReady() } }
-            deviceContextHandle = cordis.provide(DeviceContextService.Key, DeviceContextServiceImpl(context))
-                .also { runCatching { it.awaitReady() } }
+            deviceContextFactory?.let { factory ->
+                deviceContextHandle = cordis.provide(DeviceContextService.Key, factory(context))
+                    .also { runCatching { it.awaitReady() } }
+            }
             screenFactory?.let { factory ->
                 screenHandle = cordis.provide(ScreenService.Key, factory(context))
                     .also { runCatching { it.awaitReady() } }

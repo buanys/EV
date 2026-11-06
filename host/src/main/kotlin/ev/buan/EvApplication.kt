@@ -58,6 +58,15 @@ class EvApplication : Application() {
                 runtime.restartIntent = { ctx ->
                     Intent(ctx, MainActivity::class.java)
                 }
+                runtime.navigation = HostNavigationTargets(
+                    pluginManager = {
+                        startActivity(Intent(this, PluginsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    },
+                    settings = {
+                        startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    },
+                )
+                runtime.deviceContextFactory = { ctx -> DeviceContextServiceImpl(ctx) }
                 // 这四项是 2f 的注入点：实现留在 app 层，运行时只拿接口。
                 // 少一条，对应服务就不发布，装配链在 provide 处抛错，界面插件起不来。
                 runtime.screenFactory = { ctx: android.content.Context -> ScreenServiceImpl(ctx) }

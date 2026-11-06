@@ -5,12 +5,12 @@
 #
 # 顺序按"先拆哪个"排：越靠前越像枢纽、越该先动。
 
-host/src/main/kotlin/ev/buan/HostComposition.kt
+host-runtime/src/main/kotlin/ev/buan/HostComposition.kt
 plugins/feature/agent-brain/src/main/kotlin/ev/buan/plugins/agent/brain/AgentBrainService.kt
 plugins/base/agent-memory/src/main/kotlin/ev/buan/plugins/agent/memory/MemoryPage.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvModelProvidersScreen.kt
 host/src/main/kotlin/ev/buan/PluginsActivity.kt
-host/src/main/kotlin/ev/buan/PluginInstaller.kt
+host-runtime/src/main/kotlin/ev/buan/PluginInstaller.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/EvUiPlugin.kt
 plugins/feature/agent-browse/src/main/kotlin/ev/buan/plugins/agent/browse/BrowserWebView.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvDrawer.kt
