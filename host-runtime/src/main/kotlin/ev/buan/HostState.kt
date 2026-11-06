@@ -61,7 +61,7 @@ data class LoadProgress(
 )
 
 /** Short display name for a plugin id, e.g. `ev.buan.plugins.ev.ui` -> `ev.ui`. */
-internal fun shortPluginName(id: String): String = id.removePrefix("ev.buan.plugins.")
+fun shortPluginName(id: String): String = id.removePrefix("ev.buan.plugins.")
 
 /** What the UI renders for one plugin, whether or not it managed to activate. */
 data class PluginCard(

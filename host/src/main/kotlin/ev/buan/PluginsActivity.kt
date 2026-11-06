@@ -483,10 +483,13 @@ private fun PluginSection(
                     color = colors.onSurfaceVariantSummary,
                 )
             }
-            if (card.error != null) {
+            // 跨模块的 public 属性不能直接 smart cast（Kotlin 只看得到类型，不保证稳定），
+            // 先绑到局部变量：`card` 现在来自 :host-runtime。
+            val cardError = card.error
+            if (cardError != null) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = card.error,
+                    text = cardError,
                     style = MiuixTheme.textStyles.footnote1,
                     color = StatusError,
                 )
