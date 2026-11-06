@@ -25,6 +25,9 @@ fail=0
 over=""
 
 for f in $(git ls-files '*/src/main/**/*.kt'); do
+    # index 里还留着刚删掉、尚未提交的文件：跳过，否则这里的 set -e 会让门禁
+    # 在"删了一个文件但还没 add"的中间状态直接报错，而不是报它真正要说的事。
+    [ -f "$f" ] || continue
     lines=$(wc -l <"$f")
     [ "$lines" -gt "$LIMIT" ] || continue
     if printf '%s\n' "$allowed" | grep -qxF "$f"; then

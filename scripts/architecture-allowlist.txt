@@ -11,5 +11,3 @@ host-app/src/main/kotlin/ev/buan/PluginsActivity.kt
 host-runtime/src/main/kotlin/ev/buan/PluginInstaller.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/EvUiPlugin.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvDrawer.kt
-plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvComposer.kt
-ui-kit/src/main/kotlin/ev/buan/ui/EvGlyphVectors.kt

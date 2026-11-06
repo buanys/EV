@@ -10,7 +10,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 /**
  * The glyph catalogue.
  *
- * Every mark is drawn in this repository (see EvGlyphVectors.kt) rather than borrowed from the
+ * Every mark is drawn in this repository (see EvGlyphVectors.kt for the grammar and
+ * EvGlyphControls.kt / EvGlyphSubjects.kt for the marks) rather than borrowed from the
  * platform icon set: a shared icon language is the one part of "premium" that cannot be reached by
  * tuning spacing, and "nearest available metaphor" is exactly how a heart ended up meaning
  * "assistant" and a chain meaning "browser".
