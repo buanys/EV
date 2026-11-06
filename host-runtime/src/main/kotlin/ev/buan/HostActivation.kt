@@ -63,7 +63,7 @@ internal interface ActivationHost {
     /** 受限档位能不能**降级**在本进程里跑（正式包恒为 false，见 [RestrictedActivator]）。 */
     val allowsRestrictedInProcess: Boolean
 
-    /** 装进子进程并把工具挂到工具总线上；返回工具数量。失败就抛，**不降级**回同进程。 */
+    /** 装进子进程并把工具挂到工具总线上；失败就抛，**不降级**回同进程。 */
     suspend fun isolate(plugin: InstalledPlugin): Int
 
     /** 把它从子进程里撤下来；没装过是 no-op。 */
@@ -99,6 +99,9 @@ internal interface ActivationHost {
      */
     fun makeCredentials(pluginId: String, permission: PermissionService): org.cordis.api.CredentialService
 
+    /** 给一个插件造日历服务；授权由传进来的 permission 每次调用复核。 */
+    fun makeCalendar(permission: PermissionService): org.cordis.api.CalendarService
+
     /** 后台常驻服务由 app 层接线；没接就是宿主配置错了，激活会失败并说明原因。 */
     fun makeBackgroundService(pluginId: String, permission: PermissionService?): BackgroundService
 
@@ -109,8 +112,7 @@ internal interface ActivationHost {
  * 启动时把插件从"躺在磁盘上"变成"跑起来"的那一套：扫描落账 → 定目标 → 逐个激活 / 停用。
  *
  * 它回答的是**一个进程怎么把插件装起来**，宿主总装回答的是**这个应用由什么组成**。
- * 三条不变量：安全模式是这一进程的决定（不写偏好）；干净的一轮扫描才能删数据；
- * 每个插件一颗 Fiber（提供者装在它上面，否则内核把最后提供的实例发给任何读这个 key 的插件）。
+ * 三条不变量：安全模式是本进程的决定（不写偏好）；干净的一轮扫描才能删数据；每个插件一颗 Fiber。
  */
 internal class HostActivation(private val host: ActivationHost) {
 
@@ -305,6 +307,9 @@ internal class HostActivation(private val host: ActivationHost) {
             )
             // Credentials are the host's to keep: the plugin gets an API, never a path. A plugin
             // that never declared SECRETS gets no binding at all (ctx[CredentialService.Key] is null).
+            provideCalendarIfDeclared(pluginContext, plugin.requestedPermissions) {
+                host.makeCalendar(permissionService)
+            }
             provideCredentialIfDeclared(
                 pluginContext,
                 plugin.requestedPermissions,

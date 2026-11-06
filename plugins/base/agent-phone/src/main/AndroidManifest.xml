@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 工具类插件：没有组件、没有界面，只有一份要注册进工具总线的代码。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="日历" />
+</manifest>

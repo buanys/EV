@@ -45,6 +45,7 @@ internal sealed interface EvPage {
 /** The second-level settings rows. Values are stable ids; labels live in the settings screen. */
 internal enum class SettingsChild {
     Themes,
+    Appearance,
     Models,
     Tools,
     Memory,

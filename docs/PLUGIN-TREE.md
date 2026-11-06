@@ -89,6 +89,8 @@
 
 | id | 职责 | 工具 | 页面 |
 |---|---|---|---|
+| `ev.buan.plugins.agent.phone` | 个人数据：日历读写（宿主契约）+ 闹钟/便签（root provider） | 需要日历时；闹钟/便签需要 root |
+| `ev.buan.plugins.agent.phone` | 个人数据：日历读写（宿主契约）+ 闹钟/便签（root provider） | `list_calendars` `search_calendar_events` `read_calendar_event` `create_calendar_event(s)` `update_calendar_event` `delete_calendar_event` `list_alarms` `set_alarm` `update_alarm_time` `set_alarm_enabled` `delete_alarm` `search_notes` `read_note` | 需要日历时；闹钟/便签要 root |
 | `ev.buan.plugins.linux` | Debian 根文件系统：安装、状态、执行 | `linux_status` `linux_setup` `linux_run` | 设置 → 环境 → Linux 环境 |
 
 **已实现**：安装（tar.gz）、`/proc /dev /sys` 自动挂载、chroot 执行、发行版探测。
@@ -100,7 +102,6 @@
 |---|---|---|
 | `ev.buan.plugins.ev.ui` | 主界面：对话、抽屉、快捷菜单、设置、终端、浏览器、各详情页 | 全部 |
 | `ev.buan.plugins.theme.default` | 全局主题（配色/字号/间距/圆角/动效/图标/层高） | 设置 → 外观 → 主题 |
-| `ev.buan.plugins.settings` | 宿主设置入口（插件管理页） | 设置 → 插件 → 已安装的插件 |
 
 ### 1.8 规划中
 

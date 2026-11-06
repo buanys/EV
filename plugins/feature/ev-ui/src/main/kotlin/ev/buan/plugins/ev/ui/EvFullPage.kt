@@ -8,6 +8,7 @@ import ev.buan.plugins.ev.ui.ui.EvLinuxScreen
 import ev.buan.plugins.ev.ui.ui.EvModelProvidersScreen
 import ev.buan.plugins.ev.ui.ui.EvPluginCatalogScreen
 import ev.buan.plugins.ev.ui.ui.EvSettingsScreen
+import ev.buan.plugins.ev.ui.ui.EvAppearanceScreen
 import ev.buan.plugins.ev.ui.ui.EvThemePickerScreen
 import ev.buan.ui.EvThemeSpec
 import org.cordis.api.AppearanceService
@@ -55,6 +56,7 @@ internal fun EvFullPage(
                     onOpenLinux = { onPush(EvPage.Linux) },
                     onOpenHostSettings = { onOpenHostSettings() },
                     onOpenThemes = { onPush(EvPage.SettingsSection(SettingsChild.Themes)) },
+                    onOpenAppearance = { onPush(EvPage.SettingsSection(SettingsChild.Appearance)) },
                     themeName = availableThemes.firstOrNull { it.id == appearance.current.themeId }?.name
                         ?: availableThemes.first().name,
                     onOpenModels = { onPush(EvPage.SettingsSection(SettingsChild.Models)) },
@@ -78,6 +80,12 @@ internal fun EvFullPage(
                     // The host owns the appearance state: selecting a theme persists it and
                     // recomposes the whole app, this page only asks for the change.
                     onSelect = { id -> appearance?.update { it.copy(themeId = id) } },
+                    onBack = { onPop() },
+                    modifier = modifier,
+                )
+
+                SettingsChild.Appearance -> EvAppearanceScreen(
+                    appearance = appearance ?: error("外观服务缺失"),
                     onBack = { onPop() },
                     modifier = modifier,
                 )

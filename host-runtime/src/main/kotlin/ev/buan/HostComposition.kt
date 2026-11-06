@@ -55,6 +55,14 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     /** 导航目标与设备上下文服务由 app 层注入：运行时不该认识 Activity / 无障碍服务。 */
     var navigation = HostNavigationTargets()
     var deviceContextFactory: ((AndroidContext) -> org.cordis.api.DeviceContextService)? = null
+
+    /**
+     * 日历服务的实现留在 app 层（要用 `ContentResolver`），运行时只拿接口。
+     *
+     * 与 [deviceContextFactory] 的区别：日历是**按插件**提供的，工厂必须再收一个
+     * `PermissionService`——它决定了这次调用代表哪个插件、有没有 `CALENDAR` 授权。
+     */
+    var calendarFactory: ((AndroidContext, PermissionService) -> org.cordis.api.CalendarService)? = null
     /**
      * 屏幕、HUD、后台常驻三组能力的实现在 app 层（它们长在无障碍服务与前台服务上）。
      * 运行时只拿接口，不拿实现——这正是 2f 拆模块最后挡路的三处。
@@ -240,6 +248,10 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
         isolated.start(plugin, HostPermission.PLUGIN_STORAGE in permissions.granted(plugin.id))
 
     override suspend fun stopIsolated(id: String) = isolated.stop(id)
+
+    override fun makeCalendar(permission: PermissionService): org.cordis.api.CalendarService =
+        calendarFactory?.invoke(context, permission)
+            ?: error("日历服务没有在 app 层接线（EvApplication.calendarFactory）")
 
     override fun recordFailure(id: String, success: Boolean) {
         val current = failureScores.score(id)

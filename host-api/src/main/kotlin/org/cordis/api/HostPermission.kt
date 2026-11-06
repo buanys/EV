@@ -79,6 +79,15 @@ enum class HostPermission {
      * API key 安静地躺在插件自己的 `providers.json` 里。
      */
     SECRETS,
+
+    /**
+     * 读写日历：`CalendarService` 的声明位。
+     *
+     * 没声明就拿不到绑定（`ctx[CalendarService.Key]` 是 null），声明了没授权则每次调用
+     * 抛 `SecurityException`。它要的 Android 权限（`READ_WRITE_CALENDAR`）归宿主所有，
+     * 插件自己不申请也申请不到——这正是这一层存在的理由。
+     */
+    CALENDAR,
     ;
 
     companion object {

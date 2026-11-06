@@ -22,7 +22,7 @@ class DexClassScannerTest {
     @Test
     fun `isReserved 不误伤前缀相近的包`() {
         assertFalse(DexClassScanner.isReserved("org.jsonish.Foo", reserved))
-        assertFalse(DexClassScanner.isReserved("ev.buan.plugins.settings.SettingsPlugin", reserved))
+        assertFalse(DexClassScanner.isReserved("ev.buan.plugins.example.ExamplePlugin", reserved))
     }
 
     @Test

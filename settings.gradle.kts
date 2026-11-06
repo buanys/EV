@@ -45,7 +45,6 @@ include(":host-core")
 //   feature     页面与行为（界面、主循环、浏览器、提示词、设置）
 //   resource    数据/主题一类的叶子节点
 //   integration 对接外部系统（模型服务、Web 门面、自编译工具链）
-include(":plugins:feature:settings")
 include(":plugins:feature:ev-ui")
 include(":plugins:integration:agent-model")
 include(":plugins:base:agent-tools")
@@ -58,6 +57,7 @@ include(":plugins:base:agent-gui")
 include(":plugins:feature:agent-browse")
 include(":plugins:integration:agent-web")
 include(":plugins:base:agent-shell")
+include(":plugins:base:agent-phone")
 include(":plugins:base:linux")
 include(":plugins:integration:forge")
 include(":plugins:integration:forge-compiler")

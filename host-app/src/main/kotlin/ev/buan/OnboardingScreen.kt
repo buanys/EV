@@ -298,6 +298,13 @@ internal enum class PermissionGroup(
             Manifest.permission.READ_CALL_LOG,
         ),
     ),
+    CALENDAR_WRITE(
+        title = "日历写入",
+        summary = "帮你建会议、改时间、删日程。读日历在上面那组，写要单独给。",
+        permissions = listOf(
+            Manifest.permission.WRITE_CALENDAR,
+        ),
+    ),
     LOCATION(
         title = "位置与运动",
         summary = "你在哪、附近有什么、今天走了多少步。",

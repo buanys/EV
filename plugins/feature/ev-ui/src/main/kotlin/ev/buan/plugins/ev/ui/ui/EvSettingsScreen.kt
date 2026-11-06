@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import ev.buan.ui.EvAccentColor
+import ev.buan.ui.EvAppearance
 import ev.buan.ui.EvGlyphKind
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvPaletteStyle
@@ -54,6 +55,7 @@ fun EvSettingsScreen(
     onOpenTools: () -> Unit,
     onOpenMemory: () -> Unit,
     onOpenThemes: () -> Unit,
+    onOpenAppearance: () -> Unit,
     /** Name of the active theme, resolved by the caller from the host catalog. */
     themeName: String,
     /** 宿主提供的屏幕提示层；null 表示宿主版本旧或无障碍没开——那这行只是不可用，不是坏掉。 */
@@ -93,7 +95,7 @@ fun EvSettingsScreen(
                     title = "主题与显示",
                     glyph = EvGlyphKind.Theme,
                     summary = "${current.themeMode.label()} · ${(current.interfaceScale * 100).roundToInt()}%",
-                    onClick = onOpenHostSettings,
+                    onClick = onOpenAppearance,
                 )
             }
         }
@@ -204,6 +206,82 @@ fun EvSettingsScreen(
                     glyph = EvGlyphKind.Info,
                     summary = "版本 0.1.0 · 契约 API $PLUGIN_API_VERSION",
                     trailing = EvSettingsTrailing.None,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 外观细节：主题模式、Monet 取色、调色板、强调色、纯黑、界面缩放。
+ *
+ * 这一页以前是一个独立插件（`plugins/feature/settings`）。搬进 ev-ui 的理由很实际：
+ * 它没有自己的权限、没有自己的生命周期，只是"界面的一部分"——多一个插件就多一次扫描、
+ * 一个 ClassLoader、一颗 Fiber，而它换来的独立性一点也没用上。
+ *
+ * 值写在 `summary` 里而不是右侧（[EvSettingsTrailing] 只有 Chevron/Switch/None）：
+ * 与"主题与显示"那一行的写法保持一致，点一下就是下一个值。
+ */
+@Composable
+fun EvAppearanceScreen(
+    appearance: AppearanceService,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val current = appearance.current
+    fun update(transform: (EvAppearance) -> EvAppearance) = appearance.update(transform)
+    EvPage(title = "外观", modifier = modifier, onBack = onBack) {
+        item { EvSettingsSection("主题与取色") }
+        item {
+            EvSettingsGroup {
+                EvSettingsRow(
+                    title = "主题模式",
+                    glyph = EvGlyphKind.Theme,
+                    summary = current.themeMode.label(),
+                    onClick = { update { it.copy(themeMode = it.themeMode.next()) } },
+                )
+                EvSettingsDivider()
+                EvSettingsRow(
+                    title = "Monet 取色",
+                    glyph = EvGlyphKind.Theme,
+                    summary = "从强调色生成整套配色",
+                    trailing = EvSettingsTrailing.Switch,
+                    checked = current.monetEnabled,
+                    onCheckedChange = { enabled -> update { it.copy(monetEnabled = enabled) } },
+                )
+                EvSettingsDivider()
+                EvSettingsRow(
+                    title = "调色板",
+                    glyph = EvGlyphKind.Theme,
+                    summary = current.paletteStyle.label(),
+                    onClick = { update { it.copy(paletteStyle = it.paletteStyle.next()) } },
+                )
+                EvSettingsDivider()
+                EvSettingsRow(
+                    title = "强调色",
+                    glyph = EvGlyphKind.Theme,
+                    summary = current.accentColor.label(),
+                    onClick = { update { it.copy(accentColor = it.accentColor.next()) } },
+                )
+            }
+        }
+        item { EvSettingsSection("显示") }
+        item {
+            EvSettingsGroup {
+                EvSettingsRow(
+                    title = "纯黑背景",
+                    glyph = EvGlyphKind.Theme,
+                    summary = "深色模式下背景与卡片全黑",
+                    trailing = EvSettingsTrailing.Switch,
+                    checked = current.pureBlackEnabled,
+                    onCheckedChange = { enabled -> update { it.copy(pureBlackEnabled = enabled) } },
+                )
+                EvSettingsDivider()
+                EvSettingsRow(
+                    title = "界面缩放",
+                    glyph = EvGlyphKind.Theme,
+                    summary = "${(current.interfaceScale * 100).roundToInt()}%",
+                    onClick = { update { it.copy(interfaceScale = it.interfaceScale.nextInterfaceScale()) } },
                 )
             }
         }
