@@ -77,7 +77,7 @@ tasks.register("bundlePlugin") {
               "version": "1.1.0",
               "entryClass": "ev.buan.plugins.agent.browse.AgentBrowsePlugin",
               "apiVersion": 1,
-              "dependencies": ["ev.buan.plugins.agent.tools"],
+              "dependencies": ["ev.buan.plugins.agent.tools@1.1.0"],
               "shortcuts": [
                 { "id": "browser", "label": "浏览器", "icon": "Globe" }
               ]

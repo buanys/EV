@@ -225,10 +225,18 @@ sh scripts/check.sh     # CI 与提交前都跑这一个
 ⚠️ 已有安装升级后，需要在管理页给 agent-model 补授权「凭据保管」，否则它会停在
 `PERMISSION_DENIED: 缺少权限 SECRETS`（卡片会写明原因，授予后自动启用）。
 
-### 8.3 依赖没有版本
+### 8.3 依赖版本 —— 已做（2026-11-06）
 
-`Dependencies` 就是 `Map<String, Any?>`。规则里"依赖声明接口与版本""替换需版本满足"两条
-因此无法落地。
+sidecar / APK 元数据的 `dependencies` 现在支持 `id@1.2.0`，语义是**最低版本**。
+`PluginVersion`（语义化三段比较）+ `DependencyCheck`（装配检查）在 `:host-core`，
+单测覆盖解析、比较、缺失与版本不够两种失败、以及"写坏的版本号"。
+
+`PluginValidator` 新增 `DEPENDENCY_VERSION` 错误码：缺插件报 `DEPENDENCY_MISSING`，
+装了但太旧报 `DEPENDENCY_VERSION`——**两种失败的处置不同**（一个去装，一个去升级）。
+
+`PluginCandidate.dependencies` 保留 `id@version` 交给校验器；`AndroidModuleDescriptor.dependencies`
+剥成纯 id（内核只认 id，带版本会变成"模块未注册"）。这两处一开始我搞反了，
+真机上表现为 agent-browse 激活失败。
 
 ### 8.4 恢复只做了两项
 

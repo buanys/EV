@@ -188,7 +188,12 @@ class PluginInstaller(
         val byId = sources.groupBy { it.meta.id }
         // Two containers claiming one id are separated by the identity gate, not here; the first
         // one discovered (bundled before external) supplies the id's declared dependencies.
-        val declared = byId.mapValues { (_, candidates) -> candidates.first().meta.dependencies }
+        // 排序只认 id：`id@1.2` 里的版本段属于装配检查（PluginValidator.dependencyGate），
+        // 留在这里会让依赖边被当成未知 id 丢掉，加载顺序静默退化。
+        val declared = byId.mapValues { (_, candidates) ->
+            candidates.first().meta.dependencies
+                .mapNotNull { ev.buan.hostcore.dependency.PluginDependency.parse(it)?.id }
+        }
         val resolution = DependencyResolver.resolve(declared)
         resolution.cycleRings.forEach { ring ->
             errors += "${PluginRejectionCode.DEPENDENCY_CYCLE}: 循环依赖 $ring" +
@@ -248,6 +253,8 @@ class PluginInstaller(
             sha256 = hash,
             signing = trust.signingState(source),
             platformClassViolations = violations,
+            // 带版本交给校验器：`id@1.2.0` 由 PluginValidator.dependencyGate 检查。
+            // 剥版本只发生在交给内核 descriptor 的那一处（见 HostActivation）。
             dependencies = meta.dependencies,
             // Host-core's validator only knows the wire names; HostPermission stays host-side.
             requestedPermissions = meta.permissions.declared,
@@ -257,7 +264,7 @@ class PluginInstaller(
             supportedApiVersion = PLUGIN_API_VERSION,
             approvedUnsignedHashes = approvals.approved(),
             installedHashes = hashes.toMap(),
-            acceptedPluginIds = accepted.keys.toSet(),
+            acceptedPluginVersions = accepted.mapValues { (_, plugin) -> plugin.version },
             // The user's grants feed the validator's permission gate. That gate runs last, so an
             // ungranted declaration does not hide a trust/content problem behind it.
             grantedPermissions = permissions.grants().mapValues { (_, granted) ->

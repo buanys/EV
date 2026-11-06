@@ -209,7 +209,11 @@ internal class HostActivation(private val host: ActivationHost) {
             file = plugin.file,
             expectedSha256 = plugin.sha256,
             // Without this the loader never links a plugin to its dependency loader.
-            dependencies = plugin.dependencies,
+            // 内核的 descriptor 只认 id：`agent.tools@1.1.0` 传下去会变成"模块未注册"。
+            // 版本在装配阶段由 PluginValidator 检查过，这里只交出 id。
+            dependencies = plugin.dependencies.mapNotNull {
+                ev.buan.hostcore.dependency.PluginDependency.parse(it)?.id
+            },
             sharedHostPackages = HostPackages.shared,
         )
         var scopeFiber: Fiber<Unit>? = null

@@ -332,11 +332,44 @@ class PluginValidatorTest {
 
     @Test
     fun `依赖的插件已接受则通过`() {
-        val withDep = policy.copy(acceptedPluginIds = setOf("ev.buan.plugins.ping.api"))
+        val withDep = policy.copy(acceptedPluginVersions = mapOf("ev.buan.plugins.ping.api" to "1.0.0"))
         val result = PluginValidator.validate(
             candidate(dependencies = listOf("ev.buan.plugins.ping.api")), withDep,
         )
         assertEquals(ValidationResult.Accepted, result)
+    }
+
+
+    @Test
+    fun `an older dependency version is rejected with its own code`() {
+        val candidate = candidate(dependencies = listOf("dep@2.0.0"))
+        val withDep = policy.copy(acceptedPluginVersions = mapOf("dep" to "1.9.9"))
+
+        val result = PluginValidator.validate(candidate, withDep)
+
+        assertTrue(result is ValidationResult.Rejected)
+        assertEquals(PluginRejectionCode.DEPENDENCY_VERSION, (result as ValidationResult.Rejected).rejection.code)
+        assertTrue(result.rejection.message.contains("2.0.0") && result.rejection.message.contains("1.9.9"))
+    }
+
+    @Test
+    fun `a satisfied dependency version passes the gate`() {
+        val candidate = candidate(dependencies = listOf("dep@1.2"))
+        val withDep = policy.copy(acceptedPluginVersions = mapOf("dep" to "1.2.0"))
+
+        assertTrue(PluginValidator.validate(candidate, withDep) is ValidationResult.Accepted)
+    }
+
+    @Test
+    fun `an unparsable dependency declaration is rejected instead of ignored`() {
+        // 写坏的版本段不能被当成"没有版本要求"，否则一条拼错的依赖会静默通过。
+        val candidate = candidate(dependencies = listOf("dep@latest"))
+        val withDep = policy.copy(acceptedPluginVersions = mapOf("dep" to "1.0.0"))
+
+        val result = PluginValidator.validate(candidate, withDep)
+
+        assertTrue(result is ValidationResult.Rejected)
+        assertEquals(PluginRejectionCode.DEPENDENCY_MISSING, (result as ValidationResult.Rejected).rejection.code)
     }
 
     @Test

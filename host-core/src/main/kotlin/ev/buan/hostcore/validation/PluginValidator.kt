@@ -1,5 +1,8 @@
 package ev.buan.hostcore.validation
 
+import ev.buan.hostcore.dependency.DependencyCheck
+import ev.buan.hostcore.dependency.PluginDependency
+
 
 /**
  * Every reason a container may not run. Stable codes, not message text: the UI branches on the
@@ -37,6 +40,9 @@ enum class PluginRejectionCode {
      * the validator only sees one candidate at a time.
      */
     DEPENDENCY_CYCLE,
+
+    /** Container depends on a version of a plugin that is older than the one it declared. */
+    DEPENDENCY_VERSION,
 
     /** Container asks for a host permission the user has not granted this id. */
     PERMISSION_DENIED,
@@ -90,14 +96,22 @@ data class HostPolicy(
     val approvedUnsignedHashes: Map<String, String> = emptyMap(),
     /** id -> sha256 already accepted in this run, used for conflict detection. */
     val installedHashes: Map<String, String> = emptyMap(),
-    /** Plugin ids accepted earlier in this same sync pass; dependencies must resolve here. */
-    val acceptedPluginIds: Set<String> = emptySet(),
+    /**
+     * Plugins accepted earlier in this same sync pass, id → version; dependencies must resolve here.
+     *
+     * 版本是后加的：规则要求"依赖声明版本，宿主在装配时检查"。以前只有 id 集合，
+     * 于是"替换需版本满足"根本无法判定。
+     */
+    val acceptedPluginVersions: Map<String, String> = emptyMap(),
     /**
      * id -> the permission wire names the user granted that container. Default is empty, so a
      * container that declares capabilities fails closed until the user grants them.
      */
     val grantedPermissions: Map<String, Set<String>> = emptyMap(),
-)
+) {
+    /** 只看"装没装"的地方继续用这个；它由 [acceptedPluginVersions] 推导，不再单独维护。 */
+    val acceptedPluginIds: Set<String> get() = acceptedPluginVersions.keys
+}
 
 sealed interface ValidationResult {
     data object Accepted : ValidationResult
@@ -241,13 +255,28 @@ object PluginValidator {
      */
     private fun dependencyGate(candidate: PluginCandidate, policy: HostPolicy): ValidationResult? {
         if (candidate.dependencies.isEmpty()) return null
-        val missing = candidate.dependencies.filter { it !in policy.acceptedPluginIds }
-        if (missing.isEmpty()) return null
+        val declared = candidate.dependencies.mapNotNull(PluginDependency::parse)
+        // 解析不出来的条目（`id@latest` 这种）当成"没声明版本"处理，而不是静默丢弃：
+        // 丢掉会让一条写坏的依赖变成"没有依赖"，那正是这一层要防的事。
+        val unparsable = candidate.dependencies.filter { PluginDependency.parse(it) == null }
+        if (unparsable.isNotEmpty()) {
+            return ValidationResult.Rejected(
+                PluginRejection(
+                    PluginRejectionCode.DEPENDENCY_MISSING,
+                    candidate.id,
+                    "依赖声明无法解析：${unparsable.joinToString(", ")}（版本段必须是数字，如 1.2.0）",
+                ),
+            )
+        }
+        val failures = DependencyCheck.check(declared, policy.acceptedPluginVersions)
+        if (failures.isEmpty()) return null
+        val tooOld = failures.filter { it.versionMismatch }
         return ValidationResult.Rejected(
             PluginRejection(
-                PluginRejectionCode.DEPENDENCY_MISSING,
+                // 两种失败分开报：一个是"没装"，处理是去装；一个是"太旧"，处理是升级。
+                if (tooOld.isNotEmpty()) PluginRejectionCode.DEPENDENCY_VERSION else PluginRejectionCode.DEPENDENCY_MISSING,
                 candidate.id,
-                "缺少依赖插件：${missing.joinToString(", ")}（必须先被接受或同时存在）",
+                failures.joinToString("；") { it.message(candidate.id) },
             ),
         )
     }
