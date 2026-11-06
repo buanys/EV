@@ -60,14 +60,17 @@ internal interface ActivationHost {
     /** 非空表示本次启动处于安全模式：一个插件都不许加载。 */
     val safeModeNotice: SafeModeNotice?
 
-    /**
-     * 受限档位能不能在这个进程里跑。
-     *
-     * 正式包必须是 false：受限档位的定义就是「隔离执行」，同进程运行等于没有隔离。
-     * 调试包放开——那个包本身就已经不可信（可调试即等于整机可接管），隔离它换不来安全性，
-     * 而每改一行代码都要重新确认插件会让开发瘫痪。
-     */
+    /** 受限档位能不能**降级**在本进程里跑（正式包恒为 false，见 [RestrictedActivator]）。 */
     val allowsRestrictedInProcess: Boolean
+
+    /** 装进子进程并把工具挂到工具总线上；返回工具数量。失败就抛，**不降级**回同进程。 */
+    suspend fun isolate(plugin: InstalledPlugin): Int
+
+    /** 把它从子进程里撤下来；没装过是 no-op。 */
+    suspend fun stopIsolated(id: String)
+
+    /** 子进程里提供的工具数；0 表示不在隔离中。 */
+    fun isolatedToolCount(id: String): Int
 
     /** 把这一轮扫描的结果落账（`installed` / `syncErrors` / `pendingUnsigned`）。 */
     fun recordScan(installedNow: List<InstalledPlugin>, errors: List<String>, pending: List<PendingUnsigned>)
@@ -105,19 +108,14 @@ internal interface ActivationHost {
 /**
  * 启动时把插件从"躺在磁盘上"变成"跑起来"的那一套：扫描落账 → 定目标 → 逐个激活 / 停用。
  *
- * 从 `HostComposition` 拆出来的是这个类存在的理由：它回答的是**一个进程怎么把插件装起来**，
- * 而宿主总装回答的是**这个应用由什么组成**。两者以前是同一个对象，于是
- * "装完为什么不生效"这类问题要在 900 行里找答案。
- *
- * 这里集中了三条不变量，它们是这个子系统全部的价值：
- *
- *  1. **安全模式是这一进程的决定**，不写用户偏好：卡片会解释"为什么什么都没跑"。
- *  2. **干净的一轮扫描才能删数据**：扫描报错可能只是这一轮没看见某个插件，
- *     那时它的存储必须留着。
- *  3. **每个插件一颗 Fiber**，提供者装在它上面——否则内核会把最后提供的实例
- *     发给任何读这个 key 的插件（T06 实测）。
+ * 它回答的是**一个进程怎么把插件装起来**，宿主总装回答的是**这个应用由什么组成**。
+ * 三条不变量：安全模式是这一进程的决定（不写偏好）；干净的一轮扫描才能删数据；
+ * 每个插件一颗 Fiber（提供者装在它上面，否则内核把最后提供的实例发给任何读这个 key 的插件）。
  */
 internal class HostActivation(private val host: ActivationHost) {
+
+    /** 受限档的执行分流，见 [RestrictedActivator]。 */
+    private val restricted = RestrictedActivator(host)
 
     /**
      * The single pass both `start` and `resync` run: scan → record → order → activate.
@@ -170,7 +168,12 @@ internal class HostActivation(private val host: ActivationHost) {
         // used to show as a healthy row. Say it out loud instead - before this, "enabled but never
         // imported" looked exactly like "running fine" (see the agent-prompt case).
         host.installed.values.forEach { plugin ->
-            if (host.isPluginEnabled(plugin.id) && plugin.id !in host.active && plugin.id !in host.failures) {
+            if (
+                host.isPluginEnabled(plugin.id) &&
+                plugin.id !in host.active &&
+                plugin.id !in host.failures &&
+                host.isolatedToolCount(plugin.id) == 0
+            ) {
                 host.failures[plugin.id] = NOT_LOADED
                 android.util.Log.e("EV", "plugin ${plugin.id} enabled but not loaded")
             }
@@ -221,10 +224,7 @@ internal class HostActivation(private val host: ActivationHost) {
                 return
             }
 
-            ev.buan.hostcore.trust.TrustTier.RESTRICTED -> if (!host.allowsRestrictedInProcess) {
-                host.failures[plugin.id] = "受限（${trust.reason}）：需要子进程隔离，本版尚未实现，不执行"
-                return
-            }
+            ev.buan.hostcore.trust.TrustTier.RESTRICTED -> if (restricted.activate(plugin)) return
         }
         // Capability gate before any loading work: an ungranted declaration means the plugin may
         // not run, and the card says why so the user can grant it.
@@ -366,6 +366,8 @@ internal class HostActivation(private val host: ActivationHost) {
         // per-plugin subtree. Storage is deliberately left in place: disabling keeps plugin data.
         host.active.remove(id)?.let { scope -> runCatching { scope.dispose() } }
         runCatching { host.modules.release(id) }
+        // 子进程那一路：解绑 + 撤工具。没装过是 no-op，所以不必判断它在哪一边。
+        runCatching { host.stopIsolated(id) }
     }
 
     /** Empty plugin whose only job is to own the per-plugin scope Fiber. */

@@ -30,7 +30,9 @@ val kernelModules = subprojects.filter {
         it.path != ":host-runtime" &&
         it.path != ":host-api" &&
         it.path != ":ui-kit" &&
-        !it.path.startsWith(":plugins")
+        !it.path.startsWith(":plugins") &&
+        // 验证夹具（`tools/*`）是给设备跑的 APK/jar，与内核库不是一类东西。
+        !it.path.startsWith(":tools")
 }
 
 configure(kernelModules) {

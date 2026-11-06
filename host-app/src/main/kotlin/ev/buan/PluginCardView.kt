@@ -134,6 +134,14 @@ internal fun PluginSection(
                     append(ev.buan.hostcore.trust.TrustGate.label(card.trust.tier))
                     append("  ·  ").append(card.trust.reason)
                     append("\n").append(ev.buan.hostcore.trust.TrustGate.meaning(card.trust.tier))
+                    // 跑在哪里：同一档位下"子进程"和"宿主进程内降级"是两种处境。
+                    append("\n").append(
+                        if (card.isolatedTools > 0) {
+                            "当前：在子进程运行，提供 ${card.isolatedTools} 个工具"
+                        } else {
+                            "当前：在宿主进程内运行"
+                        },
+                    )
                 },
                 style = MiuixTheme.textStyles.footnote1,
                 color = if (card.trust.tier == ev.buan.hostcore.trust.TrustTier.TRUSTED) {

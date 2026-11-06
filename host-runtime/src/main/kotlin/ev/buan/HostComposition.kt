@@ -234,6 +234,13 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
 
     override fun failureScoreOf(id: String): ev.buan.hostcore.recovery.FailureScore = failureScores.score(id)
 
+    override fun isolatedToolCount(id: String): Int = isolated.toolCount(id)
+
+    override suspend fun isolate(plugin: InstalledPlugin): Int =
+        isolated.start(plugin, HostPermission.PLUGIN_STORAGE in permissions.granted(plugin.id))
+
+    override suspend fun stopIsolated(id: String) = isolated.stop(id)
+
     override fun recordFailure(id: String, success: Boolean) {
         val current = failureScores.score(id)
         failureScores.save(id, if (success) current.afterSuccess() else current.afterFailure())
@@ -275,6 +282,23 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     /** Settings handlers, for the plugins that let the host change their configuration. */
     override val pluginSettings = ConcurrentHashMap<String, org.cordis.api.PluginSettings>()
     override val failures = linkedMapOf<String, String>()
+
+    /**
+     * 受限档的账：谁在子进程里、提供了几个工具、死没死。
+     *
+     * `directory` 用 lambda 传入而不是传实例：它要到 [start] 里才建出来，而受限插件的激活
+     * 发生在它之后——传实例的写法会逼着装配顺序再固定一次。
+     */
+    private val isolated by lazy {
+        IsolatedRegistry(
+            context = context,
+            directory = { serviceDirectory },
+            failures = failures,
+            onFailure = { id -> recordFailure(id, success = false) },
+            onSuccess = { id -> recordFailure(id, success = true) },
+            publish = { runCatching { snapshot() } },
+        )
+    }
     private var syncErrors: List<String> = emptyList()
     override var pendingUnsigned: List<PendingUnsigned> = emptyList()
     private var appearanceHandle: org.cordis.EffectHandle? = null
@@ -699,6 +723,7 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
             installed = installed.values,
             failures = failures,
             instanceOf = { id -> runCatching { modules.peek(modules.moduleUrl(id)) }.getOrNull() as? Plugin<*> },
+            isolatedOf = { id -> isolated.toolCount(id) },
         ),
         errors = syncErrors,
         pending = pendingUnsigned,

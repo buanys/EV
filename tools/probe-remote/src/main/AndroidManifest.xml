@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 验证夹具：没有组件，只是一个能装进 DexClassLoader 的容器。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

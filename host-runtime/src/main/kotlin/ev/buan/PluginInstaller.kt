@@ -38,6 +38,8 @@ data class InstalledPlugin(
      * re-check them against the grants currently stored by the host (T06).
      */
     val requestedPermissions: Set<HostPermission> = emptySet(),
+    /** 声明了"在独立进程里跑"（sidecar 的 `isolation: separate-process`）。 */
+    val separateProcess: Boolean = false,
     /** 来源与安装时判定的信任档位：激活门和卡片都读它们，没有第二个来源。 */
     val origin: ev.buan.hostcore.trust.PluginOrigin = ev.buan.hostcore.trust.PluginOrigin.EXTERNAL,
     val trust: ev.buan.hostcore.trust.TrustDecision,
@@ -385,6 +387,7 @@ class PluginInstaller(
             signed = candidate.signing is ev.buan.hostcore.validation.SigningState.Signed,
             sha256 = hash,
             dependencies = meta.dependencies,
+            separateProcess = meta.separateProcess,
             requestedPermissions = meta.permissions.declared
                 .mapNotNull(HostPermission::fromWireName)
                 .toSet(),

@@ -123,6 +123,14 @@
                 android:value="plugin-background-work" />
         </service>
 
+        <!-- 受限插件的执行进程。独立进程换不来权限隔离（同 UID、同 SELinux 域，插件照样能 su），
+             它换来的是故障隔离与生命周期独立：一个工具插件把子进程搞崩，宿主和另外 16 个插件
+             不受影响。宿主只通过 binder 的三个动作（装 / 调 / 卸）跟它说话。见 ADR-0009。 -->
+        <service
+            android:name="ev.buan.isolation.PluginHostService"
+            android:exported="false"
+            android:process=":plugin" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

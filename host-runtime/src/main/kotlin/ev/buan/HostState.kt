@@ -76,6 +76,12 @@ data class PluginCard(
      * 如果只有"能跑/不能跑"，就永远不知道自己在承担什么。
      */
     val trust: ev.buan.hostcore.trust.TrustDecision,
+    /**
+     * 在子进程里提供了几个工具；0 表示不在隔离中。
+     *
+     * 卡片必须能回答"它到底跑在哪里"：同一档位下"子进程"和"宿主进程内降级"是两种处境。
+     */
+    val isolatedTools: Int = 0,
     val enabled: Boolean,
     val title: String,
     val body: String,

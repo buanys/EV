@@ -71,3 +71,10 @@ include(":plugins:resource:theme-default")
 
 // hello（模板闭环验证用）已于 2026-11-06 删除：验证目的已经达成，留着只是每次改动
 // 都要跟着重编一次。_template 仍在仓库里，需要时复制一份改名即可。
+
+// 受限档子进程的验证夹具：只有显式传 -PevTestPlugins 才进构建。
+// 它不是产品的一部分（一个只会回答自己 pid 的工具），但也不是一次性的手工作品——
+// 隔离那半条链路需要它可复现，否则下次改 binder 就没法验证。
+if (providers.gradleProperty("evTestPlugins").isPresent) {
+    include(":tools:probe-remote")
+}

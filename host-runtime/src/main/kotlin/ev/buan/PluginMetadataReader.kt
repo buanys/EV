@@ -27,6 +27,14 @@ internal data class PluginMeta(
     val permissions: PermissionDeclaration = PermissionDeclaration(),
     /** Desktop entries the container wants the host to be able to pin. */
     val shortcuts: List<ShortcutDeclaration> = emptyList(),
+    /**
+     * 容器自己声明"我是工具类插件，请在独立进程里跑"。
+     *
+     * 必须由插件声明，不能由宿主从权限猜：插件拿宿主服务走的是 `ServiceDirectory` 查表，
+     * 声明里看不出它查了谁。第一版按权限推断，结果 17 个插件里 12 个被塞进子进程、
+     * 全部因为拿不到宿主服务而失败——这就是"猜"的代价。
+     */
+    val separateProcess: Boolean = false,
 )
 
 
@@ -55,6 +63,7 @@ internal class PluginMetadataReader(private val context: Context) {
             entryClass = entry,
             apiVersion = meta.getInt(API_META, 0),
             dependencies = apkDependencies(meta.getString(DependencyMetadataParser.APK_METADATA_KEY)),
+            separateProcess = meta.getString(ISOLATION_KEY) == ISOLATION_SEPARATE,
             permissions = PermissionMetadataParser.parseApkMetadata(
                 raw = meta.getString(PermissionMetadataParser.APK_METADATA_KEY),
                 supported = HostPermission.wireNames,
@@ -79,6 +88,7 @@ internal class PluginMetadataReader(private val context: Context) {
                 supported = HostPermission.wireNames,
             ),
             shortcuts = parseShortcuts(json.optJSONArray("shortcuts")),
+            separateProcess = json.optString(ISOLATION_KEY) == ISOLATION_SEPARATE,
         )
     }
 
@@ -132,6 +142,10 @@ internal class PluginMetadataReader(private val context: Context) {
     }
 
     private companion object {
+        /** sidecar / APK 元数据里"要在独立进程里跑"的声明键与取值。 */
+        const val ISOLATION_KEY = "isolation"
+        const val ISOLATION_SEPARATE = "separate-process"
+
         const val ENTRY_META = "cordis.entry"
         const val API_META = "cordis.api"
     }

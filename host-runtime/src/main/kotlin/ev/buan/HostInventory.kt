@@ -47,6 +47,7 @@ internal class HostInventory(
         installed: Collection<InstalledPlugin>,
         failures: Map<String, String>,
         instanceOf: (String) -> Plugin<*>?,
+        isolatedOf: (String) -> Int,
     ): List<PluginCard> = installed.map { plugin ->
         val instance = instanceOf(plugin.id)
         val surface = instance as? AgentSurface
@@ -56,6 +57,7 @@ internal class HostInventory(
             apiVersion = plugin.apiVersion,
             signed = plugin.signed,
             trust = plugin.trust,
+            isolatedTools = isolatedOf(plugin.id),
             enabled = isEnabled(plugin.id),
             title = surface?.title ?: plugin.id,
             body = surface?.body.orEmpty(),
