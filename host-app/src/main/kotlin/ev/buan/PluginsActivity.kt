@@ -8,20 +8,15 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
@@ -39,33 +34,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import ev.buan.hostcore.storage.PluginStorageFiles
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvPreferenceDivider
 import ev.buan.ui.EvPreferenceGroup
 import ev.buan.ui.EvPreferenceRow
 import ev.buan.ui.EvTheme
 import ev.buan.ui.EvThemeTokens
-import ev.buan.ui.evSystemBarsPadding
 import ev.buan.ui.StatusError
 import ev.buan.ui.StatusWarning
-import java.time.Instant
 import java.io.File
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.cordis.api.AgentUi
-import org.cordis.api.HostPermission
-import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -311,337 +296,6 @@ private fun HostRoot(activity: ComponentActivity, runtime: HostComposition) {
     }
 }
 
-/**
- * One plugin as a KernelSU-style module card: name and version on top, the switch on the right,
- * one action row underneath ("打开" / "卸载"), and the permission + storage detail folded away
- * until the card is tapped.
- *
- * Uninstall is a two-step confirm rendered inside the card rather than a dialog: the card is
- * already the thing being acted on, so asking next to it keeps the target and the question in one
- * place and avoids pulling a dialog API into a page that has no other modal.
- */
-@Composable
-private fun PluginSection(
-    card: PluginCard,
-    confirming: Boolean,
-    onToggle: (String, Boolean) -> Unit,
-    onPermission: (String, HostPermission, Boolean) -> Unit,
-    onClearStorage: (String) -> Unit,
-    onOpenPage: (String) -> Unit,
-    onUninstall: (String) -> Unit,
-    onConfirmUninstall: () -> Unit,
-    onCancelUninstall: () -> Unit,
-    onTrustUpdates: (String, Boolean) -> Unit,
-    onPinShortcut: (String, ShortcutDeclaration) -> Unit,
-) {
-    var expanded by remember(card.id) { mutableStateOf(false) }
-    val colors = MiuixTheme.colorScheme
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(18.dp))
-            // surface0 is the page background; the card needs the next layer up. Miuix surface is
-            // forced to pure black in this theme, which made every card invisible.
-            .background(EvThemeTokens.colors.surface1)
-            .clickable { expanded = !expanded }
-            .padding(16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = card.title.ifBlank { card.id },
-                    style = MiuixTheme.textStyles.subtitle,
-                    color = colors.onBackground,
-                )
-                Text(
-                    text = buildString {
-                        append("版本 ").append(card.version)
-                        append("  ·  api ").append(card.apiVersion)
-                        if (!card.signed) append("  ·  未签名")
-                        // 一眼层只加一个词：开了才显示，没开不制造噪音。
-                        if (card.trustsUpdates) append("  ·  自动信任")
-                    },
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = colors.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                if (card.body.isNotBlank()) {
-                    Text(
-                        text = card.body,
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = colors.onSurfaceVariantSummary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-
-            }
-            Box(Modifier.padding(start = 12.dp)) {
-                Switch(checked = card.enabled, onCheckedChange = { onToggle(card.id, it) })
-            }
-        }
-
-        if (expanded) {
-            val requested = HostPermission.entries.filter { it in card.requestedPermissions }
-            if (requested.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "权限",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = colors.onSurfaceVariantSummary,
-                )
-                requested.forEach { permission ->
-                    val granted = permission in card.grantedPermissions
-                    Row(
-                        Modifier.fillMaxWidth().clickable {
-                            onPermission(card.id, permission, !granted)
-                        }.padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = permissionLabel(permission),
-                            style = MiuixTheme.textStyles.body1,
-                            color = colors.onBackground,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            text = if (granted) "已授予" else "未授予",
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = if (granted) colors.primary else StatusWarning,
-                        )
-                    }
-                }
-            }
-            // 桌面入口：插件声明了才有这一节。点了会弹系统确认框，不是静默创建。
-            if (card.shortcuts.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "桌面快捷方式",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = colors.onSurfaceVariantSummary,
-                )
-                card.shortcuts.forEach { shortcut ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(onClickLabel = "添加 ${shortcut.label} 到桌面") {
-                                onPinShortcut(card.id, shortcut)
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = shortcut.label,
-                            style = MiuixTheme.textStyles.body1,
-                            color = colors.onBackground,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            text = "添加到桌面",
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = colors.primary,
-                        )
-                    }
-                }
-            }
-
-            // 未签名插件才有「信任后续版本」：已签名走签名链，不需要人逐次点头。
-            // 放在展开区，因为它是一次性的决定，不是每次打开都要看的开关。
-            if (!card.signed) {
-                Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = "信任后续版本",
-                            style = MiuixTheme.textStyles.body1,
-                            color = colors.onBackground,
-                        )
-                        Text(
-                            text = if (card.trustsUpdates) {
-                                "权限与依赖不变时的更新会自动通过"
-                            } else {
-                                "每次更新都需要你确认"
-                            },
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = colors.onSurfaceVariantSummary,
-                        )
-                    }
-                    Switch(
-                        checked = card.trustsUpdates,
-                        onCheckedChange = { onTrustUpdates(card.id, it) },
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "存储 ${formatBytes(card.storageBytes)} / ${formatBytes(PluginStorageFiles.DEFAULT_QUOTA_BYTES)}",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = colors.onSurfaceVariantSummary,
-                )
-            }
-            // 跨模块的 public 属性不能直接 smart cast（Kotlin 只看得到类型，不保证稳定），
-            // 先绑到局部变量：`card` 现在来自 :host-runtime。
-            val cardError = card.error
-            if (cardError != null) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = cardError,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = StatusError,
-                )
-            } else if (!card.enabled) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "已禁用，不会加载",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = colors.onSurfaceVariantSummary,
-                )
-
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // A plugin without a UI page still offers "打开" is pointless, so the action only
-            // appears when there is somewhere to go.
-            if (card.ui != null) {
-                CardAction(label = "打开") { onOpenPage(card.id) }
-                Spacer(Modifier.width(10.dp))
-            }
-            CardAction(label = "清理") { onClearStorage(card.id) }
-            Spacer(Modifier.weight(1f))
-            CardAction(label = "卸载", danger = true) { onUninstall(card.id) }
-        }
-
-        if (confirming) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = "卸载只删除 EV/mods 里的容器文件，插件存储的数据会保留。重启 EV 后生效。",
-                style = MiuixTheme.textStyles.footnote1,
-                color = colors.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CardAction(label = "取消") { onCancelUninstall() }
-                Spacer(Modifier.weight(1f))
-                CardAction(label = "确认卸载", danger = true) { onConfirmUninstall() }
-            }
-        }    }
-}
-
-@Composable
-private fun CardAction(label: String, danger: Boolean = false, onClick: () -> Unit) {
-    val colors = MiuixTheme.colorScheme
-    val shape = RoundedCornerShape(10.dp)
-    Box(
-        Modifier
-            .clip(shape)
-            .border(1.dp, colors.onSurfaceVariantSummary.copy(alpha = 0.30f), shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp),
-    ) {
-        Text(
-            text = label,
-            style = MiuixTheme.textStyles.footnote1,
-            color = if (danger) StatusError else colors.primary,
-        )
-    }
-}
-
-/**
- * Top-of-page notice while the process runs in safe mode.
- *
- * Safe mode is a next-launch recovery path, not in-process supervision: Compose has no error
- * boundary, so a plugin composable that throws kills the process before the host could catch it.
- * The copy therefore promises "nothing loaded this launch", never "recovered".
- */
-@Composable
-private fun SafeModeSection(notice: SafeModeNotice, onExit: () -> Unit) {
-    Column {
-        Text(
-            "安全模式",
-            style = MiuixTheme.textStyles.subtitle,
-            color = StatusWarning,
-            modifier = Modifier.padding(start = 32.dp, top = 16.dp, bottom = 8.dp),
-        )
-        EvPreferenceGroup {
-            EvPreferenceRow(
-                title = "上次运行异常退出，本次启动没有加载任何插件",
-                summary = "崩溃时间：${notice.recordedAt?.let(::formatCrashTime) ?: "未知"}" +
-                    "\n疑似插件：${notice.suspectedPluginId ?: "未知"}（仅提示，宿主未隔离插件）",
-                enabled = false,
-            )
-            EvPreferenceDivider()
-            EvPreferenceRow(
-                title = "退出安全模式",
-                summary = "重新加载已启用的插件；若再次崩溃，下次启动仍会进入安全模式。",
-                onClick = onExit,
-            )
-        }
-        Text(
-            "Compose 没有错误边界：插件 UI 抛异常会直接结束进程，宿主做不到进程内恢复；" +
-                "安全模式只保证下一次启动能绕开插件。",
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            modifier = Modifier.padding(horizontal = 32.dp, vertical = 4.dp),
-        )
-    }
-}
-
-/** Crash time in the device's current zone; the marker stores an instant, so the zone can change. */
-private fun formatCrashTime(instant: Instant): String =
-    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-        .withZone(ZoneId.systemDefault())
-        .format(instant)
-
-/** Management-page wording for each contract constant; the wire name alone means nothing to a user. */
-private fun permissionLabel(permission: HostPermission): String = when (permission) {
-    HostPermission.NETWORK -> "网络访问"
-    HostPermission.PLUGIN_STORAGE -> "插件存储"
-    HostPermission.BACKGROUND -> "后台运行"
-    HostPermission.NOTIFICATIONS -> "通知"
-    HostPermission.CLIPBOARD -> "剪贴板"
-    HostPermission.INSTALL_PACKAGES -> "安装应用"
-    HostPermission.ROOT_SHELL -> "Root Shell"
-}
-
-/** Compact, locale-stable size for the storage row. */
-private fun formatBytes(bytes: Long): String = when {
-    bytes >= 1024L * 1024L -> String.format(Locale.ROOT, "%.1f MB", bytes / 1024.0 / 1024.0)
-    bytes >= 1024L -> "${bytes / 1024} KB"
-    else -> "$bytes B"
-}
-
-@Composable
-private fun EmptyHint() {
-    EvPreferenceGroup {
-        EvPreferenceRow(
-            title = "没有插件",
-            summary = "把 .apk / .jar / .dex 放进 ${externalModsPath()} 再重开 EV。",
-        )
-    }
-}
-
-@Composable
-private fun PermissionPage(onGrant: () -> Unit) {
-    EvPage(title = "EV") {
-        item {
-            EvPreferenceGroup {
-                EvPreferenceRow(
-                    title = "需要「所有文件访问权限」",
-                    summary = "用来扫描 ${externalModsPath()} 下的插件。授权后每次启动会自动同步到私有目录。",
-                )
-                EvPreferenceDivider(hasLeading = false)
-                EvPreferenceRow(title = "去授权", onClick = onGrant)
-            }
-        }
-    }
-}
-
-
 private const val REQUEST_POST_NOTIFICATIONS = 0xE5
 
 private fun ComponentActivity.requestNotificationPermission() {
@@ -650,7 +304,6 @@ private fun ComponentActivity.requestNotificationPermission() {
 
 private fun hasNotificationPermission(context: android.content.Context): Boolean =
     context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-
 
 /** Case-insensitive match over the two fields the card actually shows. */
 private fun PluginCard.matches(query: String): Boolean {
@@ -717,4 +370,4 @@ private fun displayNameOf(context: android.content.Context, uri: Uri): String? =
     }
 }.getOrNull()
 
-private fun externalModsPath(): String = "${Environment.getExternalStorageDirectory().path}/EV/mods"
+internal fun externalModsPath(): String = "${Environment.getExternalStorageDirectory().path}/EV/mods"
