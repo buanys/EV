@@ -183,6 +183,16 @@ class HostRuntime(private val context: AndroidContext) {
     var lastShownPluginId: String? = null
         private set
 
+    /** 页面归属；只读，依赖以函数传入（见 ADR-0002）。 */
+    private val routing = HostRouting(
+        modules = modules,
+        preferences = preferences,
+        pluginIds = { installed.keys },
+        isEnabled = { id -> isEnabled(id) },
+        failureOf = { id -> failures[id] },
+        onShown = { id -> lastShownPluginId = id },
+    )
+
     /**
      * Non-null while this process runs in safe mode: [start] found a crash marker, so no plugin was
      * loaded. [exitSafeMode] removes the marker and loads them again.
@@ -640,59 +650,15 @@ class HostRuntime(private val context: AndroidContext) {
      * order. Keeping this in the host means a broken home plugin degrades to the fallback screen
      * instead of leaving the user with no way into management.
      */
-    fun homePage(): org.cordis.api.AgentPage? {
-        val preferred = preferences.getString(KEY_HOME, null)
-        if (preferred != null) {
-            pageFor(preferred)?.let { return it }
-        }
-        pageFor(DEFAULT_HOME_PLUGIN)?.let { return it }
-        // Fallback: any page that did not opt out. Without the filter, a memory or tools page would
-        // silently become the launch screen whenever ev-ui is disabled or failed to load.
-        return installed.keys.firstNotNullOfOrNull { id ->
-            pageFor(id)?.takeIf { it.isHomeCandidate }
-        }
-    }
+    fun homePage(): org.cordis.api.AgentPage? = routing.homePage()
 
-    fun setHomePage(id: String?) {
-        preferences.edit().apply {
-            if (id == null) remove(KEY_HOME) else putString(KEY_HOME, id)
-        }.apply()
-    }
+    fun setHomePage(id: String?) = routing.setHomePage(id)
 
-    /**
-     * Plugin that provides a full page, or null when it only renders inline content.
-     *
-     * A non-null answer means the caller is about to render this plugin, so it also records
-     * [lastShownPluginId] for crash attribution.
-     */
-    fun pageFor(id: String): org.cordis.api.AgentPage? {
-        val enabled = isEnabled(id)
-        val failure = failures[id]
-        val instance = runCatching { modules.peek(modules.moduleUrl(id)) }.getOrNull()
-        android.util.Log.i(
-            "EV",
-            "pageFor($id): enabled=$enabled failure=$failure instance=${instance?.javaClass?.name} " +
-                "isPage=${instance is org.cordis.api.AgentPage}",
-        )
-        if (!enabled || failure != null) return null
-        return (instance as? org.cordis.api.AgentPage)?.also { lastShownPluginId = id }
-    }
+    fun pageFor(id: String): org.cordis.api.AgentPage? = routing.pageFor(id)
 
-    /**
-     * Live UI of one plugin, or null when it is disabled, failed or has no UI.
-     *
-     * Also records [lastShownPluginId]; see [pageFor].
-     */
-    fun uiFor(id: String): AgentUi? {
-        if (!isEnabled(id) || failures.containsKey(id)) return null
-        val instance = runCatching { modules.peek(modules.moduleUrl(id)) }.getOrNull() as? Plugin<*>
-        return (instance as? AgentUi)?.also { lastShownPluginId = id }
-    }
+    fun uiFor(id: String): AgentUi? = routing.uiFor(id)
 
-    fun titleFor(id: String): String {
-        val instance = runCatching { modules.peek(modules.moduleUrl(id)) }.getOrNull() as? Plugin<*>
-        return (instance as? AgentSurface)?.title ?: id
-    }
+    fun titleFor(id: String): String = routing.titleFor(id)
 
     /**
      * Stops every plugin. The runtime advertises itself as stopped afterwards, so a plugin page
@@ -941,8 +907,6 @@ class HostRuntime(private val context: AndroidContext) {
          * rendered identically, and the only way to tell them apart was to read the host's code.
          */
         const val NOT_LOADED = "已启用但未加载：导入阶段没有返回实例（详见 logcat 的 EV 标签）"
-        const val KEY_HOME = "home.page"
-        const val DEFAULT_HOME_PLUGIN = "ev.buan.plugins.ev.ui"
 
         /**
          * Plugin id renames whose storage areas survive the rename: on the first sync after the
