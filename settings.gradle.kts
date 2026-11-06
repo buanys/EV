@@ -20,12 +20,10 @@ rootProject.name = "cordis-kotlin"
 
 include(
     "core",
-    "utils",
-    "timer",
-    "logger-console",
     "loader",
-    "include",
-    "hmr",
+    // 只保留内核的 core 与 loader；utils/timer/logger-console/include/hmr 已归档到
+    // /workspace/EV-archive/2026-11-05，需要时再引回并写明理由（见 docs/newdocs/最高规则）。
+    // 打包 mods 还在用 packager，它依赖 packages，两者一起留。
     "packages",
     "packager",
 )
