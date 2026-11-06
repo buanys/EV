@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import org.cordis.Context as CordisContext
 import org.cordis.Fiber
 import org.cordis.Plugin
-import org.cordis.ServiceKey
 import org.cordis.api.AgentSurface
 import org.cordis.api.AppearanceService
 import androidx.compose.runtime.State
@@ -30,14 +29,7 @@ import org.cordis.api.PLUGIN_API_VERSION
 import org.cordis.api.DeviceContextService
 import org.cordis.api.ScreenService
 import org.cordis.api.HostRestart
-import org.cordis.api.PluginInstallRequest
-import org.cordis.api.PluginInstallResult
 import org.cordis.api.PluginInstallService
-import org.cordis.api.PluginInstallStatus
-import ev.buan.hostcore.install.InstallDecision
-import ev.buan.hostcore.install.InstallOutcome
-import ev.buan.hostcore.install.InstallStatus
-import org.json.JSONObject
 import ev.buan.hostcore.lifecycle.HostLifecycle
 import ev.buan.hostcore.storage.PluginStorageLayout
 import ev.buan.hostcore.validation.HostPolicy
@@ -394,7 +386,26 @@ class HostComposition(private val context: AndroidContext) {
         }
         if (installHandle == null) {
             // 安装契约：插件把容器字节交给宿主装上去（forge 的产物走这条路，不再靠人工拷文件）。
-            installHandle = cordis.provide(PluginInstallService.Key, InstallService())
+            installHandle = cordis.provide(
+                PluginInstallService.Key,
+                HostInstallService(
+                    context = context,
+                    installer = installer,
+                    approvals = approvals,
+                    // 落账归宿主，判定归 :host-core，搬运归这个服务——三边各管一件事。
+                    rescan = { rescanForInstall() },
+                    activateOnly = { id -> installed[id]?.let { activate(it) } },
+                    isEnabled = { id -> isEnabled(id) },
+                    inSafeMode = { safeMode != null },
+                    activeIds = { active.keys.toSet() },
+                    uninstallKnown = { id ->
+                        // 宿主只认识"扫到的"和"等批准的"；别的 id 直接拒绝，不去猜是不是拼错了。
+                        val known = installed.containsKey(id) || pendingUnsigned.any { it.id == id }
+                        if (known) uninstall(id)
+                        known
+                    },
+                ),
+            )
                 .also { runCatching { it.awaitReady() } }
             deviceContextFactory?.let { factory ->
                 deviceContextHandle = cordis.provide(DeviceContextService.Key, factory(context))
@@ -558,115 +569,21 @@ class HostComposition(private val context: AndroidContext) {
     suspend fun uninstall(id: String): HostState = ops.uninstall(id)
 
     /**
-     * 安装契约的宿主实现：搬字节 → 触发一次同步 → 把结论翻译成契约形状。
+     * 安装路径专用的扫描：只把结果落账，不碰任何插件的活跃状态。
      *
-     * 这里刻意不做判断：装得成不成由 [InstallDecision] 决定（那部分在 `:host-core` 里可测），
-     * 校验由既有的 `PluginValidator` 决定。本类只负责两件宿主独占的事——写进 `EV/mods`、
-     * 以及把这一轮扫描的结果原样交出去。
+     * 与 [syncAndActivate] 的区别就是这一点。安装的调用方本身是一颗正在 `apply()` 的插件，
+     * "这一轮没扫到就停掉"的规则会把它自己停掉（详见 [HostInstallService.rescan]）。
      */
-    private inner class InstallService : PluginInstallService {
-
-        override suspend fun install(request: PluginInstallRequest): PluginInstallResult = withContext(Dispatchers.IO) {
-            val sidecar = runCatching { JSONObject(request.sidecarJson) }.getOrNull()
-            val declaredId = sidecar?.optString("id")?.takeIf { it.isNotBlank() }
-            val entryClass = sidecar?.optString("entryClass")?.takeIf { it.isNotBlank() }
-            val version = sidecar?.optString("version")?.takeIf { it.isNotBlank() }
-
-            // 形状不对就先拒绝，不碰磁盘：一个 id 不合法的容器写进 mods 只会在下一轮扫描里变成噪音。
-            val early = InstallDecision.decide(
-                declaredId = declaredId,
-                entryClass = entryClass,
-                acceptedIds = emptySet(),
-                pending = emptyMap(),
-                errors = emptyList(),
-                active = false,
-            )
-            if (early.status == InstallStatus.REJECTED && early.code == InstallDecision.CODE_METADATA) {
-                return@withContext early.toContract(version = version)
-            }
-            val id = declaredId!!
-
-            // 落盘：宿主的外部 mods 目录，jar 与 sidecar 同名，扫描才找得到这一对。
-            val staging = File(context.cacheDir, "install-staging").apply { mkdirs() }
-            val jarFile = File(staging, "$id.jar")
-            val jsonFile = File(staging, "$id.json")
-            runCatching {
-                jarFile.writeBytes(request.jar)
-                jsonFile.writeText(request.sidecarJson)
-            }.onFailure { error ->
-                return@withContext InstallOutcome(
-                    status = InstallStatus.REJECTED,
-                    pluginId = id,
-                    code = "WRITE_FAILED",
-                    message = "写入暂存区失败：${error.message ?: error::class.simpleName}",
-                ).toContract(version = version)
-            }
-            val importedJar = installer.importExternal(jarFile, "$id.jar", overwrite = true)
-            val importedJson = installer.importExternal(jsonFile, "$id.json", overwrite = true)
-            runCatching { jarFile.delete(); jsonFile.delete() }
-            if (importedJar == null || importedJson == null) {
-                return@withContext InstallOutcome(
-                    status = InstallStatus.REJECTED,
-                    pluginId = id,
-                    code = "MODS_UNWRITABLE",
-                    message = "无法写入 EV/mods：给宿主共享存储权限后再试",
-                ).toContract(version = version)
-            }
-
-            // 调用方只应在用户对**这一份字节**点头之后传 true；哈希在这里现算，不信调用方给的。
-            val sha = androidModuleHash(importedJar)
-            if (request.approveUnsigned) approvals.approve(id, sha)
-
-            // 只重扫 + 只激活这一颗，不走 resync()。
-            //
-            // resync() 会顺手停掉"这一轮没扫到"的插件。而安装的调用方本身就是一颗正在 apply()
-            // 的插件：一旦它在这轮里被判为不可用，宿主就 dispose 掉它的 Fiber，调用方的协程
-            // 当场被取消，安装流程断在半路（实测 JobCancellationException）。
-            // 安装语义不需要动别人，就别动别人。
-            val sync = installer.sync()
-            syncErrors = sync.errors
-            pendingUnsigned = sync.pending
-            installed.clear()
-            sync.plugins.forEach { installed[it.id] = it }
-            if (sync.errors.isEmpty()) pruneStorageOfUninstalled()
-            val fresh = installed[id]
-            if (fresh != null && isEnabled(id) && safeMode == null) activate(fresh)
-
-            val outcome = InstallDecision.decide(
-                declaredId = id,
-                entryClass = entryClass,
-                acceptedIds = installed.keys.toSet(),
-                pending = sync.pending.associate { it.id to it.sha256 },
-                errors = sync.errors.map { error ->
-                    error.substringBefore(':', missingDelimiterValue = "") to error
-                },
-                active = active.containsKey(id),
-            )
-            outcome.toContract(version = version)
-        }
-
-        override suspend fun uninstall(pluginId: String): Boolean = withContext(Dispatchers.IO) {
-            val known = installed.containsKey(pluginId) || pendingUnsigned.any { it.id == pluginId }
-            if (!known) return@withContext false
-            this@HostComposition.uninstall(pluginId)
-            true
-        }
+    private suspend fun rescanForInstall(): PluginScanSummary {
+        val sync = installer.sync()
+        syncErrors = sync.errors
+        pendingUnsigned = sync.pending
+        installed.clear()
+        sync.plugins.forEach { installed[it.id] = it }
+        if (sync.errors.isEmpty()) pruneStorageOfUninstalled()
+        return PluginScanSummary(installed.keys.toSet(), sync.pending, sync.errors)
     }
 
-    /** host-core 的结论 → 契约形状。两边 enum 刻意分开，映射只发生在这一个地方。 */
-    private fun InstallOutcome.toContract(version: String?): PluginInstallResult = PluginInstallResult(
-        status = when (status) {
-            InstallStatus.INSTALLED -> PluginInstallStatus.INSTALLED
-            InstallStatus.NEEDS_APPROVAL -> PluginInstallStatus.NEEDS_APPROVAL
-            InstallStatus.REJECTED -> PluginInstallStatus.REJECTED
-        },
-        pluginId = pluginId,
-        version = version,
-        sha256 = sha256,
-        code = code,
-        message = message,
-        active = active,
-    )
 
     /**
      * Deletes one plugin's stored files (management "清理") and restarts it when enabled, so the
