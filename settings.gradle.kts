@@ -31,6 +31,9 @@ project(":loader").projectDir = file("third_party/cordis/loader")
 include("packages", "packager")
 
 // Android host runtime and the plugin contract it shares with plugins.
+// 宿主拆成两层：host-runtime 放运行期（装配/运维/路由/恢复），host-app 放入口。
+// 拆模块的顺序和拆类一致：先把不依赖宿主类型的那几块搬出去，一块一块来。
+include(":host-runtime")
 include(":ui-kit")
 include(":host-api")
 include(":host")

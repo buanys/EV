@@ -103,6 +103,7 @@ dependencies {
     implementation(project(":host-api"))
     // Host-only logic that must not be published as part of the plugin contract (see :host-core).
     implementation(project(":host-core"))
+    implementation(project(":host-runtime"))
 
     // Shared runtime the host lends to every plugin. Plugins compileOnly these coordinates and
     // must not package them, or the class identity would split across the class-loader boundary.

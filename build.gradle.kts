@@ -27,6 +27,7 @@ val kernelModules = subprojects.filter {
     it.name != "packager" &&
         it.path != ":host" &&
         it.path != ":host-core" &&
+        it.path != ":host-runtime" &&
         it.path != ":host-api" &&
         it.path != ":ui-kit" &&
         !it.path.startsWith(":plugins")

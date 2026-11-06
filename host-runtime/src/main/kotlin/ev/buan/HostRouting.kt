@@ -16,7 +16,7 @@ import org.cordis.loader.AndroidModuleLoader
  * 依赖用函数传进来而不是直接拿 `HostComposition`：路由只需要四个问题
  * （有哪些插件、启没启用、有没有失败、被展示时通知谁），不该握住整个宿主。
  */
-internal class HostRouting(
+class HostRouting(
     private val modules: AndroidModuleLoader,
     private val preferences: SharedPreferences,
     private val pluginIds: () -> Collection<String>,
