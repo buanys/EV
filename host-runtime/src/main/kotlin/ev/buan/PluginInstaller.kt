@@ -1,13 +1,7 @@
 package ev.buan
 
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Environment
-import ev.buan.hostcore.dependency.DependencyMetadataParser
 import ev.buan.hostcore.dependency.DependencyResolver
-import ev.buan.hostcore.permission.PermissionDeclaration
-import ev.buan.hostcore.permission.PermissionMetadataParser
-import ev.buan.hostcore.plugin.PluginId
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,8 +16,6 @@ import ev.buan.hostcore.validation.PluginCandidate
 import ev.buan.hostcore.validation.PluginRejectionCode
 import ev.buan.hostcore.validation.PluginValidator
 import ev.buan.hostcore.validation.ValidationResult
-import org.json.JSONArray
-import org.json.JSONObject
 
 /** One artifact that passed trust, version and hash checks and now lives in private storage. */
 data class InstalledPlugin(
@@ -99,8 +91,8 @@ class PluginInstaller(
     private val capabilityTrust: CapabilityTrustStore = CapabilityTrustStore(context),
 ) {
 
-    private val privateRoot: File = File(context.filesDir, "mods")
-    private val codeCacheRoot: File = File(context.codeCacheDir, "cordis-plugins")
+    /** 宿主的三条插件路径与它们之间的搬运，见 [PluginFiles]。 */
+    private val files = PluginFiles(context)
     /**
      * Scan results for containers that have not changed since the last launch.
      *
@@ -114,30 +106,9 @@ class PluginInstaller(
     /** 元数据只读：File 进去、数据出来，不碰安装器的任何状态。 */
     private val metadata = PluginMetadataReader(context)
 
-    private val externalRoot: File
-        get() = File(Environment.getExternalStorageDirectory(), "EV/mods")
+    private val collector = PluginCollector(context, files, metadata)
 
-    fun hasAllFilesAccess(): Boolean = Environment.isExternalStorageManager()
 
-    /**
-     * Deletes one container from the external mods directory: the jar and its sidecar json.
-     *
-     * Plugin *storage* is deliberately untouched - "卸载" removes the code, not the user's data,
-     * and the management page offers "清理" separately for that. The private mirror is refreshed by
-     * the next [sync], which no longer finds these files and drops them.
-     *
-     * Returns the names that were actually removed, so the caller can report a partial failure
-     * instead of claiming success.
-     */
-    fun removeExternal(id: String): List<String> {
-        val targets = listOf("$id.jar", "$id.json")
-        val removed = mutableListOf<String>()
-        for (name in targets) {
-            val file = File(externalRoot, name)
-            if (file.isFile && file.delete()) removed += name
-        }
-        return removed
-    }
 
     /**
      * 删掉这个 id 在私有目录里的镜像副本。
@@ -147,39 +118,22 @@ class PluginInstaller(
      * 路径必须走 [privateFileFor]——与写入时同一个函数，拼字符串错一次就是"删了个寂寞"。
      */
 
-    fun removePrivate(id: String): Boolean {
-        val file = privateFileFor(id)
-        if (!file.exists()) return false
-        // 目录平时是 r-x：宿主在 sync 结束时用 setReadOnly 锁住，防止容器被就地改写。
-        // unlink 需要的是**目录**可写，所以这里短暂解锁、删、立刻锁回去——与 sync 同一套写法。
-        privateRoot.setWritable(true)
-        val deleted = runCatching { file.delete() }.getOrDefault(false)
-        privateRoot.setReadOnly()
-        if (!deleted) android.util.Log.w("EV", "removePrivate 失败：${file.absolutePath}（由下次 sync 的 prune 收尾）")
-        return deleted
-    }
 
-    /**
-     * Copies a user-picked container into the external mods directory.
-     *
-     * The name is kept verbatim: sidecar lookup is by the jar's own file name, so renaming here
-     * would silently detach a jar from its metadata. An existing file is replaced only when
-     * [overwrite] is set, so importing twice is an explicit decision.
-     */
-    fun importExternal(source: File, fileName: String, overwrite: Boolean): File? {
-        if (!externalRoot.isDirectory && !externalRoot.mkdirs()) return null
-        val target = File(externalRoot, fileName)
-        if (target.exists() && !overwrite) return null
-        return runCatching {
-            source.copyTo(target, overwrite = true)
-            target
-        }.getOrNull()
-    }
+
+    // 文件搬运的实现搬进了 PluginFiles；这四个仍是安装器的公开面（宿主与插件页在用）。
+
+    fun hasAllFilesAccess(): Boolean = files.hasAllFilesAccess()
+
+    fun removeExternal(id: String): List<String> = files.removeExternal(id)
+
+    fun removePrivate(id: String): Boolean = files.removePrivate(id)
+
+    fun importExternal(source: File, fileName: String, overwrite: Boolean): File? =
+        files.importExternal(source, fileName, overwrite)
 
     suspend fun sync(): SyncResult = withContext(Dispatchers.IO) {
         val errors = mutableListOf<String>()
-        privateRoot.mkdirs()
-        privateRoot.setWritable(true)
+        files.beginSync()
 
         val accepted = linkedMapOf<String, InstalledPlugin>()
         val hashes = mutableMapOf<String, String>()
@@ -189,8 +143,8 @@ class PluginInstaller(
         // against, so the accept order comes from the declared dependency graph - never from file
         // names or from which source (bundled or external) a container came from.
         val sources = mutableListOf<PluginSource>()
-        collectBundled(sources, errors)
-        collectExternal(sources, errors)
+        collector.bundled(sources, errors)
+        collector.external(sources, errors)
         acceptOrder(sources, errors).forEach { source ->
             // Per-container isolation: one jar that makes a gate throw used to abort the whole
             // accept loop, and the plugin simply vanished from every list with no message. A bad
@@ -202,74 +156,20 @@ class PluginInstaller(
             }
         }
 
-        prunePrivate(accepted.keys, errors)
-        pruneCodeCache(accepted.values.associate { it.id to it.version }, errors)
-
+        files.prune(accepted.keys, accepted.values.associate { it.id to it.version }, errors)
+        
         // Only containers scanned this pass stay in the cache: a deleted jar must not leave a
         // stale entry behind that a later file with the same path could accidentally match.
         scanCache.retain(sources.mapTo(HashSet()) { it.file.absolutePath })
         scanCache.save()
 
-        privateRoot.setReadOnly()
+        files.endSync()
         SyncResult(accepted.values.toList(), errors, pending)
     }
 
     // ---------------------------------------------------------------- sources
 
-    /** One container that parsed cleanly and is waiting for its place in the accept order. */
-    private data class PluginSource(val file: File, val meta: PluginMeta)
 
-    private fun collectBundled(sources: MutableList<PluginSource>, errors: MutableList<String>) {
-        val names = runCatching { context.assets.list("plugins/android")?.toList().orEmpty() }
-            .getOrElse {
-                errors += "读取内置插件失败: $it"
-                return
-            }
-        // Assets have no meaningful order of their own; the listing is kept stable for reproducible
-        // messages, but it no longer decides when a container is accepted.
-        names.filter { it.endsWith(".apk") }.sorted().forEach { name ->
-            runCatching {
-                val staged = stageAsset(name)
-                val meta = metadata.read(staged) ?: error("缺少 cordis.entry 元数据")
-                // The id becomes a private file name and a loader module id; reject it before
-                // anything is copied or written. The error stays per-asset, not a crash.
-                PluginId.requireValid(meta.id)
-                sources += PluginSource(staged, meta)
-                trace("scanned (bundled) ${meta.id}")
-            }.onFailure { errors += "内置插件 $name: $it" }
-        }
-    }
-
-    /**
-     * Collects `<external storage>/EV/mods`, accepting nothing.
-     *
-     * The listing order is whatever the filesystem returns; two containers are only ordered against
-     * each other when one of them declares the other as a dependency.
-     */
-    private fun collectExternal(sources: MutableList<PluginSource>, errors: MutableList<String>) {
-        val external = externalRoot
-        if (!hasAllFilesAccess()) {
-            errors += "未授予「所有文件访问权限」，跳过扫描 ${external.path}"
-            return
-        }
-        if (!external.isDirectory && !external.mkdirs()) {
-            errors += "无法创建 ${external.path}"
-            return
-        }
-        external.listFiles()
-            ?.filter { it.isFile && it.extension.lowercase() in SUPPORTED_EXTENSIONS }
-            ?.forEach { source ->
-                runCatching {
-                    val meta = metadata.read(source)
-                        ?: error("缺少元数据（APK 需 cordis.entry/cordis.api，jar/dex 需同名 .json）")
-                    // Fail closed before accept/publish: an id containing a path separator, `..`,
-                    // a drive prefix or control characters must never become a file name.
-                    PluginId.requireValid(meta.id)
-                    sources += PluginSource(source, meta)
-                    trace("scanned ${meta.id} from ${source.name}")
-                }.onFailure { errors += "${source.name}: $it" }
-            }
-    }
 
     /**
      * Puts the collected containers in the order they may be accepted: dependencies first.
@@ -333,7 +233,7 @@ class PluginInstaller(
         val cached = scanCache.get(source.absolutePath, size, modified)
         val hash = cached?.sha256 ?: androidModuleHash(source)
         val violations = cached?.violations
-            ?: DexClassScanner.violations(source, reservedPrefixes()).map { it.className }
+            ?: DexClassScanner.violations(source, PluginPolicy.reservedPrefixes()).map { it.className }
         if (cached == null) {
             scanCache.put(
                 source.absolutePath,
@@ -386,10 +286,10 @@ class PluginInstaller(
                         fileName = source.name,
                         reason = reason,
                     )
-                    trace("pending ${meta.id} (${source.name}) · $reason")
+                    tracePlugin("pending ${meta.id} (${source.name}) · $reason")
                     return
                 }
-                trace("auto-approved ${meta.id} (${source.name}) · ${CapabilityTrust.describe(outcome)}")
+                tracePlugin("auto-approved ${meta.id} (${source.name}) · ${CapabilityTrust.describe(outcome)}")
             }
             approvals.approve(decision.pluginId, decision.sha256)
             capabilityTrust.record(meta.id, surface)
@@ -406,7 +306,7 @@ class PluginInstaller(
                     capabilityTrust.recordIfAbsent(meta.id, surface)
                 }
                 publish(source, meta, hash, candidate, accepted, hashes, reused = cached != null)
-                trace("accepted ${meta.id} (${source.name})")
+                tracePlugin("accepted ${meta.id} (${source.name})")
             }
             is ValidationResult.Rejected ->
                 if (decision.rejection.code == PluginRejectionCode.PERMISSION_DENIED) {
@@ -415,12 +315,12 @@ class PluginInstaller(
                     // that decides whether it may actually load. The permission gate is the last
                     // one in the validator, so every trust/content/identity check already passed.
                     publish(source, meta, hash, candidate, accepted, hashes, reused = cached != null)
-                    trace("accepted-with-denied-permissions ${meta.id} (${source.name})")
+                    tracePlugin("accepted-with-denied-permissions ${meta.id} (${source.name})")
                 } else {
                     errors += "${decision.rejection.code}: ${decision.rejection.message}"
                     // 只打 code 等于把人赶去读 validator：缺哪个依赖、那个依赖现在是什么状态，
                     // 这里其实全都知道。
-                    trace(
+                    tracePlugin(
                         "rejected ${meta.id} (${source.name}): ${decision.rejection.code}" +
                             " · ${decision.rejection.message}",
                     )
@@ -432,7 +332,7 @@ class PluginInstaller(
                                 else ->
                                     "本次没有被接受（不在 mods、被别的规则拒绝，或它自己也缺依赖）"
                             }
-                            trace("  ↳ 依赖 $dep：$state")
+                            tracePlugin("  ↳ 依赖 $dep：$state")
                         }
                     }
                 }
@@ -453,21 +353,13 @@ class PluginInstaller(
         /** True when [source] matched its cached scan, so the private copy is known to be in step. */
         reused: Boolean = false,
     ) {
-        val target = privateFileFor(meta.id)
+        val target = files.targetFor(meta.id)
         val installed = target.takeIf { it.isFile }?.let { existing ->
             // A cached source hash means these bytes were published unchanged last time; with the
             // same length the private copy is the same file, so it does not need a third full read.
             if (reused && existing.length() == source.length()) hash else androidModuleHash(existing)
         }
-        if (installed != hash) {
-            val temporary = File(privateRoot, PluginId.stagingFileName(meta.id))
-            deleteFile(temporary)
-            source.inputStream().use { input -> temporary.outputStream().use(input::copyTo) }
-            check(androidModuleHash(temporary) == hash) { "复制后哈希不一致: ${meta.id}" }
-            temporary.setReadOnly()
-            deleteFile(target)
-            check(temporary.renameTo(target)) { "无法发布 $target" }
-        }
+        if (installed != hash) files.publish(target, source, meta.id, hash)
 
         hashes[meta.id] = hash
         accepted[meta.id] = InstalledPlugin(
@@ -488,94 +380,9 @@ class PluginInstaller(
 
     // ---------------------------------------------------------------- maintenance
 
-    /** Private copies whose source disappeared are removed; the loader never sees stale files. */
-    private fun prunePrivate(expectedIds: Set<String>, errors: MutableList<String>) {
-        privateRoot.listFiles()?.forEach { file ->
-            if (!file.isFile) return@forEach
-            val stale = file.name.startsWith(".") || file.nameWithoutExtension !in expectedIds
-            if (stale) runCatching { deleteFile(file) }
-                .onFailure { errors += "清理 ${file.name} 失败: $it" }
-        }
-    }
 
-    /** Dexopt output is per (id, version); anything else is dead weight. */
-    private fun pruneCodeCache(current: Map<String, String>, errors: MutableList<String>) {
-        codeCacheRoot.listFiles()?.forEach { idDir ->
-            val currentVersion = current[idDir.name]
-            if (currentVersion == null) {
-                runCatching { idDir.deleteRecursively() }
-                    .onFailure { errors += "清理缓存 ${idDir.name} 失败: $it" }
-                return@forEach
-            }
-            idDir.listFiles()?.forEach { versionDir ->
-                if (versionDir.name != currentVersion) {
-                    runCatching { versionDir.deleteRecursively() }
-                        .onFailure { errors += "清理缓存 ${idDir.name}/${versionDir.name} 失败: $it" }
-                }
-            }
-        }
-    }
 
     // ---------------------------------------------------------------- metadata
 
     // ---------------------------------------------------------------- files
-
-    private fun stageAsset(name: String): File {
-        val staged = File(context.cacheDir, "seed/$name")
-        staged.parentFile?.mkdirs()
-        if (!staged.isFile) {
-            context.assets.open("plugins/android/$name").use { input ->
-                staged.outputStream().use(input::copyTo)
-            }
-        }
-        return staged
-    }
-
-    /** Read-only files cannot be deleted directly, so reopen them first. */
-    private fun deleteFile(file: File) {
-        if (!file.exists()) return
-        file.setWritable(true)
-        check(file.delete()) { "无法删除 $file" }
-    }
-
-    /**
-     * Packages a plugin must not define: the platform, the Kotlin runtime, the kernel and every
-     * package the host already provides. Mirrors the class loader's shared prefixes so a container
-     * that duplicates one of them is rejected instead of producing two class identities.
-     */
-    private fun reservedPrefixes(): List<String> =
-        PLATFORM_PREFIXES + org.cordis.api.HostPackages.shared + "ev.buan.ui"
-
-    private fun privateFileFor(id: String): File {
-        // Defense in depth: collect validates the id, but the file-name helper is the last line
-        // between an id and the private root, so it re-checks instead of trusting the caller.
-        val name = PluginId.fileName(id)
-        privateRoot.mkdirs()
-        return File(privateRoot, name)
-    }
-
-    /**
-     * One line per container decision, on logcat's `EV` tag.
-     *
-     * Installs run at start-up, before any UI exists, so the only place a decision can be observed
-     * after the fact is the log. Card state alone cannot distinguish "rejected" from "never seen".
-     */
-    private fun trace(message: String) = android.util.Log.i("EV", "plugin $message")
-
-    private companion object {
-        // Packages the platform or the host runtime always owns. A plugin defining any of these
-        // shadows a class the OS or the host already provides, so it is rejected outright.
-        // This list is deliberately independent of HostPackages: a package stops being shared
-        // (org.json, once the bundled copy was removed) but must never become plugin-definable.
-        val PLATFORM_PREFIXES = listOf(
-            "java", "javax", "android", "dalvik",
-            "kotlin", "kotlinx.coroutines",
-            "org.cordis",
-            "org.json", "org.apache.http", "org.xmlpull", "org.w3c.dom", "org.xml.sax",
-            "junit",
-        )
-        const val ENTRY_META = "cordis.entry"
-        const val API_META = "cordis.api"
-        val SUPPORTED_EXTENSIONS = setOf("apk", "jar", "dex")
-    }
 }

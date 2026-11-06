@@ -7,4 +7,3 @@
 
 host-runtime/src/main/kotlin/ev/buan/HostComposition.kt
 host-app/src/main/kotlin/ev/buan/PluginsActivity.kt
-host-runtime/src/main/kotlin/ev/buan/PluginInstaller.kt
