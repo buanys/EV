@@ -38,7 +38,7 @@ echo "== 3/3 插件 jar =="
   --no-configuration-cache --console=plain \
   -Dorg.gradle.java.installations.paths="$JAVA_PATHS"
 
-APK=host/build/outputs/apk/release/host-release.apk
+APK=host-app/build/outputs/apk/release/host-release.apk
 test -f "$APK" || { echo "缺少 $APK"; exit 1; }
 echo "APK: $APK ($(du -h "$APK" | cut -f1))"
 

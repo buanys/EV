@@ -94,7 +94,7 @@ jobs:
 
       - name: Verify the APK is signed with the release key
         run: |
-          apk=host/build/outputs/apk/release/host-release.apk
+          apk=host-app/build/outputs/apk/release/host-release.apk
           test -f "$apk"
           # apksigner 不在 hosted runner 的 PATH 上，要从 SDK 的 build-tools 里取最新一份。
           sdk_root="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
@@ -130,7 +130,7 @@ jobs:
         run: |
           version="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           mkdir -p dist
-          cp host/build/outputs/apk/release/host-release.apk "dist/EV-${version}.apk"
+          cp host-app/build/outputs/apk/release/host-release.apk "dist/EV-${version}.apk"
           mv dist/plugins.zip "dist/EV-${version}-plugins.zip" 2>/dev/null || true
           echo "version=$version" >> "$GITHUB_OUTPUT"
           ls -lh dist

@@ -25,7 +25,7 @@ allprojects {
 // contract and the plugin APKs are not, and must not receive the KMP + Android library plugins.
 val kernelModules = subprojects.filter {
     it.name != "packager" &&
-        it.path != ":host" &&
+        it.path != ":host-app" &&
         it.path != ":host-core" &&
         it.path != ":host-runtime" &&
         it.path != ":host-api" &&
@@ -96,7 +96,7 @@ configure(kernelModules) {
 // Only the kernel libraries, `:host-api` and `:ui-kit` are published. The host and its internal
 // core are application-internal, and plugins are packaged as .kplugin archives, not artifacts.
 val publishableModules = subprojects.filter {
-    it.path != ":host" && it.path != ":host-core" && !it.path.startsWith(":plugins")
+    it.path != ":host-app" && it.path != ":host-core" && !it.path.startsWith(":plugins")
 }
 
 configure(publishableModules) {

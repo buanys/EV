@@ -36,7 +36,7 @@ include("packages", "packager")
 include(":host-runtime")
 include(":ui-kit")
 include(":host-api")
-include(":host")
+include(":host-app")
 // Host-only logic (validation, per-plugin storage, crash bookkeeping, dependency resolution) that
 // must not live in the published plugin contract or the design system. Plain Kotlin/JVM.
 include(":host-core")

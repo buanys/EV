@@ -9,7 +9,7 @@ host-runtime/src/main/kotlin/ev/buan/HostComposition.kt
 plugins/feature/agent-brain/src/main/kotlin/ev/buan/plugins/agent/brain/AgentBrainService.kt
 plugins/base/agent-memory/src/main/kotlin/ev/buan/plugins/agent/memory/MemoryPage.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvModelProvidersScreen.kt
-host/src/main/kotlin/ev/buan/PluginsActivity.kt
+host-app/src/main/kotlin/ev/buan/PluginsActivity.kt
 host-runtime/src/main/kotlin/ev/buan/PluginInstaller.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/EvUiPlugin.kt
 plugins/feature/agent-browse/src/main/kotlin/ev/buan/plugins/agent/browse/BrowserWebView.kt
@@ -18,4 +18,4 @@ plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvComposer.kt
 ui-kit/src/main/kotlin/ev/buan/ui/EvGlyphVectors.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvMarkdown.kt
 plugins/feature/ev-ui/src/main/kotlin/ev/buan/plugins/ev/ui/ui/EvPluginCatalogScreen.kt
-host/src/main/kotlin/ev/buan/intro/PaperStartup.kt
+host-app/src/main/kotlin/ev/buan/intro/PaperStartup.kt

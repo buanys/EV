@@ -36,7 +36,7 @@ class SharedPackagesContractTest {
 
     private val hostPackages: String = hostPackagesFile.readText()
 
-    private val proguard: String = File(root, "host/proguard-rules.pro").readText()
+    private val proguard: String = File(root, "host-app/proguard-rules.pro").readText()
 
     @Test
     fun `清单无重复项`() {
