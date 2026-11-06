@@ -113,6 +113,16 @@ class HostRuntime(private val context: AndroidContext) {
     )
 
     /** Crash marker under `files/crash/`; tells [start] whether this is a safe-mode launch. */
+    /** 运维：信任与授权。只改存储，交回快照（见 ADR-0002）。 */
+    private val ops = HostOps(
+        approvals = approvals,
+        capabilityTrust = capabilityTrust,
+        onApproved = { id, sha256 ->
+            pendingUnsigned = pendingUnsigned.filterNot { it.id == id && it.sha256 == sha256 }
+        },
+        snapshot = { snapshot() },
+    )
+
     private val crash = CrashStore(context)
     private val preferences = context.getSharedPreferences("ev.plugins", AndroidContext.MODE_PRIVATE)
     private val appearanceStore = AppearanceStore(context)
@@ -417,28 +427,11 @@ class HostRuntime(private val context: AndroidContext) {
         }
     }
 
-    fun approveUnsigned(id: String, sha256: String): HostState {
-        approvals.approve(id, sha256)
-        pendingUnsigned = pendingUnsigned.filterNot { it.id == id && it.sha256 == sha256 }
-        return snapshot()
-    }
+    fun approveUnsigned(id: String, sha256: String): HostState = ops.approveUnsigned(id, sha256)
 
-    fun revokeUnsignedApproval(id: String): HostState {
-        approvals.revoke(id)
-        capabilityTrust.forget(id)
-        return snapshot()
-    }
+    fun revokeUnsignedApproval(id: String): HostState = ops.revokeUnsignedApproval(id)
 
-    /**
-     * 打开/关闭某个未签名插件的「信任后续版本」（ADR-0008）。
-     *
-     * 打开它等于接受"同一能力面下作者可以推新代码而不再问我"。所以这个开关只有在
-     * 插件页能显示出能力面变化之后才有意义——UI 与它是一起交付的。
-     */
-    fun setTrustUpdates(id: String, trust: Boolean): HostState {
-        capabilityTrust.setTrustsUpdates(id, trust)
-        return snapshot()
-    }
+    fun setTrustUpdates(id: String, trust: Boolean): HostState = ops.setTrustUpdates(id, trust)
 
     /**
      * Enables or disables one plugin for this and future launches. While in safe mode the preference
