@@ -1,5 +1,6 @@
 package ev.buan
 
+import org.cordis.api.BrowserService
 import org.cordis.api.CalendarService
 import org.cordis.api.CredentialService
 import org.cordis.api.DeviceControlService
@@ -21,11 +22,13 @@ internal suspend fun provideDeclaredServices(
     credentials: () -> CredentialService,
     calendar: () -> CalendarService,
     control: () -> DeviceControlService,
+    browser: () -> BrowserService,
     userData: () -> UserDataStorage,
 ) {
     providePluginStorageIfDeclared(pluginContext, requested, storage)
     provideCredentialIfDeclared(pluginContext, requested, credentials)
     provideCalendarIfDeclared(pluginContext, requested, calendar)
     provideDeviceControlIfDeclared(pluginContext, requested, control)
+    provideBrowserIfDeclared(pluginContext, requested, browser)
     provideUserDataIfDeclared(pluginContext, requested, userData)
 }

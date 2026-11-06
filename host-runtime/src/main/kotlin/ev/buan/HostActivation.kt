@@ -105,6 +105,9 @@ internal interface ActivationHost {
     /** 同上，设备控制。 */
     fun makeDeviceControl(permission: PermissionService): org.cordis.api.DeviceControlService
 
+    /** 全应用共用的浏览器会话。 */
+    fun makeBrowser(permission: PermissionService): org.cordis.api.BrowserService
+
     /** 后台常驻服务由 app 层接线；没接就是宿主配置错了，激活会失败并说明原因。 */
     fun makeBackgroundService(pluginId: String, permission: PermissionService?): BackgroundService
 
@@ -307,6 +310,7 @@ internal class HostActivation(private val host: ActivationHost) {
                 credentials = { host.makeCredentials(plugin.id, permissionService) },
                 calendar = { host.makeCalendar(permissionService) },
                 control = { host.makeDeviceControl(permissionService) },
+                browser = { host.makeBrowser(permissionService) },
                 userData = { UserDataStorageImpl(host.appContext, plugin.id, permissionService) },
             )
             // Background execution is host-mediated too: the plugin takes references, the host owns

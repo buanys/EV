@@ -66,6 +66,14 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
 
     /** 设备控制的工厂；与日历同一套"按插件提供 + 每次调用复核"的接法。 */
     var deviceControlFactory: ((AndroidContext, PermissionService) -> org.cordis.api.DeviceControlService)? = null
+
+    /**
+     * 全应用共用的浏览器会话（懒建）。
+     *
+     * 共享而不是每插件一个：WebView 带着用户的 cookie，两个实例就等于两个登录态；
+     * 而且它常驻主线程，多一个就多几 MB。
+     */
+    private val browserSession by lazy { HostBrowserSession(context) { activityProvider() } }
     /**
      * 屏幕、HUD、后台常驻三组能力的实现在 app 层（它们长在无障碍服务与前台服务上）。
      * 运行时只拿接口，不拿实现——这正是 2f 拆模块最后挡路的三处。
@@ -255,6 +263,15 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     override fun makeCalendar(permission: PermissionService): org.cordis.api.CalendarService =
         calendarFactory?.invoke(context, permission)
             ?: error("日历服务没有在 app 层接线（EvApplication.calendarFactory）")
+
+    override fun makeBrowser(permission: PermissionService): org.cordis.api.BrowserService {
+        // 授权在工具层按 BROWSER 复核一次即可：会话本身没有"这个插件能不能看"的区分，
+        // 真正的边界是它能不能拿到这个绑定。
+        if (!permission.isGranted(org.cordis.api.HostPermission.BROWSER)) {
+            throw SecurityException("缺少权限 BROWSER")
+        }
+        return browserSession
+    }
 
     override fun makeDeviceControl(permission: PermissionService): org.cordis.api.DeviceControlService =
         deviceControlFactory?.invoke(context, permission)
@@ -572,6 +589,7 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     fun handleTrimMemory(level: Int) {
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             pageReader?.cancelInFlight()
+            runCatching { browserSession.close() }
         }
     }
 

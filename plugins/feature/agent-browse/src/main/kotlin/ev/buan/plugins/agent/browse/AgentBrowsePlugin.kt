@@ -51,7 +51,13 @@ class AgentBrowsePlugin :
     override val title = "联网搜索"
     override val body = "web_search 搜索网页、web_fetch 读页面正文；需要 JS 的页面自动交给离屏浏览器。"
 
-    override val inject: Dependencies = dependencies(ServiceDirectory.Key, RuntimeBudgetService.Key)
+    override val inject: Dependencies = dependencies(
+        ServiceDirectory.Key,
+        RuntimeBudgetService.Key,
+        // 浏览器会话：没声明 BROWSER 时宿主根本不会提供绑定，插件会停在 PENDING——
+        // 这正是"要么能浏览、要么别起"的表达。
+        org.cordis.api.BrowserService.Key,
+    )
 
     override val pageTitle: String = "浏览器"
 
@@ -73,6 +79,7 @@ class AgentBrowsePlugin :
             .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
+        val browser = ctx.require(org.cordis.api.BrowserService.Key)
         registry.register(
             PLUGIN_ID,
             BrowseTools(
@@ -80,7 +87,7 @@ class AgentBrowsePlugin :
                 pageReader = directory.lookup(PageReader.Key),
                 // 宿主的执行预算：渲染走 Long 档位，由宿主决定这一刻能不能开。
                 budget = ctx.require(RuntimeBudgetService.Key),
-            ).all(),
+            ).all() + BrowserTools.all(browser),
         )
     }
 

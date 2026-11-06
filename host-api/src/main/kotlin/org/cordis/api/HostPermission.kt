@@ -96,6 +96,14 @@ enum class HostPermission {
      * 只读的设备上下文（`DeviceContextService`）不需要它，能改才需要。
      */
     DEVICE_CONTROL,
+
+    /**
+     * 驱动内置浏览器：打开页面、点元素、填表、截图。
+     *
+     * 它不改设备设置，但**会以用户的身份访问网站**（带着已登录的 cookie），所以单独一位：
+     * 用户需要能说"这个插件不许替我上网"。
+     */
+    BROWSER,
     ;
 
     companion object {
