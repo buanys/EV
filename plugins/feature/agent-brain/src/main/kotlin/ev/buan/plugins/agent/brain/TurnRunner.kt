@@ -9,23 +9,18 @@ import ev.buan.plugins.agent.api.AgentRole
 import ev.buan.plugins.agent.api.AgentStop
 import ev.buan.plugins.agent.api.AgentToolCall
 import ev.buan.plugins.agent.api.AgentUsage
-import ev.buan.plugins.agent.api.ApprovalDecision
 import ev.buan.plugins.agent.api.ApprovalPolicy
 import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelRef
 import ev.buan.plugins.agent.api.ModelService
-import ev.buan.plugins.agent.api.PromptContext
-import ev.buan.plugins.agent.api.PromptLayer
 import ev.buan.plugins.agent.api.SessionLog
 import ev.buan.plugins.agent.api.StepState
-import ev.buan.plugins.agent.api.SystemPromptService
 import ev.buan.plugins.agent.api.ToolGuardRegistry
 import ev.buan.plugins.agent.api.ToolRegistry
 import ev.buan.plugins.agent.api.ToolSpec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.FlowCollector
-import kotlinx.coroutines.withTimeoutOrNull
 import org.cordis.api.HudPhase
 import org.cordis.api.HudState
 
@@ -104,8 +99,9 @@ internal class TurnState(
  * The body of one agent round, extracted from [AgentBrainService].
  *
  * Everything that needs the host - pause\/stop checkpoints, message persistence, the HUD capsule -
- * arrives through [Host]; everything else (budget, tool guards, and every pure helper) lives here,
- * so the round logic can be read top to bottom in one file. The runner is created once per
+ * arrives through [Host]; the round itself reads top to bottom in [turnOnce]. What [turnOnce] asks
+ * for but does not narrate lives beside it: [executeGuarded] and [describe] in ToolExecution.kt,
+ * the wording in TurnText.kt, the request prompt in TurnPrompt.kt. The runner is created once per
  * service; all per-turn variation travels through [TurnState] and the extension receiver.
  */
 internal class TurnRunner(
@@ -158,13 +154,6 @@ internal class TurnRunner(
 
         data class Reflection(val text: String) : Outcome
     }
-
-    private data class Executed(
-        val result: String,
-        val approvalNanos: Long,
-        val state: StepState,
-        val images: List<AgentImage> = emptyList(),
-    )
 
     /**
      * One model interaction: pause check, request, run this round's tool batch, feed the results
@@ -278,6 +267,8 @@ internal class TurnRunner(
                 call = call,
                 approval = state.approval,
                 policy = state.policy,
+                guards = guards,
+                budget = budget,
             ) {
                 emit(AgentProgress.ToolAwaitingApproval(call.id))
             }
@@ -365,287 +356,9 @@ internal class TurnRunner(
         val pending = stopAfterRound
         return if (pending != null) TurnStep.Stop(pending) else TurnStep.Continue
     }
-
-    /**
-     * 跑一次工具调用，按顺序过三道：硬规则、预判、人工审批。
-     *
-     * 三道的强度不同，顺序也不可换：
-     *  1. [ToolGuardRegistry] —— 硬规则，任何人都绕不过，包括 policy 和用户自己批过；
-     *  2. [ApprovalPolicy] —— 预判，只能把"要问人"变成"直接放行/直接拒绝"；
-     *  3. [ApprovalService] —— 问人，挂起直到有人回答，没人回答就是拒绝。
-     *
-     * fail-closed 贯穿全程：缺 registry、缺 gate、policy 抛异常、gate 抛异常，全部拒绝。
-     * 拒绝理由作为工具结果回给模型，所以这一轮会降级，而不是直接死掉。
-     *
-     * The approval wait sits **outside** the execution timeout: a person deciding must not be
-     * "timed out", they are the reason the call is slow. The timeout only bounds the tool itself.
-     */
-    private suspend fun executeGuarded(
-        registry: ToolRegistry?,
-        call: AgentToolCall,
-        approval: ApprovalService?,
-        policy: ApprovalPolicy?,
-        onAwaitingApproval: suspend () -> Unit,
-    ): Executed {
-        if (registry == null) {
-            return Executed("工具系统未启用（未安装 $TOOLS_PLUGIN）", 0, StepState.Failed)
-        }
-        val tool = registry.lookup(call.name)
-            ?: return Executed("没有名为 ${call.name} 的工具", 0, StepState.Failed)
-
-        // 硬规则先过：不管谁批过、是不是高危，guard 说不行就是不行。
-        // 放在审批之前而不是之后，是因为"先问人再被规则否决"会让用户白做一次决定。
-        val veto = try {
-            guards.vet(call)
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (error: Throwable) {
-            // 坏掉的 guard 不能变成放行。
-            "已拦截：安全规则插件出错（${error.message ?: error::class.simpleName}），本次未执行"
-        }
-        if (veto != null) return Executed(veto, 0, StepState.Failed)
-
-        var approvalNanos = 0L
-        if (tool.spec.dangerous) {
-            // 预判：policy 只能把 ASK 变成 ALLOW / DENY，绕不过上面的 guard。
-            // 没有 policy 时一律 ASK，行为与它出现之前完全一致。
-            val verdict = try {
-                policy?.judge(call.name, call.argumentsJson) ?: ApprovalPolicy.Verdict.ASK
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (error: Throwable) {
-                return Executed(
-                    "已拦截：审批策略出错（${error.message ?: error::class.simpleName}），本次未执行",
-                    0,
-                    StepState.Failed,
-                )
-            }
-            when (verdict) {
-                ApprovalPolicy.Verdict.DENY -> return Executed(
-                    "已拒绝：审批策略禁止 ${call.name} 在本次执行",
-                    0,
-                    StepState.Failed,
-                )
-
-                ApprovalPolicy.Verdict.ALLOW -> Unit // 明确安全，不问人
-
-                ApprovalPolicy.Verdict.ASK -> {
-                    val gate = approval ?: return Executed(
-                        "已拦截：${call.name} 属于高危操作，需要人工审批，但审批界面未启用（请启用 ev-ui 后重试）",
-                        0,
-                        StepState.Failed,
-                    )
-                    onAwaitingApproval()
-                    val startedApproval = System.nanoTime()
-                    val decision = try {
-                        gate.request(call.name, call.argumentsJson)
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (error: Throwable) {
-                        // A broken gate must never become an approval.
-                        return Executed(
-                            "已拦截：审批通道出错（${error.message ?: error::class.simpleName}），本次未执行",
-                            System.nanoTime() - startedApproval,
-                            StepState.Failed,
-                        )
-                    }
-                    approvalNanos = System.nanoTime() - startedApproval
-                    if (decision == ApprovalDecision.DENY) {
-                        return Executed("用户拒绝了本次执行", approvalNanos, StepState.Failed)
-                    }
-                }
-            }
-        }
-
-        val timeout = timeoutFor(tool.spec.name)
-        var failed = false
-        var images: List<AgentImage> = emptyList()
-        val result = try {
-            val produced = withTimeoutOrNull(timeout) { tool.invokeResult(call.argumentsJson) }
-            if (produced == null) {
-                "工具 ${call.name} 超时（${timeout / 1000}s），本次未完成"
-            } else {
-                images = produced.images
-                produced.text
-            }
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (error: Throwable) {
-            failed = true
-            "工具调用失败：${error.message ?: error::class.simpleName}"
-        }
-        if (result.startsWith("工具 ${call.name} 超时")) failed = true
-        return Executed(result, approvalNanos, if (failed) StepState.Failed else StepState.Ok, images)
-    }
-
-    /**
-     * 把人看不懂的工具名翻成一句话。
-     *
-     * `screen_tap` 是给开发者看的：用户要知道的是"它在点哪儿"。参数里带文字的（点按文字、
-     * 启动应用）就带上，带不出的退回到一个动词——比原样显示函数名有用得多。
-     */
-    private fun describe(call: AgentToolCall): String {
-        val arg = runCatching {
-            org.json.JSONObject(call.argumentsJson.ifBlank { "{}" })
-        }.getOrNull()
-
-        fun text(vararg keys: String): String? = keys.firstNotNullOfOrNull { key ->
-            arg?.optString(key, "")?.trim()?.takeIf { it.isNotEmpty() }
-        }
-
-        return when (call.name) {
-            "screen_tap" -> "点按"
-            "screen_tap_text" -> text("text")?.let { "点「$it」" } ?: "点按"
-            "screen_input" -> "输入文字"
-            "screen_scroll" -> if (text("direction") == "up") "向上翻" else "向下翻"
-            "screen_read_all" -> "读完整页"
-            "screen_wait" -> text("text")?.let { "等「$it」" } ?: "等界面"
-            "screen_dump" -> "读屏"
-            "screen_capture" -> "截图"
-            "read_image" -> "看图"
-            "screen_key" -> when (text("key")) {
-                "back" -> "返回"
-                "home" -> "回桌面"
-                "recents" -> "任务列表"
-                "notifications" -> "拉通知栏"
-                else -> "按键"
-            }
-            "app_launch" -> text("package", "name", "app")?.let { "启动「$it」" } ?: "启动应用"
-            "app_current" -> "看当前应用"
-            "run_shell" -> "执行命令"
-            "web_search" -> "搜索"
-            "web_fetch" -> "打开网页"
-            "remember", "recall", "read_memory" -> "翻记事本"
-            else -> call.name
-        }
-    }
-
-    /**
-     * Normalizes a TOOL_CALL event into the contract shape. Events are the brain's source of
-     * truth; a provider that omits the call id gets a synthesized one so the assistant message and
-     * the tool result still correlate.
-     */
-    private fun toolCallOf(index: Int, call: AgentEvent): AgentToolCall = AgentToolCall(
-        id = call.toolCallId?.takeIf { it.isNotBlank() } ?: "call_$index",
-        name = call.toolName?.takeIf { it.isNotBlank() } ?: "unknown",
-        argumentsJson = call.argumentsJson.orEmpty(),
-    )
-
-    private fun reflection(call: AgentToolCall): String =
-        "（运行时提示）你刚才用相同参数再次调用了 ${call.name}，结果没有变化。" +
-            "换一种方法，或直接说明为什么无法继续。"
-
-    /** Whitespace-free, lowercase, trailing punctuation dropped: "no progress" is about meaning. */
-    private fun normalize(text: String): String =
-        text.lowercase()
-            .filterNot { it.isWhitespace() }
-            .trimEnd('。', '！', '？', '.', '!', '?')
-
-    private fun timeoutFor(toolName: String): Long =
-        if (toolName == SHELL_TOOL_NAME) budget.shellTimeoutMs else budget.toolTimeoutMs
 }
-
-/** Null when the caller asked for a model this provider does not serve. */
-internal fun selectModel(available: List<ModelRef>, requested: ModelRef?): ModelRef? =
-    if (requested == null) available.firstOrNull()
-    else available.firstOrNull { it.model == requested.model }
-
-/**
- * The two halves of one request's prompt: the stable system message, and the volatile tail.
- *
- * [volatile] is null when no layer asked for it, which is the case for the built-in baseline -
- * a request whose tail never changes must not grow a "runtime info" section for nothing.
- */
-internal data class ComposedPrompt(val system: String?, val volatile: String?)
-
-/**
- * The prompt for one turn: the prompt plugin's layers, plus the caller's character.
- *
- * Three degradations, all deliberate:
- * - no plugin, an empty list, or a plugin that throws -> [BUILTIN_LAYERS], because a turn
- *   without a baseline is how the agent ends up giving advice instead of acting;
- * - a blank character prompt contributes nothing, it does not remove the baseline;
- * - layers that do not fit [MAX_SYSTEM_PROMPT_CHARS] are dropped whole, smallest priority
- *   first, because half a rule is worse than no rule.
- */
-internal fun composePrompt(
-    provider: SystemPromptService?,
-    characterPrompt: String?,
-    sessionId: String,
-): ComposedPrompt {
-    val fromPlugin = try {
-        provider?.layers(PromptContext(sessionId = sessionId, nowMillis = System.currentTimeMillis()))
-    } catch (error: Throwable) {
-        // A broken prompt plugin must not take the turn down; the baseline still applies.
-        null
-    }
-    val layers = if (fromPlugin.isNullOrEmpty()) BUILTIN_LAYERS else fromPlugin
-    val stable = layers.filterNot { it.volatile }.toMutableList()
-    characterPrompt?.trim()?.takeIf { it.isNotEmpty() }?.let {
-        stable += PromptLayer(PERSONA_ID, "角色", it, PERSONA_PRIORITY)
-    }
-    val volatile = layers.filter { it.volatile }
-        .joinToString("\n") { it.body.trim() }
-        .takeIf { it.isNotEmpty() }
-        ?.let { "$VOLATILE_HEADER\n$it" }
-    return ComposedPrompt(system = assemble(stable), volatile = volatile)
-}
-
-/** Priority descending, id ascending for ties, so the same layers always render the same way. */
-private fun assemble(layers: List<PromptLayer>): String? {
-    val ordered = layers.sortedWith(
-        compareByDescending<PromptLayer> { it.priority }.thenBy { it.id },
-    )
-    val kept = mutableListOf<String>()
-    var chars = 0
-    for (layer in ordered) {
-        val body = layer.body.trim()
-        if (body.isEmpty()) continue
-        val cost = body.length + PROMPT_LAYER_OVERHEAD_CHARS
-        // The first layer is kept unconditionally: a prompt trimmed to nothing is worse than
-        // one that overspends by a few hundred characters.
-        if (kept.isNotEmpty() && chars + cost > MAX_SYSTEM_PROMPT_CHARS) continue
-        kept += body
-        chars += cost
-    }
-    return kept.takeIf { it.isNotEmpty() }?.joinToString("\n\n")
-}
-
-internal fun promptChars(messages: List<AgentMessage>): Int =
-    messages.sumOf { it.content.length + PER_MESSAGE_OVERHEAD_CHARS }
-
-internal fun degraded(model: ModelRef?, reason: String, usage: AgentUsage? = null): AgentReply =
-    AgentReply(
-        message = AgentMessage(role = AgentRole.ASSISTANT, content = reason),
-        model = model,
-        events = listOf(AgentEvent(kind = AgentEvent.Kind.ERROR, text = reason)),
-        usage = usage,
-        stop = AgentStop(AgentStop.Reason.ERROR, 0, 0, reason),
-    )
-
-private fun failure(model: ModelRef, error: Throwable, usage: AgentUsage?): AgentReply = degraded(
-    model,
-    "模型调用失败：${error.message ?: error::class.simpleName}",
-    usage,
-)
 
 // ---------------------------------------------------------------- 循环体私有的常量
-
-private const val TOOLS_PLUGIN = "ev.buan.plugins.agent.tools"
-
-/** Model calls one user turn may make. A guard against loops, not a task-size estimate. */
-private const val MAX_ROUNDS = 20
-
-/** Tool invocations one user turn may make. */
-private const val MAX_TOOL_CALLS = 60
-
-/** Wall-clock budget, excluding time the human spends on approval. */
-private const val DEADLINE_MS = 300_000L
-
-/** Counting overhead per message (role markers, separators) when budgeting a prompt. */
-private const val PER_MESSAGE_OVERHEAD_CHARS = 32
-
-private const val SHELL_TOOL_NAME = "run_shell"
 
 /** Second repeated call gets a reflection; the third ends the turn. */
 private const val REPEAT_LIMIT = 2
@@ -657,47 +370,3 @@ private const val MAX_TOOL_RESULT_CHARS = 8_000
 
 /** Display-only excerpt carried by [AgentProgress.ToolFinished]. */
 private const val PREVIEW_CHARS = 300
-
-/** Room for the whole system message; see [composeSystemPrompt]. */
-private const val MAX_SYSTEM_PROMPT_CHARS = 8_000
-
-/** Counting a heading separator per layer when budgeting the system message. */
-private const val PROMPT_LAYER_OVERHEAD_CHARS = 2
-
-private const val PERSONA_ID = "persona"
-
-/**
- * Header on the volatile tail, so the model can tell it apart from what the user typed.
- *
- * The tail rides inside the user message (a second system message mid-conversation is
- * rejected by some OpenAI-compatible servers), which makes this line the only thing
- * separating "the user said" from "the runtime appended".
- */
-private const val VOLATILE_HEADER = "（运行时信息，不是用户输入）"
-
-/** Between `style` (75) and `env` (40): a persona shapes tone, not behaviour. */
-private const val PERSONA_PRIORITY = 60
-
-/**
- * What the agent is told when no prompt plugin is installed.
- *
- * Short on purpose: it only has to stop the worst failure - an agent that talks about the
- * device instead of operating it, and one that never says when it is done. Everything
- * richer belongs to `agent-prompt`, which the user can replace.
- */
-private val BUILTIN_LAYERS: List<PromptLayer> = listOf(
-    PromptLayer(
-        id = "identity",
-        title = "身份与位置",
-        priority = 100,
-        body = "你运行在一台 Android 手机上的 agent 宿主里，可以用工具真的操作它。" +
-            "说\"已完成\"之前必须真的调用过工具并看到结果；还没动手就说明打算怎么做。",
-    ),
-    PromptLayer(
-        id = "stop",
-        title = "什么时候停",
-        priority = 90,
-        body = "一轮对话有预算：最多 $MAX_ROUNDS 次模型往返、$MAX_TOOL_CALLS 次工具调用、" +
-            "${DEADLINE_MS / 60_000} 分钟。做完就停；做不到要说清卡在哪，不要含糊收尾。",
-    ),
-)
