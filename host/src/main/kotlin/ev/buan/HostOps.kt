@@ -18,6 +18,10 @@ internal class HostOps(
     private val capabilityTrust: CapabilityTrustStore,
     private val writeEnabled: (id: String, enabled: Boolean) -> Unit,
     private val writePermission: (id: String, permission: HostPermission, granted: Boolean) -> Unit,
+    private val stop: suspend (id: String) -> Unit,
+    private val removeFiles: (id: String) -> Unit,
+    private val removePreference: (id: String) -> Unit,
+    private val clearPluginStorage: (id: String) -> Unit,
     private val resync: suspend () -> HostState,
     private val reload: suspend (id: String) -> Unit,
     private val onApproved: (id: String, sha256: String) -> Unit,
@@ -57,6 +61,36 @@ internal class HostOps(
     suspend fun setEnabled(id: String, enabled: Boolean): HostState {
         writeEnabled(id, enabled)
         return resync()
+    }
+
+    /**
+     * 卸载：删字节与记录，然后整树重扫。
+     *
+     * 重扫会把它从 `installed` 里去掉，并按"不在清单里的 active 一律停掉"的规则收尾——
+     * 这正是启动路径上已有的那条规则，不该在卸载这里再写一遍。
+     *
+     * ADR-0008：卸载 = 撤回整条链。只清字节批准会让能力面与 opt-in 留下来，
+     * 同名插件装回来时白拿一次自动通过。
+     */
+    suspend fun uninstall(id: String): HostState {
+        // 先停再删：插件还活着的时候删掉它的私有镜像，它下一次读自己目录会踩到空。
+        stop(id)
+        removeFiles(id)
+        removePreference(id)
+        approvals.revoke(id)
+        capabilityTrust.forget(id)
+        return resync()
+    }
+
+    /**
+     * 清空一个插件的数据目录。
+     *
+     * 数据和"装没装"是两件事：清数据不改变依赖拓扑，所以只重载它自己。
+     */
+    suspend fun clearStorage(id: String): HostState {
+        clearPluginStorage(id)
+        reload(id)
+        return snapshot()
     }
 
     /**

@@ -121,6 +121,13 @@ class HostRuntime(private val context: AndroidContext) {
         writePermission = { id, permission, granted ->
             if (granted) permissions.grant(id, permission) else permissions.revoke(id, permission)
         },
+        stop = { id -> deactivate(id) },
+        removeFiles = { id ->
+            runCatching { installer.removeExternal(id) }
+            installer.removePrivate(id)
+        },
+        removePreference = { id -> preferences.edit().remove(key(id)).apply() },
+        clearPluginStorage = { id -> runCatching { PluginStorageImpl(context, id).clear() } },
         resync = { resync() },
         reload = { id ->
             // 和原来的 setPermission 同一条规则：停用中、或处于安全模式，都不许把它拉起来。
@@ -463,21 +470,7 @@ class HostRuntime(private val context: AndroidContext) {
     suspend fun setPermission(id: String, permission: HostPermission, granted: Boolean): HostState =
         ops.setPermission(id, permission, granted)
 
-    suspend fun uninstall(id: String): HostState = withContext(Dispatchers.IO) {
-        deactivate(id)
-        installed.remove(id)
-        failures.remove(id)
-        runCatching { installer.removeExternal(id) }
-        // 私有镜像一并删掉：只删外部那份会让"已卸载"的容器继续占着几十 MB，
-        // 而且下次扫描才被 prune——中间这段时间它在插件页里像个幽灵。
-        installer.removePrivate(id)
-        preferences.edit().remove(key(id)).apply()
-        // ADR-0008 决策 2：卸载 = 撤回整条链。只清字节批准会让能力面和 opt-in 留下来，
-        // 同名插件重新装回来时白拿一次自动通过。
-        approvals.revoke(id)
-        capabilityTrust.forget(id)
-        snapshot()
-    }
+    suspend fun uninstall(id: String): HostState = ops.uninstall(id)
 
     /**
      * 安装契约的宿主实现：搬字节 → 触发一次同步 → 把结论翻译成契约形状。
@@ -595,16 +588,7 @@ class HostRuntime(private val context: AndroidContext) {
      * plugin starts from an empty area. This and uninstall are the only deletions: disabling keeps
      * the plugin's data.
      */
-    suspend fun clearStorage(id: String): HostState = withContext(Dispatchers.IO) {
-        val enabledPlugin = installed[id]?.takeIf { isEnabled(id) }
-        if (enabledPlugin != null) deactivate(id)
-        // Host management path: no PermissionService is passed, so「清理」works regardless of the
-        // plugin's grants (usageBytes/clear are deliberately not permission-gated).
-        runCatching { PluginStorageImpl(context, id).clear() }
-        // Safe mode forbids loading; clearing itself is safe because nothing is running.
-        if (enabledPlugin != null && safeMode == null) activate(enabledPlugin)
-        snapshot()
-    }
+    suspend fun clearStorage(id: String): HostState = ops.clearStorage(id)
 
     /**
      * Leaves safe mode: removes the crash marker and loads every enabled plugin again.
