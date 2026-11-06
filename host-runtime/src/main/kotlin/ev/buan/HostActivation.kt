@@ -69,6 +69,12 @@ internal interface ActivationHost {
     /** 用户是否启用了这个插件（开关存在宿主自己的 prefs 里）。 */
     fun isPluginEnabled(id: String): Boolean
 
+    /** 这个插件历史失败了几次；到了阈值就不再尝试激活。 */
+    fun failureScoreOf(id: String): ev.buan.hostcore.recovery.FailureScore
+
+    /** 记一次成功（减分）或失败（加分）。 */
+    fun recordFailure(id: String, success: Boolean)
+
     /** 删掉已经不在安装清单里的插件数据；[keepIds] 之外的都算过时。 */
     fun pruneStorage(keepIds: Set<String>)
 
@@ -187,6 +193,14 @@ internal class HostActivation(private val host: ActivationHost) {
             host.failures[plugin.id] = SAFE_MODE_BLOCKED
             return
         }
+        // 失败计分门：到阈值就**不再尝试**，直到用户重置。
+        // 不是"再试一次看看吧"——一个必然失败的插件每次启动都要付 90 秒超时，
+        // 而用户看到的应该是一条明确结论，不是又一条失败。
+        val history = host.failureScoreOf(plugin.id)
+        if (history.blocked) {
+            host.failures[plugin.id] = blockedMessage(history.count)
+            return
+        }
         host.failures.remove(plugin.id)
         // Capability gate before any loading work: an ungranted declaration means the plugin may
         // not run, and the card says why so the user can grant it.
@@ -296,7 +310,10 @@ internal class HostActivation(private val host: ActivationHost) {
                 error("插件没有启动：inject 声明的服务没有被提供，apply 从未执行")
             }
             host.active[plugin.id] = scope
+            // 成功只在**这一次真的跑起来了**之后才减分：失败后立刻重试成功不算"它还好"。
+            host.recordFailure(plugin.id, success = true)
         } catch (timeout: TimeoutCancellationException) {
+            host.recordFailure(plugin.id, success = false)
             host.failures[plugin.id] = "启动超时（${START_TIMEOUT_MS / 1000} 秒）"
             host.budgetJobs.remove(plugin.id)?.cancel()
             runCatching { scopeFiber?.dispose() }
@@ -305,6 +322,7 @@ internal class HostActivation(private val host: ActivationHost) {
             // surfaces as InvocationTargetException whose cause names the missing class or method,
             // and that cause is the only actionable part of the report.
             android.util.Log.e("EV", "plugin ${plugin.id} activation failed", error)
+            host.recordFailure(plugin.id, success = false)
             host.failures[plugin.id] = generateSequence(error) { it.cause }
                 .map { "${it.javaClass.name}: ${it.message.orEmpty()}" }
                 .joinToString("  ←  ")
@@ -343,5 +361,9 @@ internal class HostActivation(private val host: ActivationHost) {
          * rendered identically, and the only way to tell them apart was to read the host's code.
          */
         const val NOT_LOADED = "已启用但未加载：导入阶段没有返回实例（详见 logcat 的 EV 标签）"
+
+        /** 失败次数到阈值后的卡片文案；出口必须写出来，否则用户不知道该做什么。 */
+        fun blockedMessage(count: Int): String =
+            "已停用：连续失败 $count 次（在插件卡片上点「重置失败计数」后可再试）"
     }
 }

@@ -54,6 +54,8 @@ internal fun PluginSection(
     onToggle: (String, Boolean) -> Unit,
     onPermission: (String, HostPermission, Boolean) -> Unit,
     onClearStorage: (String) -> Unit,
+    /** 重置失败计数并重试；只有失败过的插件才需要它。 */
+    onResetFailures: (String) -> Unit,
     onOpenPage: (String) -> Unit,
     onUninstall: (String) -> Unit,
     onConfirmUninstall: () -> Unit,
@@ -220,6 +222,19 @@ internal fun PluginSection(
                     style = MiuixTheme.textStyles.footnote1,
                     color = StatusError,
                 )
+                // 失败历史要看得见，并且必须给出出口：没有重置，用户只能卸载重装。
+                if (card.failureCount > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "失败 ${card.failureCount} 次",
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = colors.onSurfaceVariantSummary,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        CardAction(label = "重置失败计数") { onResetFailures(card.id) }
+                    }
+                }
             } else if (!card.enabled) {
                 Spacer(Modifier.height(6.dp))
                 Text(

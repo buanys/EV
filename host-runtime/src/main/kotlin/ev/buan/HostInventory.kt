@@ -22,6 +22,7 @@ internal class HostInventory(
     private val permissions: PermissionStore,
     private val capabilityTrust: CapabilityTrustStore,
     private val preferences: SharedPreferences,
+    private val failureScores: FailureScoreStoreImpl,
 ) {
 
     fun isEnabled(id: String): Boolean = preferences.getBoolean(key(id), true)
@@ -63,6 +64,7 @@ internal class HostInventory(
             storageBytes = storageUsage(plugin.id),
             shortcuts = plugin.shortcuts,
             trustsUpdates = capabilityTrust.trustsUpdates(plugin.id),
+            failureCount = failureScores.score(plugin.id).count,
         )
     }
 

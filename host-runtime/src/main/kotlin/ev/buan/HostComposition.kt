@@ -147,7 +147,11 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
             runCatching { installer.removeExternal(id) }
             installer.removePrivate(id)
         },
-        removePreference = { id -> preferences.edit().remove(key(id)).apply() },
+        removePreference = { id ->
+            preferences.edit().remove(key(id)).apply()
+            // 卸载时把失败历史一起清掉：prefs 里留着一个再也对不上号的数字没有意义。
+            failureScores.remove(id)
+        },
         clearPluginStorage = { id -> runCatching { PluginStorageImpl(context, id).clear() } },
         resync = { resync() },
         reload = { id ->
@@ -219,14 +223,24 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
         )
     }
 
+    override fun failureScoreOf(id: String): ev.buan.hostcore.recovery.FailureScore = failureScores.score(id)
+
+    override fun recordFailure(id: String, success: Boolean) {
+        val current = failureScores.score(id)
+        failureScores.save(id, if (success) current.afterSuccess() else current.afterFailure())
+    }
+
     /** 凭据的存放地。插件拿不到路径，只能经 `CredentialService` 按名字要。 */
     private val credentialStore = CredentialStore(java.io.File(context.filesDir, "secrets"))
 
     override fun makeCredentials(pluginId: String, permission: PermissionService): CredentialService =
         CredentialServiceImpl(pluginId, credentialStore, permission)
 
+    /** 失败计数：跨进程保留，否则每次启动都重新给三次机会，这道门等于没有。 */
+    private val failureScores = FailureScoreStoreImpl(preferences)
+
     /** 存货：装了谁、开关、占用、卡片。只管读，见 [HostInventory]。 */
-    private val inventory = HostInventory(context, permissions, capabilityTrust, preferences)
+    private val inventory = HostInventory(context, permissions, capabilityTrust, preferences, failureScores)
 
     /** Host-owned theme state. Plugins read it through [AppearanceService]. */
     val appearance: State<ev.buan.ui.EvAppearance> = appearanceStore.appearance
@@ -572,6 +586,17 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
      * the plugin's data.
      */
     suspend fun clearStorage(id: String): HostState = ops.clearStorage(id)
+
+    /**
+     * 重置一个插件的失败计数并重新激活它。
+     *
+     * 这是"失败计分"唯一的出口：没有它，一个连续失败三次的插件就再也不会被尝试，
+     * 用户只能在卸载重装和永远停用之间选。
+     */
+    suspend fun resetFailureScore(id: String): HostState = withContext(Dispatchers.IO) {
+        failureScores.reset(id)
+        resync()
+    }
 
     /**
      * Leaves safe mode: removes the crash marker and loads every enabled plugin again.
