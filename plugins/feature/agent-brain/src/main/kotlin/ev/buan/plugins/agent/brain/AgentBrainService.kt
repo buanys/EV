@@ -1,7 +1,5 @@
 package ev.buan.plugins.agent.brain
 
-import ev.buan.plugins.agent.api.AgentEvent
-import ev.buan.plugins.agent.api.AgentImage
 import ev.buan.plugins.agent.api.AgentMessage
 import ev.buan.plugins.agent.api.AgentProgress
 import ev.buan.plugins.agent.api.AgentReply
@@ -9,31 +7,20 @@ import ev.buan.plugins.agent.api.AgentRole
 import ev.buan.plugins.agent.api.AgentService
 import ev.buan.plugins.agent.api.AgentStop
 import ev.buan.plugins.agent.api.AgentToolCall
-import ev.buan.plugins.agent.api.AgentUsage
-import ev.buan.plugins.agent.api.ApprovalDecision
-import ev.buan.plugins.agent.api.ApprovalPolicy
-import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
 import ev.buan.plugins.agent.api.ModelRef
 import ev.buan.plugins.agent.api.ModelService
-import ev.buan.plugins.agent.api.PromptContext
-import ev.buan.plugins.agent.api.PromptLayer
 import ev.buan.plugins.agent.api.SessionEvent
 import ev.buan.plugins.agent.api.SessionLog
-import ev.buan.plugins.agent.api.StepState
-import ev.buan.plugins.agent.api.SystemPromptService
 import ev.buan.plugins.agent.api.Tool
 import ev.buan.plugins.agent.api.ToolGuard
 import ev.buan.plugins.agent.api.ToolGuardRegistry
-import ev.buan.plugins.agent.api.ToolRegistry
-import ev.buan.plugins.agent.api.ToolSpec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withTimeoutOrNull
 
 
 /**
@@ -98,7 +85,7 @@ class AgentBrainService internal constructor(
             sessionLog: SessionLog?,
             sessionId: String,
             message: AgentMessage,
-        ) = this@AgentBrainService.remember(memory, sessionLog, sessionId, message)
+        ) = recordMessage(memory, sessionLog, sessionId, message)
         override fun publishHud(state: org.cordis.api.HudState) = this@AgentBrainService.publishHud(state)
         override fun currentHud(): org.cordis.api.HudState = lastHud
     })
@@ -181,9 +168,6 @@ class AgentBrainService internal constructor(
         lastHud = state
         runCatching { capabilities.current().hud?.show(state) }
     }
-
-    /** 用户按了停止。单独一个类型，好和真正的异常区分开。 */
-    private class AgentStopped : RuntimeException("用户停止了这一轮")
 
     /** True when a model plugin is published and serves at least one configured model. */
     override val ready: Boolean
@@ -294,7 +278,7 @@ class AgentBrainService internal constructor(
         }
         // Memory keeps what the user actually typed: the volatile tail is regenerated every turn,
         // and storing it would replay a stale clock in later requests.
-        remember(state.memory, state.sessionLog, state.sessionId, userMessage)
+        recordMessage(state.memory, state.sessionLog, state.sessionId, userMessage)
 
         val startedAt = System.nanoTime()
         var stop = AgentStop(AgentStop.Reason.ROUNDS, 0, 0)
@@ -337,7 +321,7 @@ class AgentBrainService internal constructor(
             wrapUp(stop, state.inputs, target, modelService, state.usages, state.events)
         }
         if (content.isNotBlank()) {
-            remember(
+            recordMessage(
                 state.memory,
                 state.sessionLog,
                 state.sessionId,
@@ -368,113 +352,6 @@ class AgentBrainService internal constructor(
                 ),
             ),
         )
-    }
-
-    /**
-     * One last completion without tools, so a budget stop still produces a readable answer.
-     *
-     * Failure is not fatal: the caller gets [FALLBACK_STOPPED] plus the [AgentStop] reason instead
-     * of an exception, because losing the whole turn to a failed summary would be worse than the
-     * half-finished answer this exists to avoid.
-     */
-    private suspend fun wrapUp(
-        stop: AgentStop,
-        inputs: List<AgentMessage>,
-        target: ModelRef,
-        modelService: ModelService,
-        usages: MutableList<AgentUsage?>,
-        events: MutableList<AgentEvent>,
-    ): String {
-        if (stop.reason == AgentStop.Reason.ERROR) return FALLBACK_STOPPED
-        val instruction = AgentMessage(
-            role = AgentRole.USER,
-            content = "（运行时提示）本轮预算已用尽：${stop.rounds} 轮、${stop.toolCalls} 次工具调用。" +
-                "请只总结当前进展、已完成的部分和下一步建议，不要再调用工具。",
-        )
-        // After DEADLINE the budget is already gone; waiting the full wrap timeout would make the
-        // overrun much worse than a short summary is worth.
-        val timeout = if (stop.reason == AgentStop.Reason.DEADLINE) {
-            WRAP_TIMEOUT_AFTER_DEADLINE_MS
-        } else {
-            WRAP_TIMEOUT_MS
-        }
-        val reply = withTimeoutOrNull(timeout) {
-            runCatching { modelService.complete(target, inputs + instruction, emptyList()) }
-                .getOrNull()
-        }
-        if (reply != null) {
-            reply.usage?.let { usages += it }
-            events += reply.events
-        }
-        return reply?.message?.content?.takeIf { it.isNotBlank() } ?: FALLBACK_STOPPED
-    }
-
-    /**
-     * 历史：事件流优先，memory 兜底。
-     *
-     * 为什么不是"两边合并"：合并就得定义去重与顺序，而这两份数据本来就该是同一串消息。
-     * 日志非空说明它记录了完整的一轮（brain 每次 remember 都先写它），直接采用；
-     * 日志为空说明这是启用日志之前的会话——那时只有 memory 有内容，读它就对了。
-     * 这样升级到事件流不需要迁移脚本，老会话不会突然"没有历史"。
-     */
-    private suspend fun historyOf(
-        memory: MemoryService?,
-        sessionLog: SessionLog?,
-        sessionId: String,
-    ): List<AgentMessage> {
-        val stored = try {
-            sessionLog?.messages(sessionId)?.takeIf { it.isNotEmpty() }
-                ?: memory?.history(sessionId).orEmpty()
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (error: Throwable) {
-            // A broken store degrades to a stateless turn; it must not lose the user's message.
-            emptyList()
-        }
-        // 被 kill 在工具执行中时，历史会停在 assistant(tool_calls) 上；
-        // 不补一条合成结果，下一轮请求会被服务端以 400 永久拒绝。
-        return HistoryRepair.closeDanglingToolCalls(
-            HistoryTrim.trim(stored, MAX_HISTORY_TURNS, MAX_HISTORY_CHARS),
-        )
-    }
-
-    /**
-     * 记一条消息：事件流是真相源，memory 是派生物。
-     *
-     * 顺序不能反过来。先写 memory 再写日志，一旦日志那步失败，下一次 historyOf 会发现
-     * 日志非空却断了一截，于是采用一份不完整的历史——用户会看到对话"丢了一段"。
-     * 先写日志则最坏情况是 memory 少一条（蒸馏的输入旧一点），对话本身不受影响。
-     */
-    private suspend fun remember(
-        memory: MemoryService?,
-        sessionLog: SessionLog?,
-        sessionId: String,
-        message: AgentMessage,
-    ) {
-        if (sessionLog != null) {
-            try {
-                sessionLog.append(sessionId, SessionEvent.Message(message))
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (error: Throwable) {
-                // 日志写失败不该让这一轮死掉：memory 仍会写下同一条，最坏情况是这次不可回放。
-            }
-        }
-        if (memory == null) return
-        try {
-            memory.append(sessionId, message)
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (error: Throwable) {
-            // Best effort: the reply is still useful even when it cannot be persisted.
-        }
-    }
-
-    /** 没有 guard 的默认实现：让不关心拦截的用例不必先起一个注册表。 */
-    internal object NoGuards : ToolGuardRegistry {
-        override fun register(guard: ToolGuard): () -> Unit = {}
-
-        override suspend fun vet(call: AgentToolCall): String? = null
     }
 
     private companion object {

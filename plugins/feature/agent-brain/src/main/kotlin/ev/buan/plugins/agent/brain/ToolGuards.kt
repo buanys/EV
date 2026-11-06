@@ -55,3 +55,10 @@ class ToolGuards : ToolGuardRegistry {
         return null
     }
 }
+
+/** 没有 guard 的默认实现：让不关心拦截的用例不必先起一个注册表。 */
+internal object NoGuards : ToolGuardRegistry {
+    override fun register(guard: ToolGuard): () -> Unit = {}
+
+    override suspend fun vet(call: AgentToolCall): String? = null
+}
