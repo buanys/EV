@@ -85,7 +85,9 @@ broker 的接口粒度按上一版就定好的来：
 - **只代理 `ToolRegistry`**：`specs` / `invoke`，字符串与字节进出，跨 Binder 无痛；
 - **不做双向代理**：子进程里没有凭据、没有宿主服务，声明了别的权限就进不去；
 - **同一 APK 的子进程不是安全边界**：同 UID、同签名、同 SELinux 域，它换来的是**故障隔离与
-  生命周期独立**（崩溃、超时、可单独回收），不是权限隔离。真正的权限隔离要独立 UID 的 APK。
+  生命周期独立**（崩溃、超时、可单独回收），不是权限隔离。而"真正的权限隔离"在插件模型里
+  **不存在**：跨 UID 就是跨应用，论证见 [ADR-0003](0003-permission-scope.md) 的「为什么"换一个 UID"
+  这条路也堵死」——加载必须在宿主进程里发生，类身份过不去，`isolatedProcess` 又是空壳。
 
 协议是手写的 `Binder.transact`（三个 code：LOAD / INVOKE / UNLOAD），不用 AIDL：参数全是
 字符串与整数，AIDL 只会在中间加一层 codegen。子进程侧 `ChildPluginRuntime` 只提供四个东西——
