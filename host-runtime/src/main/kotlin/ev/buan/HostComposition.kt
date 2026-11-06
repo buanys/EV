@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import org.cordis.api.AgentUi
 import org.cordis.api.BackgroundService
 import org.cordis.api.HostPermission
+import org.cordis.api.CredentialService
 import org.cordis.api.PermissionService
 import org.cordis.api.RuntimeBudgetService
 import org.cordis.api.ServiceDirectory
@@ -217,6 +218,12 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
             finished = false,
         )
     }
+
+    /** 凭据的存放地。插件拿不到路径，只能经 `CredentialService` 按名字要。 */
+    private val credentialStore = CredentialStore(java.io.File(context.filesDir, "secrets"))
+
+    override fun makeCredentials(pluginId: String, permission: PermissionService): CredentialService =
+        CredentialServiceImpl(pluginId, credentialStore, permission)
 
     /** 存货：装了谁、开关、占用、卡片。只管读，见 [HostInventory]。 */
     private val inventory = HostInventory(context, permissions, capabilityTrust, preferences)

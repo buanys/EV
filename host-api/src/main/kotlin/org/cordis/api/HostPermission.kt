@@ -67,6 +67,18 @@ enum class HostPermission {
      * to touch root - root must never be a default capability that hides inside a generic plugin.
      */
     ROOT_SHELL,
+
+    /**
+     * Enforced: [CredentialService] is not provided at all without it, and every call re-checks
+     * the grant.
+     *
+     * 凭据归宿主保管（规则的要求）。未声明这个能力的插件连服务都拿不到——它的 `ctx[CredentialService.Key]`
+     * 是 null；声明了但用户没授权时，每次读写都抛 `SecurityException`。
+     *
+     * 这让"谁存了密钥"变成用户可见的一件事：插件卡片上会多一行授权，而不是像以前那样，
+     * API key 安静地躺在插件自己的 `providers.json` 里。
+     */
+    SECRETS,
     ;
 
     companion object {

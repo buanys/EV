@@ -75,6 +75,12 @@ internal interface ActivationHost {
     /** 给一个插件造它自己的预算服务；[lifetime] 取消时在飞的任务随之结束。 */
     fun makeBudget(pluginId: String, lifetime: Job): RuntimeBudgetService
 
+    /**
+     * 给一个插件造它的凭据服务。宿主自己持有存放地，这里只交出"按名字读写"的窄面——
+     * 与 [makeBudget] 同理：接口说能做什么，不说由谁实现。
+     */
+    fun makeCredentials(pluginId: String, permission: PermissionService): org.cordis.api.CredentialService
+
     /** 后台常驻服务由 app 层接线；没接就是宿主配置错了，激活会失败并说明原因。 */
     fun makeBackgroundService(pluginId: String, permission: PermissionService?): BackgroundService
 
@@ -254,6 +260,13 @@ internal class HostActivation(private val host: ActivationHost) {
                 pluginContext,
                 plugin.requestedPermissions,
                 storage = { PluginStorageImpl(host.appContext, plugin.id, permissionService) },
+            )
+            // Credentials are the host's to keep: the plugin gets an API, never a path. A plugin
+            // that never declared SECRETS gets no binding at all (ctx[CredentialService.Key] is null).
+            provideCredentialIfDeclared(
+                pluginContext,
+                plugin.requestedPermissions,
+                credentials = { host.makeCredentials(plugin.id, permissionService) },
             )
             // The user's own data (conversations, keys, memories) lives in the host's tree, not in
             // the plugin area: same gate, but nothing in the plugin lifecycle deletes it.

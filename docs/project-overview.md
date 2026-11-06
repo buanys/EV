@@ -207,10 +207,23 @@ sh scripts/check.sh     # CI 与提交前都跑这一个
 实际：只有"签名 / 未签名"两态（`autoTrustUnsigned = false`，未签名逐个确认）。所有插件
 同进程、同 UID、能调 `su`。这就是 5c，一行没做。
 
-### 8.2 凭据不归宿主
+### 8.2 凭据归宿主 —— 已做（2026-11-06）
 
-规则要求"凭据由宿主保管和裁决，插件只拿到经授权的访问结果"。实际 API key 存在插件自己的
-`ModelConfig` 里（`put("apiKey", ...)`）。**这条既是规则要求也是安全要求**，改动不大。
+`CredentialService`（host-api）+ `CredentialStore`（host-runtime）+ `HostPermission.SECRETS`。
+三道门：**声明**（没写 `SECRETS` 的插件拿不到绑定）、**授权**（没批就每次调用抛
+`SecurityException`，补授权不用重启）、**归属**（每个实例只认自己的 pluginId）。
+
+`agent-model` 是第一个用户：provider 的密钥不再写进 `providers.json`，改存宿主
+`files/secrets/<pluginId>.apk.json`（权限 600）。旧文件里带的 key 在第一次 `load()` 时搬过去
+并重写文档——真机上验证过：`providers.json` 里 `apiKey` 计数归零，模型仍能正常调用（界面显示
+"已配置 Key"）。
+
+**不是加密**：app 私有目录已经是同 UID 之外读不到，这一层的价值是"换个柜子 + 一把钥匙"，
+不是保险箱。用 Keystore 加密是后续可选项。也**不代理网络**——插件拿到明文仍自己发 HTTP，
+真正的隔离要等 5c 的 broker。
+
+⚠️ 已有安装升级后，需要在管理页给 agent-model 补授权「凭据保管」，否则它会停在
+`PERMISSION_DENIED: 缺少权限 SECRETS`（卡片会写明原因，授予后自动启用）。
 
 ### 8.3 依赖没有版本
 

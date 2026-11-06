@@ -54,7 +54,13 @@ class AgentModelPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
     override val body = "OpenAI 兼容的多提供商模型层；提供商、模型与选中项存储在宿主的用户数据区，不随插件卸载或重装丢失。"
 
     override val inject: Dependencies =
-        dependencies(ServiceDirectory.Key, PluginStorage.Key, UserDataStorage.Key, PermissionService.Key)
+        dependencies(
+            ServiceDirectory.Key,
+            PluginStorage.Key,
+            UserDataStorage.Key,
+            PermissionService.Key,
+            org.cordis.api.CredentialService.Key,
+        )
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
         val directory = ctx.require(ServiceDirectory.Key)
@@ -63,7 +69,8 @@ class AgentModelPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
         // so disabling, reinstalling or re-approving this plugin never makes the user type them again.
         val userData = ctx.require(UserDataStorage.Key)
         migrateToUserData(ctx.get(PluginStorage.Key), userData)
-        val repository = ProviderStore(userData)
+        // 密钥归宿主：ProviderStore 只把名字交给宿主的 CredentialService，磁盘上不落明文。
+        val repository = ProviderStore(userData, credentials = ctx.require(org.cordis.api.CredentialService.Key))
         val network = NetworkGate { permissions.require(HostPermission.NETWORK) }
         val transport = OkHttpProviderTransport()
         val modelService = AgentModelService(repository, network, transport)

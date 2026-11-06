@@ -82,6 +82,7 @@ internal fun permissionLabel(permission: HostPermission): String = when (permiss
     HostPermission.CLIPBOARD -> "剪贴板"
     HostPermission.INSTALL_PACKAGES -> "安装应用"
     HostPermission.ROOT_SHELL -> "Root Shell"
+    HostPermission.SECRETS -> "凭据保管"
 }
 
 /** Compact, locale-stable size for the storage row. */

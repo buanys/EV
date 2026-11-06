@@ -26,4 +26,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.20")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    // 单测里的 org.json 是 android.jar 的 stub（方法体抛 "not mocked"）。凭据与扫描缓存都真的
+    // 用它做编解码，所以给测试 classpath 一个真实现——只在 test 配置里，不进 APK。
+    testImplementation("org.json:json:20260814")
 }

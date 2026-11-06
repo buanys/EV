@@ -1,6 +1,7 @@
 package ev.buan.plugins.agent.model
 
 import ev.buan.plugins.agent.api.ModelProvider
+import org.cordis.api.CredentialService
 import org.cordis.api.PluginStorage
 
 /**
@@ -26,6 +27,11 @@ internal interface ProviderRepository {
 internal class ProviderStore(
     private val storage: PluginStorage,
     private val catalog: List<ModelProvider> = ProviderCatalog.builtins,
+    /**
+     * 密钥由宿主保管（规则：凭据归宿主）。为 null 时是"老宿主没有这个契约"的降级路径，
+     * 那时 key 只能留在 json 里——这条分支存在是为了兼容，不是为了默认。
+     */
+    private val credentials: CredentialService? = null,
 ) : ProviderRepository {
 
     override fun load(): List<ModelProvider> {
@@ -34,7 +40,12 @@ internal class ProviderStore(
             // A present but unreadable document degrades to the catalog; it never re-triggers the
             // legacy migration, which would resurrect a configuration the user just replaced.
             val saved = decode(raw).orEmpty()
-            return ProviderDocuments.merge(saved, catalog)
+            val hydrated = hydrate(saved)
+            // 旧文件里带明文 key：搬进宿主凭据后重写一次文档，让磁盘上不再有密钥。
+            if (credentials != null && saved.any { it.apiKey.isNotBlank() }) {
+                runCatching { save(hydrated) }
+            }
+            return ProviderDocuments.merge(hydrated, catalog)
         }
         val legacy = read(LEGACY_PATH)?.let { bytes ->
             runCatching { bytes.decodeToString() }.getOrNull()?.let(ModelConfigCodec::decode)
@@ -49,8 +60,31 @@ internal class ProviderStore(
     }
 
     override fun save(providers: List<ModelProvider>) {
+        // 先落凭据、再落文档：反过来会在两步之间留下"文档说没有 key、凭据里也没有"的窗口。
+        credentials?.let { secrets ->
+            providers.forEach { provider ->
+                val key = provider.apiKey.trim()
+                runCatching {
+                    if (key.isEmpty()) secrets.erase(credentialName(provider.id)) else secrets.write(credentialName(provider.id), key)
+                }
+            }
+        }
         storage.atomicWrite(PATH, ProviderDocuments.encode(providers).encodeToByteArray())
     }
+
+    /** 把宿主保管的密钥补回运行期的 provider 上。取不到就是没有 key，不当成错误。 */
+    private fun hydrate(providers: List<ModelProvider>): List<ModelProvider> {
+        val secrets = credentials ?: return providers
+        return providers.map { provider ->
+            if (provider.apiKey.isNotBlank()) {
+                provider
+            } else {
+                provider.copy(apiKey = runCatching { secrets.read(credentialName(provider.id)) }.getOrNull().orEmpty())
+            }
+        }
+    }
+
+    private fun credentialName(providerId: String): String = "provider:$providerId"
 
     private fun read(path: String): ByteArray? = runCatching { storage.read(path) }.getOrNull()
 

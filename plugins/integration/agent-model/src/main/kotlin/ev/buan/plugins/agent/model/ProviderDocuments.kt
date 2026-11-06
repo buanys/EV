@@ -215,7 +215,8 @@ internal object ProviderDocuments {
         put("id", provider.id)
         put("name", provider.name)
         put("baseUrl", provider.baseUrl)
-        put("apiKey", provider.apiKey)
+        // 密钥不写这里：它归宿主的 CredentialService 保管（见 ProviderStore）。
+        // decode 仍然读这个字段，用于把旧文件里的 key 搬出去。
         put("endpointMode", provider.endpointMode.name)
         putJsonObject("headers") {
             provider.headers.forEach { (name, value) -> put(name, value) }

@@ -1314,6 +1314,20 @@ public final class org.cordis.api.ClipRead$NotForeground implements org.cordis.a
     descriptor: ()I
   public boolean equals(java.lang.Object);
     descriptor: (Ljava/lang/Object;)Z
+public interface org.cordis.api.CredentialService {
+  public static final org.cordis.api.CredentialService$Companion Companion;
+    descriptor: Lorg/cordis/api/CredentialService$Companion;
+  public abstract java.util.List<java.lang.String> names();
+    descriptor: ()Ljava/util/List;
+  public abstract java.lang.String read(java.lang.String);
+    descriptor: (Ljava/lang/String;)Ljava/lang/String;
+  public abstract void write(java.lang.String, java.lang.String);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;)V
+  public abstract void erase(java.lang.String);
+    descriptor: (Ljava/lang/String;)V
+public final class org.cordis.api.CredentialService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.CredentialService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
 public interface org.cordis.api.DeviceContextService {
   public static final org.cordis.api.DeviceContextService$Companion Companion;
     descriptor: Lorg/cordis/api/DeviceContextService$Companion;
@@ -1449,6 +1463,8 @@ public final class org.cordis.api.HostPermission extends java.lang.Enum<org.cord
   public static final org.cordis.api.HostPermission INSTALL_PACKAGES;
     descriptor: Lorg/cordis/api/HostPermission;
   public static final org.cordis.api.HostPermission ROOT_SHELL;
+    descriptor: Lorg/cordis/api/HostPermission;
+  public static final org.cordis.api.HostPermission SECRETS;
     descriptor: Lorg/cordis/api/HostPermission;
   public static org.cordis.api.HostPermission[] values();
     descriptor: ()[Lorg/cordis/api/HostPermission;

@@ -86,7 +86,7 @@ tasks.register("bundlePlugin") {
               "entryClass": "ev.buan.plugins.agent.model.AgentModelPlugin",
               "apiVersion": 1,
               "dependencies": [],
-              "permissions": ["NETWORK", "PLUGIN_STORAGE"]
+              "permissions": ["NETWORK", "PLUGIN_STORAGE", "SECRETS"]
             }
         """.trimIndent()
         File(pluginDist.get().asFile, "agent-model.json").writeText(metadata)

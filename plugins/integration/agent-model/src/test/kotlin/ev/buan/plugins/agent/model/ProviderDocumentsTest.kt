@@ -64,7 +64,34 @@ class ProviderDocumentsTest {
 
         val decoded = ProviderDocuments.decode(ProviderDocuments.encode(listOf(provider, custom)))
 
-        assertEquals(listOf(provider, custom), decoded)
+        // 密钥不落盘：写出去的文档里没有 apiKey，所以读回来是空。
+        // 其余字段必须逐项往返——这是这个用例真正在钉的东西。
+        assertEquals(listOf(provider.copy(apiKey = ""), custom), decoded)
+    }
+
+    @Test
+    fun `encoded document never contains an api key`() {
+        val provider = ModelProvider(
+            id = "deepseek",
+            name = "DeepSeek",
+            baseUrl = "https://api.deepseek.com/v1",
+            apiKey = "sk-should-not-be-written",
+        )
+
+        val text = ProviderDocuments.encode(listOf(provider))
+
+        assertFalse(text.contains("sk-should-not-be-written"), "密钥不能出现在文档里：$text")
+        assertFalse(text.contains("apiKey"), "连字段名都不该出现：$text")
+    }
+
+    @Test
+    fun `decode still reads a legacy api key so it can be moved out`() {
+        // 旧版本把 key 写在这里。读取必须还能拿到它，否则迁移就丢了用户的密钥。
+        val decoded = ProviderDocuments.decode(
+            """[{"id":"x","name":"X","baseUrl":"https://x.test/v1","apiKey":"sk-legacy"}]""",
+        )
+
+        assertEquals("sk-legacy", decoded?.single()?.apiKey)
     }
 
     @Test
