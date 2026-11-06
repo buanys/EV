@@ -1,31 +1,8 @@
 package ev.buan.plugins.ev.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,50 +12,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import ev.buan.plugins.agent.api.AgentService
 import ev.buan.plugins.agent.api.ApprovalService
 import ev.buan.plugins.agent.api.MemoryService
-import ev.buan.plugins.agent.api.ModelProviderService
 import ev.buan.plugins.agent.api.ModelService
 import ev.buan.plugins.agent.api.ToolRegistry
-import ev.buan.plugins.ev.ui.ui.EvLinuxScreen
 import ev.buan.plugins.ev.ui.ui.EvMoreMenuPanel
-import ev.buan.plugins.ev.ui.ui.EvThemePickerScreen
-import ev.buan.plugins.ev.ui.ui.EvDrawerContent
-import ev.buan.plugins.ev.ui.ui.ellipsize
-import ev.buan.plugins.ev.ui.ui.EvHistoryGroup
-import ev.buan.plugins.ev.ui.ui.EvModelProvidersScreen
-import ev.buan.plugins.ev.ui.ui.EvSessionSummary
-import ev.buan.plugins.ev.ui.ui.EvSettingsScreen
-import ev.buan.plugins.ev.ui.ui.EvPluginCatalogScreen
-import ev.buan.plugins.ev.ui.ui.EvApprovalDialog
-import ev.buan.plugins.ev.ui.ui.EvChatBubble
-import ev.buan.plugins.ev.ui.ui.EvChatDefaults
-import ev.buan.plugins.ev.ui.ui.EvMessageEntry
-import ev.buan.plugins.ev.ui.ui.EvComposer
-import ev.buan.plugins.ev.ui.ui.EvComposerAction
-import ev.buan.plugins.ev.ui.ui.EvComposerPanel
-import ev.buan.plugins.ev.ui.ui.EvHomeHero
-import ev.buan.plugins.ev.ui.ui.EvSuggestion
-import ev.buan.plugins.ev.ui.ui.EvTypingIndicator
 import ev.buan.ui.EvDrawerScaffold
 import ev.buan.ui.EvDrawerSide
-import ev.buan.ui.EvGlyph
-import ev.buan.ui.EvGlyphKind
-import ev.buan.ui.EvIcons
-import ev.buan.ui.EvMotionTokens
 import ev.buan.ui.EvPageTransitions
 import ev.buan.ui.EvThemeTokens
-import top.yukonga.miuix.kmp.basic.Icon
-import kotlinx.coroutines.launch
 import org.cordis.Context
 import org.cordis.Dependencies
 import org.cordis.EffectScope
@@ -87,18 +32,11 @@ import org.cordis.api.AgentPage
 import org.cordis.api.AgentSurface
 import org.cordis.api.AppearanceService
 import org.cordis.api.HostNavigation
-import org.cordis.api.PluginPageService
 import org.cordis.api.PluginStorage
 import org.cordis.api.UserDataStorage
 import org.cordis.api.migrateToUserData
 import org.cordis.api.ServiceDirectory
 import org.cordis.dependencies
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
@@ -215,30 +153,17 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
 
     @Composable
     override fun Page(modifier: Modifier, onBack: () -> Unit) =
-        Rooted { ChatSurface(modifier, onHost = onBack, isRoot = false) }
+        EvApprovalRoot(approvalGate) { ChatSurface(modifier, onHost = onBack, isRoot = false) }
 
     @Composable
     override fun Home(modifier: Modifier, onOpenHost: () -> Unit) =
-        Rooted { ChatSurface(modifier, onHost = onOpenHost, isRoot = true) }
+        EvApprovalRoot(approvalGate) { ChatSurface(modifier, onHost = onOpenHost, isRoot = true) }
 
     /**
      * The approval dialog lives here, not inside [ChatSurface]: the panels (settings, tools,
      * memory, browser) return early from ChatSurface, but a dangerous call can arrive while any of
      * them is open, and the human must see the prompt regardless.
      */
-    @Composable
-    private fun Rooted(content: @Composable () -> Unit) {
-        Box(Modifier.fillMaxSize()) {
-            content()
-            approvalGate.pending.firstOrNull()?.let { prompt ->
-                EvApprovalDialog(
-                    prompt = prompt,
-                    onDecide = { decision -> approvalGate.decide(prompt.id, decision) },
-                )
-            }
-        }
-    }
-
     @Composable
     private fun ChatSurface(modifier: Modifier, onHost: () -> Unit, isRoot: Boolean) {
         val store = sessionStore
@@ -343,154 +268,6 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
         ) { page ->
             when (page) {
         // Conversation.
-        EvPage.Settings -> {
-            // Without the host appearance service the settings page cannot render, so the
-            // conversation stays visible rather than showing an empty surface.
-            if (appearanceService != null) {
-                EvSettingsScreen(
-                    appearance = appearanceService,
-                    onBack = { ui.pages.pop() },
-                    onOpenPlugins = { navigation?.openPluginManager() },
-                    onOpenPluginCatalog = { ui.pages.push(EvPage.Plugins) },
-                    onOpenLinux = { ui.pages.push(EvPage.Linux) },
-                    onOpenHostSettings = { navigation?.openSettings() },
-                    onOpenThemes = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Themes)) },
-                    themeName = availableThemes.firstOrNull { it.id == appearanceService.current.themeId }?.name
-                        ?: availableThemes.first().name,
-                    onOpenModels = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Models)) },
-                    onOpenTools = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Tools)) },
-                    onOpenMemory = { ui.pages.push(EvPage.SettingsSection(SettingsChild.Memory)) },
-                    // 宿主没发布提示层时是 null，设置页那一行只会显示"不可用"，不会崩。
-                    hud = hud,
-                    hudPreview = hudPreviewOn.value,
-                    onToggleHudPreview = { on ->
-                        hudPreviewOn.value = on
-                        if (on) {
-                            hud?.show(
-                                org.cordis.api.HudState(
-                                    step = 3,
-                                    tool = "screen_tap",
-                                    note = "调试预览",
-                                    status = "操作中",
-                                ),
-                            )
-                        } else {
-                            hud?.hide()
-                        }
-                    },
-                    modifier = modifier,
-                )
-            }
-        }
-
-        is EvPage.SettingsSection -> {
-            // A second-level settings page keeps the root underneath: back returns to it.
-            when (page.section) {
-                SettingsChild.Themes -> EvThemePickerScreen(
-                    themes = availableThemes,
-                    currentId = appearanceService?.current?.themeId.orEmpty(),
-                    // The host owns the appearance state: selecting a theme persists it and
-                    // recomposes the whole app, this page only asks for the change.
-                    onSelect = { id -> appearanceService?.update { it.copy(themeId = id) } },
-                    onBack = { ui.pages.pop() },
-                    modifier = modifier,
-                )
-
-                SettingsChild.Models -> EvModelProvidersScreen(
-                    service = { directory?.lookup(ModelProviderService.Key) },
-                    onBack = { ui.pages.pop() },
-                    modifier = modifier,
-                )
-
-                SettingsChild.Tools -> EvPluginPage(
-                    pluginId = TOOLS_PLUGIN_ID,
-                    directory = directory,
-                    onBack = { ui.pages.pop() },
-                    modifier = modifier,
-                )
-
-                SettingsChild.Memory -> EvPluginPage(
-                    pluginId = MEMORY_PLUGIN_ID,
-                    directory = directory,
-                    onBack = { ui.pages.pop() },
-                    modifier = modifier,
-                )
-
-            }
-        }
-
-        EvPage.Tools -> {
-            // The registry's owner draws the panel now; the drawer still routes here.
-            EvPluginPage(
-                pluginId = TOOLS_PLUGIN_ID,
-                directory = directory,
-                onBack = { ui.pages.pop() },
-                modifier = modifier,
-            )
-        }
-
-        EvPage.Browser -> {
-            // The browse plugin owns the panel now: same network stack as web_fetch.
-            EvPluginPage(
-                pluginId = BROWSE_PLUGIN_ID,
-                directory = directory,
-                onBack = { ui.pages.pop() },
-                modifier = modifier,
-            )
-        }
-        EvPage.Terminal -> {
-            // The shell's owner draws the console; the quick tools panel still routes here.
-            EvPluginPage(
-                pluginId = SHELL_PLUGIN_ID,
-                directory = directory,
-                onBack = { ui.pages.pop() },
-                modifier = modifier,
-            )
-        }
-
-        is EvPage.Plugin -> {
-            // A page that belongs to another plugin, composed here so the transition, the back
-            // gesture and the page stack stay ev-ui's. The plugin may be disabled or reloaded while
-            // this is on screen, so the page is resolved on every composition.
-            EvPluginPage(
-                pluginId = page.id,
-                directory = directory,
-                onBack = { ui.pages.pop() },
-                modifier = modifier,
-            )
-        }
-
-        EvPage.Memory -> {
-            // Kept as an alias: the drawer still navigates here, and both routes now open the
-            // memory plugin's own page instead of ev-ui's copy of it.
-            EvPluginPage(
-                pluginId = MEMORY_PLUGIN_ID,
-                directory = directory,
-                onBack = { ui.pages.pop() },
-                modifier = modifier,
-            )
-        }
-
-        EvPage.Linux -> {
-            // A view over the linux plugin: settings through the catalog, actions through the tool bus.
-            EvLinuxScreen(
-                registry = { directory?.lookup(ToolRegistry.Key) },
-                catalog = directory?.lookup(org.cordis.api.PluginCatalogService.Key),
-                onBack = { ui.pages.pop() },
-                modifier = modifier,
-            )
-        }
-
-        EvPage.Plugins -> {
-            // The catalog is host-owned: plugins declare, the host collects, this page renders.
-            EvPluginCatalogScreen(
-                catalog = directory?.lookup(org.cordis.api.PluginCatalogService.Key),
-                manager = directory?.lookup(org.cordis.api.PluginManagerService.Key),
-                onBack = { ui.pages.pop() },
-                modifier = modifier,
-            )
-        }
-
                 null -> {
             EvDrawerScaffold(
                 open = ui.drawerOpen,
@@ -567,76 +344,43 @@ class EvUiPlugin : Plugin<Unit>, AgentSurface, AgentPage , org.cordis.api.Manife
                 },
             )
                 }
+
+                else -> EvFullPage(
+                    page = page,
+                    modifier = modifier,
+                    appearance = appearanceService,
+                    directory = directory,
+                    hud = hud,
+                    hudPreview = hudPreviewOn.value,
+                    onToggleHudPreview = { on ->
+                        hudPreviewOn.value = on
+                        if (on) {
+                            hud?.show(
+                                org.cordis.api.HudState(
+                                    step = 3,
+                                    tool = "screen_tap",
+                                    note = "调试预览",
+                                    status = "操作中",
+                                ),
+                            )
+                        } else {
+                            hud?.hide()
+                        }
+                    },
+                    availableThemes = availableThemes,
+                    onPop = { ui.pages.pop() },
+                    onPush = { ui.pages.push(it) },
+                    onOpenSection = { openSettings(it) },
+                    onOpenPluginManager = { navigation?.openPluginManager() },
+                    onOpenHostSettings = { navigation?.openSettings() },
+                )
             }
         }
-    }
-
-    private companion object {
-        /** Shown only when no plugin publishes AgentService: the original placeholder behaviour. */
-        const val UNCONNECTED_PREFIX = "（未接模型）我收到了："
-
-        /** Rotating composer placeholders (spec §7.3); one is picked per conversation. */
-        val ComposerPlaceholders = listOf("交给 EV 去完成", "尽管问，带图也行")
-
-        /**
-         * Home suggestions, kept honest: every prompt maps to a capability that exists today
-         * (the storage file tools, or the built-in browser panel). 分析屏幕 / 打开微信 return when
-         * device-context and app-launch tools actually ship.
-         */
-        val Suggestions = listOf(
-            EvSuggestion("列出我的文件", EvGlyphKind.Folder, "列出存储区里有哪些文件"),
-            EvSuggestion("记一条笔记", EvGlyphKind.Create, "帮我把「今晚记得给花浇水」追加到 notes/memo.md"),
-            EvSuggestion("你能做什么", EvGlyphKind.Help, "你现在有哪些工具，能帮我做什么？"),
-            EvSuggestion("浏览网页", EvGlyphKind.World, ""),
-        )
     }
 
     /**
      * What this container gives the app, stated here rather than discovered by reading its code.
      */
-    override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
-        id = "ev.buan.plugins.ev.ui",
-        name = "EV 界面",
-        version = "0.1.0",
-        description = "主界面：对话、抽屉、快捷菜单、终端、设置页。",
-        capabilities = listOf(
-            org.cordis.api.PluginCapability("agent-surface", org.cordis.api.PluginCapability.Kind.UI, "主界面", "宿主首页渲染的聊天界面。"),
-            org.cordis.api.PluginCapability("agent-page", org.cordis.api.PluginCapability.Kind.UI, "独立页面", "宿主可为插件单独打开的页面。"),
-        ),
-    )
+    override val manifest: org.cordis.api.PluginManifest = evUiManifest
 
-}
-
-/** Clock time on a history row; the group label above it already says which day it was. */
-/**
- * Composes another plugin's page inside ev-ui's own navigation stack.
- *
- * [PluginPageService] hands back the plugin's [AgentPage] instead of starting an Activity, which is
- * what keeps the transition and the back gesture identical to a built-in page. The page is resolved
- * on every composition on purpose: the plugin may be disabled, reloaded or fail to activate while
- * this screen is open, and a stale instance must not keep rendering.
- */
-@Composable
-private fun EvPluginPage(
-    pluginId: String,
-    directory: ServiceDirectory?,
-    onBack: () -> Unit,
-    modifier: Modifier,
-) {
-    val page = directory?.lookup(PluginPageService.Key)?.pageOf(pluginId)
-    if (page != null) {
-        page.Page(modifier, onBack)
-        return
-    }
-    // Fully qualified: `EvPage` in this package is the navigation sealed interface, not the
-    // design-system page composable.
-    ev.buan.ui.EvPage(title = "插件未就绪", onBack = onBack, modifier = modifier) {
-        item {
-            Text(
-                text = "这个页面属于 $pluginId，它现在没有加载。到插件中心看看它是否被禁用或加载失败。",
-                style = EvThemeTokens.type.body.style(EvThemeTokens.colors.textSecondary),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-            )
-        }
-    }
 }
