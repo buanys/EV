@@ -63,3 +63,55 @@
 - 5a：在 `RUNNING_LOW` 下手动触发，看到离屏 WebView 被释放、缓冲变小，且聊天与会话不受影响；
 - 5b：`RuntimeBudgetService` 有单测（并发上限、拒绝语义、超时取消），且至少一个插件改用它；
 - 每个插件卸载后，它提交的任务全部被收掉（可用测试断言）。
+
+## 5b 落地记录（2026-11-06）
+
+契约 `RuntimeBudgetService`（`host-api`）+ 实现 `HostRuntimeBudget` / `RuntimeBudgetGate`
+（`host-runtime`），首个用户是 `agent-browse` 的离屏渲染。
+
+### 与本文前面写法的偏差：不给 dispatcher
+
+前面写的是"插件通过它拿 dispatcher，不再自己建线程池"。落地时改成**只给 `run`，不给裸
+dispatcher**，理由是这个契约只有一条通道才守得住：一旦发出去一个 `CoroutineDispatcher`，
+插件 `launch` 上去就绕过了名额，预算变成一句注释。`run` 里的阻塞仍然跑在调用方自己的
+dispatcher 上（`coroutineScope` 只换 Job，不换调度器），所以主线程上的调用不会被搬到后台去。
+
+### 数值
+
+| 档位 | 并发 | 寿命 | 判据 |
+|---|---|---|---|
+| `Short` | 4 | 30s | 高频、单个便宜；五个同时开就在主线程上排队 |
+| `Long` | 2 | 180s | 攥原生内存或外部配额；180s 覆盖 `run_shell` 的 120s 上限再留收尾 |
+| `Background` | 2 | 600s | 做不完可以下次再做，被拒是对的，被中途掐死才浪费 |
+
+三档互不占用：卡住的长任务不该让一次读屏也开不了。
+
+### 名额是全局的，任务归属是每插件的
+
+- **名额全局一份**：被抢的是设备的线程与内存。每插件分别计数会把总并发放大成
+  "插件数 × 每插件上限"，等于没有上限。代价是不公平（一个插件能占满一档），
+  `usage()` 把持有者暴露出来让排障看得见，公平留给后面的调度层。
+- **任务挂在每插件自己的 `Job` 上**，`HostComposition.deactivate` 先取消它再拆 Fiber：
+  验收里"卸载后任务全部被收掉"因此不需要额外代码，取消沿协程树自动发生；
+  名额在 `finally` 里归还，不会留给一个已经不存在的插件。
+- 服务本身 per-plugin（`isolate(RuntimeBudgetService.Key)`），否则内核会把最后提供的
+  那个实例发给所有读这个 key 的插件。
+
+### 两个出口都是普通异常
+
+`BudgetExhausted` / `BudgetTimeout` 都继承 `IllegalStateException`，**不是**
+`CancellationException` 的子类。协程取消的异常会被调用方（尤其是 `runCatching`）当成
+"我被取消了"原样吞掉，预算超时就静默消失了——那正是这一层想避免的事。
+
+### 验收情况
+
+- 单测 10 个（`HostRuntimeBudgetTest`）：满额拒绝且 block 一行没跑、四种出口都归还名额、
+  超时异常类型、卸载取消在飞任务、三档互不占用、名额全局、`usage` 持有者排序；
+- `agent-browse` 已改用它：渲染归 `Long`，被拒/超时**不抛出**，而是把静态结果 +
+  "这一页要渲染但现在渲染不了"交给模型；
+- 顺带修掉一个真缺陷：`PageReader` 只 `cordis.provide`、没 `ServiceDirectory.publish`，
+  而 `agent-browse` 是 `lookup` 着要的——离屏浏览器从未被用到。现在两处都有。
+
+**未验证**：真机上没有可复现的手段把某一档打到满额或触发超时（要真去并发抓 SPA 页面），
+所以"拒绝 / 超时"目前只有单测证据，没有设备上的观测记录。真出现时应当先看 `usage()`
+里的持有者。

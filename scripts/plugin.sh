@@ -35,6 +35,20 @@ ev_root() {
     fi
 }
 
+# 插件按能力分四类住在 plugins/<类>/<名> 下（阶段 3 归位），所以 `:plugins:<名>` 这种路径
+# 拼法已经不存在了。传入目录名，回显它的相对路径（plugins/feature/agent-browse）。
+plugin_rel() {
+    name=$1
+    for dir in "$root"/plugins/*/"$name"; do
+        [ -d "$dir" ] || continue
+        kind=$(basename "$(dirname "$dir")")
+        [ "$kind" = "_template" ] && continue
+        echo "plugins/$kind/$name"
+        return 0
+    done
+    return 1
+}
+
 # ---------------------------------------------------------------- build
 
 cmd_build() {
@@ -45,15 +59,18 @@ cmd_build() {
     gradle_bin=${GRADLE_BIN:-/opt/gradle-9.7.1/bin/gradle}
     [ -x "$gradle_bin" ] || die "找不到 Gradle：$gradle_bin（可用 GRADLE_BIN 覆盖）"
 
-    echo "==> 构建 :plugins:$module"
+    rel=$(plugin_rel "$module") || die "找不到插件目录：plugins/*/$module"
+    gradle_path=$(printf ':%s' "$(echo "$rel" | tr '/' ':')")
+
+    echo "==> 构建 $gradle_path"
     (
         cd "$root" || exit 1
         JAVA_HOME=${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-arm64} \
         ANDROID_HOME=${ANDROID_HOME:-/opt/android-sdk} \
-        "$gradle_bin" ":plugins:$module:bundlePlugin" --console=plain
+        "$gradle_bin" "$gradle_path:bundlePlugin" --console=plain
     ) || die "构建失败"
 
-    dist="$root/plugins/$module/build/dist"
+    dist="$root/$rel/build/dist"
     [ -d "$dist" ] || die "没有产物目录：$dist"
     echo "==> 产物"
     ls -l "$dist" || exit 1
@@ -107,7 +124,8 @@ cmd_deploy() {
     [ "$(id -u)" = "0" ] || die "deploy 需要 root"
 
     root=$(ev_root) || die "找不到 EV 仓库"
-    dist="$root/plugins/$module/build/dist"
+    rel=$(plugin_rel "$module") || die "找不到插件目录：plugins/*/$module"
+    dist="$root/$rel/build/dist"
 
     jar=$(ls "$dist"/*.jar 2>/dev/null | head -n 1)
     json=$(ls "$dist"/*.json 2>/dev/null | head -n 1)
