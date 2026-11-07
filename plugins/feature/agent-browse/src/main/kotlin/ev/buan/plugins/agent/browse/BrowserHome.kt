@@ -47,7 +47,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 @Composable
 internal fun BrowserHome(
-    session: BrowserSession,
+    panel: BrowserPanel,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -55,10 +55,10 @@ internal fun BrowserHome(
     val focusManager = LocalFocusManager.current
 
     fun submit() {
-        if (session.open(session.address)) {
-            focusManager.clearFocus()
-            keyboard?.hide()
-        }
+        if (normalizeUrl(panel.address) == null) return
+        panel.open(panel.address)
+        focusManager.clearFocus()
+        keyboard?.hide()
     }
 
     Column(
@@ -99,7 +99,7 @@ internal fun BrowserHome(
             )
             Spacer(Modifier.size(10.dp))
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (session.address.isEmpty()) {
+                if (panel.address.isEmpty()) {
                     Text(
                         text = "输入网址或搜索",
                         style = MiuixTheme.textStyles.footnote1,
@@ -107,8 +107,8 @@ internal fun BrowserHome(
                     )
                 }
                 BasicTextField(
-                    value = session.address,
-                    onValueChange = { session.address = it },
+                    value = panel.address,
+                    onValueChange = { panel.address = it },
                     singleLine = true,
                     textStyle = TextStyle(color = colors.onBackground, fontSize = 14.sp),
                     cursorBrush = SolidColor(colors.primary),
@@ -117,7 +117,7 @@ internal fun BrowserHome(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            if (session.address.isNotBlank()) {
+            if (panel.address.isNotBlank()) {
                 Spacer(Modifier.size(8.dp))
                 Text(
                     text = "前往",
@@ -132,16 +132,16 @@ internal fun BrowserHome(
 
         // 访问过的站点。第一眼看是空的，用过几次之后这里就变成了入口——
         // 比硬编码一排默认站点诚实。
-        if (session.recentHosts.isNotEmpty()) {
+        if (panel.recentHosts.isNotEmpty()) {
             Spacer(Modifier.height(30.dp))
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                session.recentHosts.forEach { host ->
+                panel.recentHosts.forEach { host ->
                     SiteChip(
                         host = host,
-                        onClick = { session.open(host) },
+                        onClick = { panel.open(host) },
                     )
                 }
             }

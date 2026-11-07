@@ -51,7 +51,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 顶栏。两种形态：
  *
- * - **首页**（还没有页面）：只有退出和标题「主页」。地址栏让位给中间的大搜索框——
+ * - **首页**（当前窗口还没有页面）：只有退出和标题「主页」。地址栏让位给中间的大搜索框——
  *   一个还没填地址的输入框贴在顶上，看起来像表单，不像"可以开始的地方"。
  * - **页面中**：退出 + 地址栏 + 刷新。
  *
@@ -66,17 +66,18 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 @Composable
 internal fun BrowserChrome(
-    session: BrowserSession,
+    panel: BrowserPanel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tab = panel.active
     Column(modifier.fillMaxWidth()) {
-        if (session.currentUrl.isEmpty()) {
+        if (tab == null || tab.url.isEmpty()) {
             HomeHeader(onBack = onBack)
         } else {
-            PageHeader(session = session, onBack = onBack)
+            PageHeader(panel = panel, url = tab.url, onBack = onBack)
         }
-        LoadProgress(progress = session.progress)
+        LoadProgress(progress = tab?.progress ?: 0)
     }
 }
 
@@ -103,43 +104,40 @@ private fun HomeHeader(onBack: () -> Unit) {
 }
 
 @Composable
-private fun PageHeader(session: BrowserSession, onBack: () -> Unit) {
+private fun PageHeader(panel: BrowserPanel, url: String, onBack: () -> Unit) {
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     val colors = MiuixTheme.colorScheme
 
-    var editing by remember { mutableStateOf(false) }
     var field by remember { mutableStateOf(TextFieldValue("")) }
     val focus = remember { FocusRequester() }
 
     fun finishEditing() {
-        editing = false
-        session.editingAddress = false
+        panel.editing = false
         focusManager.clearFocus()
         keyboard?.hide()
     }
 
     fun submit() {
-        session.address = field.text
-        if (session.open(session.address)) finishEditing()
+        panel.address = field.text
+        if (normalizeUrl(field.text) != null) {
+            panel.open(field.text)
+            finishEditing()
+        }
     }
 
-    LaunchedEffect(editing) {
-        session.editingAddress = editing
-        if (editing) {
+    LaunchedEffect(panel.editing) {
+        if (panel.editing) {
             // 全选：点地址栏的意图几乎总是"换掉整个地址"。
-            field = TextFieldValue(
-                text = session.currentUrl,
-                selection = TextRange(0, session.currentUrl.length),
-            )
+            field = TextFieldValue(text = url, selection = TextRange(0, url.length))
             focus.requestFocus()
             keyboard?.show()
         }
     }
 
     // 编辑态下，返回键先收起键盘和选区，而不是直接离开这一页。
-    if (editing) {
+    if (panel.editing) {
         BackHandler { finishEditing() }
     }
 
@@ -171,23 +169,23 @@ private fun PageHeader(session: BrowserSession, onBack: () -> Unit) {
                     .size(18.dp)
                     .clip(CircleShape)
                     .clickable(onClickLabel = "连接信息") {
-                        showSiteInfo(context, session.currentUrl)
+                        showSiteInfo(context, url)
                     },
                 contentAlignment = Alignment.Center,
             ) {
                 EvGlyph(
-                    if (session.secure) EvGlyphKind.Lock else EvGlyphKind.Info,
+                    if (panel.secure) EvGlyphKind.Lock else EvGlyphKind.Info,
                     color = colors.onSurfaceVariantSummary.copy(alpha = 0.85f),
                     modifier = Modifier.size(13.dp),
                 )
             }
             Spacer(Modifier.width(7.dp))
-            if (editing) {
+            if (panel.editing) {
                 BasicTextField(
                     value = field,
                     onValueChange = {
                         field = it
-                        session.address = it.text
+                        panel.address = it.text
                     },
                     singleLine = true,
                     textStyle = TextStyle(color = colors.onBackground, fontSize = 13.sp),
@@ -203,11 +201,11 @@ private fun PageHeader(session: BrowserSession, onBack: () -> Unit) {
                     Modifier
                         .fillMaxHeight()
                         .fillMaxWidth()
-                        .clickable(onClickLabel = "编辑地址") { editing = true },
+                        .clickable(onClickLabel = "编辑地址") { panel.editing = true },
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Text(
-                        text = displayAddressOf(session.currentUrl),
+                        text = displayAddressOf(url),
                         style = MiuixTheme.textStyles.footnote1,
                         color = colors.onBackground,
                         maxLines = 1,
@@ -218,13 +216,13 @@ private fun PageHeader(session: BrowserSession, onBack: () -> Unit) {
         }
         Spacer(Modifier.width(6.dp))
         CircleTap(
-            enabled = session.currentUrl.isNotEmpty(),
+            enabled = url.isNotEmpty(),
             label = "刷新",
-            onClick = { session.reload() },
+            onClick = { panel.reload() },
         ) {
             EvGlyph(
                 EvGlyphKind.Refresh,
-                color = if (session.currentUrl.isNotEmpty()) {
+                color = if (url.isNotEmpty()) {
                     colors.onBackground
                 } else {
                     colors.onBackground.copy(alpha = 0.25f)
@@ -238,8 +236,8 @@ private fun PageHeader(session: BrowserSession, onBack: () -> Unit) {
 /**
  * 浏览态显示什么：主机名。
  *
- * 端口保留（`localhost:8080` 的端口和域名一样重要），路径和查询串丢掉——
- * 它们在手机上只会被截断成一段百分号，占着位置却不回答任何问题。
+ * 端口保留（`localhost:8080` 的端口和域名一样重要），路径和查询串丢掉——它们在手机上
+ * 只会被截断成一段百分号，占着位置却不回答任何问题。
  */
 private fun displayAddressOf(url: String): String {
     if (url.isBlank()) return ""
@@ -301,11 +299,13 @@ private fun showSiteInfo(context: android.content.Context, url: String) {
         append("\n\n证书：")
         append(if (secure) "已由系统 WebView 校验通过" else "无")
     }
-    AlertDialog.Builder(context)
-        .setTitle("连接信息")
-        .setMessage(message)
-        .setPositiveButton("好", null)
-        .show()
+    runCatching {
+        AlertDialog.Builder(context)
+            .setTitle("连接信息")
+            .setMessage(message)
+            .setPositiveButton("好", null)
+            .show()
+    }
 }
 
 @Composable

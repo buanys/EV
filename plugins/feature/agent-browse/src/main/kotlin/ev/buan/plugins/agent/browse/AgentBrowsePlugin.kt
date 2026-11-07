@@ -3,6 +3,10 @@ package ev.buan.plugins.agent.browse
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import ev.buan.plugins.agent.api.ToolRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import okhttp3.OkHttpClient
 import org.cordis.Context
 import org.cordis.Dependencies
@@ -16,7 +20,7 @@ import org.cordis.api.ServiceDirectory
 import org.cordis.dependencies
 
 /**
- * 联网能力：`web_search` + `web_fetch`。
+ * 联网能力：`web_search` + `web_fetch`，加上内置浏览器的那一组动作与面板。
  *
  * 两条依赖都是**可选**的：
  * - 工具总线（`agent-tools`）没起来 → 什么都不注册，安静退出；
@@ -24,8 +28,17 @@ import org.cordis.dependencies
  *
  * 后者是关键：宁可让模型看到"这一页需要渲染但渲染不可用"，也不要让它以为网页就是空的。
  *
- * 浏览器面板也归这里：它在屏幕上是给人用的 WebView，但背后的网络能力、权限与失败处理跟
+ * 浏览器面板也归这里：它在屏幕上是给人看的一页，但背后的网络能力、权限与失败处理跟
  * `web_fetch` 是同一套；放在 ev-ui 里会让聊天界面依赖 WebView 的生命周期。
+ *
+ * ## 面板与引擎的分工（这次重构的重点）
+ *
+ * WebView 归**宿主**（[org.cordis.api.BrowserService]）：窗口、页面、历史、cookie 都在那边，
+ * agent 的 `browser_*` 工具与用户眼前这一页是同一个页面。插件这边只有 [BrowserPanel]——
+ * 一个遥控器加一面镜子：它把点击翻成宿主的调用，把宿主的快照画成标签条与地址栏。
+ *
+ * 于是"退出浏览器页再回来，页面还在"不再是这个类要操心的事：[BrowserPanel.release]
+ * 只放下视图，宿主里的窗口一个不少。
  */
 class AgentBrowsePlugin :
     Plugin<Unit>,
@@ -38,8 +51,8 @@ class AgentBrowsePlugin :
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.browse",
         name = "浏览器",
-        version = "1.1.0",
-        description = "网页抓取与搜索，供模型查资料；也提供界面里的浏览器面板。",
+        version = "2.0.0",
+        description = "网页抓取与搜索，供模型查资料；内置浏览器支持多窗口，界面与 agent 共用同一组页面。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("web_fetch", org.cordis.api.PluginCapability.Kind.TOOL, "抓取网页", "取正文文本，供模型阅读。"),
             org.cordis.api.PluginCapability("web_search", org.cordis.api.PluginCapability.Kind.TOOL, "搜索", "按关键词搜索并返回结果列表。"),
@@ -49,7 +62,8 @@ class AgentBrowsePlugin :
 
     override val name = "agent-browse"
     override val title = "联网搜索"
-    override val body = "web_search 搜索网页、web_fetch 读页面正文；需要 JS 的页面自动交给离屏浏览器。"
+    override val body = "web_search 搜索网页、web_fetch 读页面正文；需要 JS 的页面交给内置浏览器。" +
+        "浏览器支持多窗口，agent 与界面看到的是同一组页面。"
 
     override val inject: Dependencies = dependencies(
         ServiceDirectory.Key,
@@ -65,16 +79,18 @@ class AgentBrowsePlugin :
     override val isHomeCandidate: Boolean = false
 
     /**
-     * 标签集合挂在插件实例上，**不是**挂在页面组合里。
-     *
-     * 这是"退出浏览器页再回来，页面还在"的全部秘密：组合可以被销毁重建，
-     * 而插件实例活到停用为止。WebView 的销毁只发生在用户关标签和插件停用（见 apply 的 effect）。
+     * 界面的那一层：遥控器 + 镜子。挂在插件实例上而不是组合里，是为了让地址栏、最近站点
+     * 这些**界面记忆**不因为一次进出而丢掉（页面本身在宿主里，本来就不会丢）。
      */
-    private val browser = BrowserTabs()
+    private var panel: BrowserPanel? = null
+
+    /** 界面动作要发到宿主的 suspend 接口上；插件停用时一起收掉。 */
+    private var scope: CoroutineScope? = null
 
     @Composable
     override fun Page(modifier: Modifier, onBack: () -> Unit) {
-        BrowserPage(onBack = onBack, modifier = modifier, tabs = browser)
+        val current = panel ?: return
+        BrowserPage(onBack = onBack, modifier = modifier, panel = current)
     }
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
@@ -88,6 +104,10 @@ class AgentBrowsePlugin :
             .followRedirects(true)
             .build()
         val service = ctx.require(org.cordis.api.BrowserService.Key)
+        val panelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val ownPanel = BrowserPanel(service, panelScope)
+        panel = ownPanel
+        scope = panelScope
         registry.register(
             PLUGIN_ID,
             BrowseTools(
@@ -97,8 +117,14 @@ class AgentBrowsePlugin :
                 budget = ctx.require(RuntimeBudgetService.Key),
             ).all() + BrowserTools.all(service),
         )
-        // 插件停用：五个标签的 WebView 一起销毁。这里不做就等于把几 MB 留在进程里。
-        effect.collect { browser.dispose() }
+        effect.collect {
+            // 插件停用：只放下界面。页面归宿主，销毁它不归我们决定——
+            // 真正的销毁在窗口关掉、内存压力与宿主退出这三处。
+            ownPanel.release()
+            panel = null
+            panelScope.cancel()
+            scope = null
+        }
     }
 
     private companion object {

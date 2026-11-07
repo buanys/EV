@@ -16,36 +16,40 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 底部历史栏：后退、前进，以及当前页面的一句话状态。
+ * 底部历史栏：后退、前进，以及一颗回首页。
  *
- * 放在底部而不是顶部有两个原因：拇指够得着；以及和顶部的「退出面板」分开——
- * 两件事不该长得一样，也不该挨在一起。
+ * 放在底部而不是顶部有两个原因：拇指够得着；以及和顶部的「退出面板」分开——两件事不该
+ * 长得一样，也不该挨在一起。
+ *
+ * "能不能后退"读的是宿主快照：`WebView.canGoBack() || history.length > 1`。
+ * 后半截不能少——agent 的点击是 `location.href` 驱动的，那条路上 WebView 认为没有历史。
  */
 @Composable
 internal fun BrowserBottomBar(
-    session: BrowserSession,
+    panel: BrowserPanel,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MiuixTheme.colorScheme
+    val tab = panel.active
     Row(
         modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        NavArrow(BrowserArrowKind.ChevronLeft, session.canGoBack, "后退") { session.goBack() }
+        NavArrow(BrowserArrowKind.ChevronLeft, tab?.canGoBack == true, "后退") { panel.back() }
         Spacer(Modifier.width(28.dp))
-        NavArrow(BrowserArrowKind.ChevronRight, session.canGoForward, "前进") { session.goForward() }
+        NavArrow(BrowserArrowKind.ChevronRight, tab?.canGoForward == true, "前进") {
+            panel.forward()
+        }
         Spacer(Modifier.width(28.dp))
         // 回首页：正常浏览器的底部都有这一颗，否则离开页面之后没有"起点"可回。
         Box(
             Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .clickable(onClickLabel = "回首页", onClick = { session.goHome() }),
+                .clickable(onClickLabel = "回首页", onClick = { panel.goHome() }),
             contentAlignment = Alignment.Center,
         ) {
             BrowserHomeGlyph(
@@ -77,14 +81,4 @@ private fun NavArrow(
     ) {
         BrowserArrow(kind = kind, color = color, modifier = Modifier.size(18.dp))
     }
-}
-
-/** 一行状态：正在加载 → 页面标题 → 地址 → 还没开始。 */
-private fun statusOf(session: BrowserSession): String = when {
-    session.loading -> "载入中…"
-    session.pageTitle.isNotBlank() -> session.pageTitle
-    session.currentUrl.isNotBlank() -> session.currentUrl
-    // 还没打开过页面时留空：空态提示已经在页面中间说过一遍了，
-    // 同一句话在底栏再说一次只是噪音。
-    else -> ""
 }

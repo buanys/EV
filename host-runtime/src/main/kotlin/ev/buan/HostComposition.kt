@@ -582,14 +582,18 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     /**
      * 系统内存压力。
      *
-     * 宿主几乎不缓存重对象（没有位图缓存，浏览器面板的 WebView 随面板销毁），
-     * 唯一可能在压力期间攥着几 MB 的是离屏渲染——所以这里只做一件事：掐掉在飞的那次。
+     * 宿主几乎不缓存重对象。真正攥着几 MB 的有两处，处置方式不同：
+     *
+     * - 离屏渲染：掐掉在飞的那次；
+     * - 浏览器窗口：**眼前那一页不能丢**。用户正看着一页，系统发一次
+     *   `TRIM_MEMORY_RUNNING_LOW` 就把它白掉，是最糟的一种"优化"——所以交给引擎自己
+     *   判断（界面在就只丢其它窗口，界面不在才全丢）。
      * 更低的级别（TRIM_MEMORY_UI_HIDDEN 等）不处理：那表示界面不可见，不是内存告急。
      */
     fun handleTrimMemory(level: Int) {
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             pageReader?.cancelInFlight()
-            runCatching { browserSession.close() }
+            runCatching { browserSession.trimMemory() }
         }
     }
 

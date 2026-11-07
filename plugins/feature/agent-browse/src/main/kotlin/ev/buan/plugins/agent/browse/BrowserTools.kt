@@ -11,7 +11,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 内置浏览器的十三个动作：打开、读、找、点、输、滚、截图、历史。
+ * 内置浏览器的十四个动作：打开、读、找、点、输、滚、截图、历史，以及窗口管理。
  *
  * 为什么这些不是"再多两个 web_ 工具"：`web_fetch` 是一次性的 GET+渲染，取完即走；
  * 这一组是**一次连续的会话**——登录、翻页、填表、提交，中间 cookie 与 DOM 都要留着。
@@ -40,6 +40,7 @@ internal object BrowserTools {
         tool(FORWARD) { state(browser.forward()) },
         tool(RELOAD) { state(browser.reload()) },
         tool(WAIT) { args -> waitFor(browser, args) },
+        tool(TABS) { args -> tabs(browser, args) },
     )
 
     // ---------------------------------------------------------------- 动作
@@ -127,6 +128,48 @@ internal object BrowserTools {
                 images = listOf(AgentImage(mimeType = "image/jpeg", base64 = base64, name = "browser.jpg")),
             )
         }
+    }
+
+    /**
+     * 窗口管理：`list` / `new` / `select` / `close`。
+     *
+     * 四个动作用一个工具，理由是它们本来就是同一件事的四个面：`list` 给出 id，
+     * 另外三个都吃这个 id。拆成四个工具只会让模型多记三个名字。
+     */
+    private suspend fun tabs(browser: BrowserService, args: JSONObject): String {
+        when (val action = args.optString("action", "list").lowercase()) {
+            "list" -> Unit
+            "new" -> {
+                val url = args.optString("url").trim()
+                browser.openTab(url.ifEmpty { null })
+            }
+
+            "select", "close" -> {
+                val id = args.optLong("id", -1L)
+                if (id <= 0) return invalid("id 必填（取自 action=list 的 windows[].id）")
+                if (action == "select") browser.selectTab(id) else browser.closeTab(id)
+            }
+
+            else -> return invalid("action 只能是 list / new / select / close（收到 $action）")
+        }
+        val snapshot = browser.snapshot()
+        val windows = JSONArray()
+        snapshot.tabs.forEach { tab ->
+            windows.put(
+                JSONObject()
+                    .put("id", tab.id)
+                    .put("url", tab.url)
+                    .put("title", tab.title)
+                    .put("active", tab.id == snapshot.activeId)
+                    .put("loading", tab.loading)
+                    .put("can_go_back", tab.canGoBack),
+            )
+        }
+        return JSONObject()
+            .put("active", snapshot.activeId)
+            .put("max", snapshot.maxTabs)
+            .put("windows", windows)
+            .toString()
     }
 
     private suspend fun waitFor(browser: BrowserService, args: JSONObject): String {
@@ -258,6 +301,17 @@ internal object BrowserTools {
         name = "browser_reload",
         description = "重新加载当前页面。",
         parametersJson = """{"type":"object","properties":{},"additionalProperties":false}""",
+    )
+
+    private val TABS = ToolSpec(
+        name = "browser_tabs",
+        description = "管理浏览器的多个窗口：action=list 列出全部窗口，new 开一个新窗口（可带 url），" +
+            "select 切到某个窗口，close 关掉某个窗口。所有 browser_* 动作只作用于当前窗口。",
+        parametersJson = """{"type":"object","properties":{"""" +
+            """"action":{"type":"string","description":"list \/ new \/ select \/ close，默认 list"},""" +
+            """"url":{"type":"string","description":"action=new 时可选，新窗口直接打开的网址"},""" +
+            """"id":{"type":"integer","description":"窗口 id，select 与 close 必填"}},""" +
+            """"additionalProperties":false}""",
     )
 
     private val WAIT = ToolSpec(

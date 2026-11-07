@@ -1,4 +1,4 @@
-package ev.buan.plugins.agent.browse
+package ev.buan
 
 import android.Manifest
 import android.content.Context
@@ -10,10 +10,10 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 
 /**
- * 平台侧策略：WebView 被**允许**做什么，以及网页的"名词"怎么翻成 Android 的说法。
+ * 浏览器引擎的平台侧策略：这个 WebView 被**允许**做什么，以及网页的"名词"怎么翻成 Android 的说法。
  *
- * 这里没有 Compose 状态，也没有"谁在什么时机回调"的判断——那些在 [BrowserClients]（回调）
- * 和 [BrowserWebView]（状态挂哪儿）。这个文件只回答一个问题：一个网页能碰到设备的哪一部分。
+ * 这个文件里没有 Compose 状态，也没有"谁在什么时机回调"——那些在 [BrowserEngine]。
+ * 它只回答一个问题：一个网页能碰到设备的哪一部分。
  *
  * 所以下面每一行都是安全边界，不是默认值顺手写的：
  *
@@ -25,16 +25,11 @@ import android.webkit.WebView
  * | `mixedContentMode` | **NEVER_ALLOW** | 运营商可以往加密页面里塞东西 |
  * | `setSupportMultipleWindows` | 开 | `target=_blank` 根本不进 `onCreateWindow` |
  * | `javaScriptCanOpenWindowsAutomatically` | 关 | 广告可以自己弹窗 |
- * | `IN_PANEL_SCHEMES` | 见下 | `tel:` `intent:` 被自己吃掉，或者 http 被丢给系统浏览器 |
+ * | [IN_PANEL_SCHEMES] | 见下 | `tel:` `intent:` 被自己吃掉，或者 http 被丢给系统浏览器 |
  */
 
-/**
- * 面板里每个 WebView 的统一配置，只在 `AndroidView` 的 factory 里调一次。
- *
- * 抽成函数不是为了复用（只有一个调用点），而是为了让"这个面板允许网页做什么"能一次读完：
- * 以后调安全设置不用在一个 Composable 里翻。
- */
-internal fun configureWebView(view: WebView) {
+/** 引擎里每个 WebView 的统一配置，只在创建时调一次。 */
+internal fun configureBrowserWebView(view: WebView) {
     val settings = view.settings
     // JS 与 DOM storage 是普通网站能用的前提。文件访问保持关闭：
     // 开着它，页面就能用 file:// 读到这个应用的私有目录。
@@ -43,7 +38,6 @@ internal fun configureWebView(view: WebView) {
     settings.allowFileAccess = false
     settings.allowContentAccess = false
     // 混合内容按最严格处理：https 页面里的 http 资源会被直接拦掉。
-    // 放行一次等于让运营商可以往加密页面里塞东西。
     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
     // 手机版的网页需要这两个，否则桌面版页面会缩成一条。
     settings.useWideViewPort = true
@@ -51,45 +45,14 @@ internal fun configureWebView(view: WebView) {
     // 双指缩放：开着，但不要那个又老又丑的 +/- 悬浮按钮。
     settings.builtInZoomControls = true
     settings.displayZoomControls = false
-    // 没有它，target=_blank 的链接根本不会进 onCreateWindow。
+    // 没有它，target=_blank 的链接根本不会进 onCreateWindow——那正是"多窗口"的地基。
     settings.setSupportMultipleWindows(true)
     settings.javaScriptCanOpenWindowsAutomatically = false
-    // 透明，让面板自己的背景在第一帧页面到达前可见。
+    // 透明，让界面自己的背景在第一帧页面到达前可见。
     view.setBackgroundColor(Color.TRANSPARENT)
 }
 
-/**
- * 不经过 client 的两个监听器：下载与长按链接。
- *
- * 网页点"下载"时没有任何回调会告诉你，`setDownloadListener` 是唯一入口，不装就是无声无息；
- * 长按不给菜单则落在文字选择上，而"我想把这个链接发出去"是这个面板里最常发生的事之一。
- *
- * 下载用的是这个 WebView 自己的 context（它由面板的 context 创建，和面板同源），
- * 只借来取 DOWNLOAD_SERVICE。
- */
-internal fun attachWebViewListeners(view: WebView, session: BrowserSession) {
-    view.setDownloadListener { url, _, contentDisposition, mimeType, _ ->
-        enqueueDownload(view.context, url, contentDisposition, mimeType)
-    }
-
-    view.setOnLongClickListener { target ->
-        // 这个回调的入参是 View，不是 WebView；不转一下就拿不到 hitTestResult。
-        val web = target as? WebView ?: return@setOnLongClickListener false
-        val hit = web.hitTestResult
-        val url = hit.extra
-        if (url.isNullOrBlank()) return@setOnLongClickListener false
-        when (hit.type) {
-            WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
-                showLinkMenu(web.context, url, session.pageTitle)
-                true
-            }
-
-            else -> false
-        }
-    }
-}
-
-/** 面板自己处理、不交给系统的 scheme。 */
+/** 引擎自己处理、不交给系统的 scheme。 */
 internal val IN_PANEL_SCHEMES = setOf(
     "http", "https", "about", "data", "file", "content", "javascript", "blob",
 )
@@ -130,4 +93,17 @@ internal fun sslMessage(primaryError: Int): String = when (primaryError) {
     android.net.http.SslError.SSL_NOTYETVALID -> "这个网站的证书还没生效。"
     android.net.http.SslError.SSL_UNTRUSTED -> "签发这个网站证书的机构不被系统信任。"
     else -> "这个网站的证书有问题，连接不安全。"
+}
+
+/**
+ * 地址输入的兜底规范化。
+ *
+ * 工具层（`browser_open`）与界面（首页搜索框）各自已经规范化过了——界面那份会把
+ * "今天天气"翻成搜索。这里只补一件事：**没写 scheme 的当成 https**。
+ */
+internal fun normalizeBrowserInput(input: String): String {
+    val trimmed = input.trim()
+    if (trimmed.isEmpty()) return trimmed
+    val hasScheme = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:").containsMatchIn(trimmed)
+    return if (hasScheme) trimmed else "https://$trimmed"
 }

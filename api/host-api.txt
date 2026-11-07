@@ -1177,6 +1177,25 @@ public interface org.cordis.api.AppearanceService {
 public final class org.cordis.api.AppearanceService$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.AppearanceService> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.AudioStream extends java.lang.Enum<org.cordis.api.AudioStream> {
+  public static final org.cordis.api.AudioStream MEDIA;
+    descriptor: Lorg/cordis/api/AudioStream;
+  public static final org.cordis.api.AudioStream ALARM;
+    descriptor: Lorg/cordis/api/AudioStream;
+  public static final org.cordis.api.AudioStream RING;
+    descriptor: Lorg/cordis/api/AudioStream;
+  public static final org.cordis.api.AudioStream NOTIFICATION;
+    descriptor: Lorg/cordis/api/AudioStream;
+  public static final org.cordis.api.AudioStream VOICE_CALL;
+    descriptor: Lorg/cordis/api/AudioStream;
+  public static final org.cordis.api.AudioStream SYSTEM;
+    descriptor: Lorg/cordis/api/AudioStream;
+  public static org.cordis.api.AudioStream[] values();
+    descriptor: ()[Lorg/cordis/api/AudioStream;
+  public static org.cordis.api.AudioStream valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/AudioStream;
+  public static kotlin.enums.EnumEntries<org.cordis.api.AudioStream> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
 public interface org.cordis.api.BackgroundService {
   public static final org.cordis.api.BackgroundService$Companion Companion;
     descriptor: Lorg/cordis/api/BackgroundService$Companion;
@@ -1187,6 +1206,158 @@ public interface org.cordis.api.BackgroundService {
 public final class org.cordis.api.BackgroundService$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.BackgroundService> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public interface org.cordis.api.BrowserService {
+  public static final org.cordis.api.BrowserService$Companion Companion;
+    descriptor: Lorg/cordis/api/BrowserService$Companion;
+  public abstract org.cordis.api.BrowserSnapshot snapshot();
+    descriptor: ()Lorg/cordis/api/BrowserSnapshot;
+  public abstract java.lang.Object open(java.lang.String, kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object openTab(java.lang.String, kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object selectTab(long, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object closeTab(long, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract android.view.View surface();
+    descriptor: ()Landroid/view/View;
+  public abstract void attachUi(org.cordis.api.BrowserUi);
+    descriptor: (Lorg/cordis/api/BrowserUi;)V
+  public abstract void releaseUi();
+    descriptor: ()V
+  public abstract java.lang.Object state(kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object readable(int, kotlin.coroutines.Continuation<? super java.lang.String>);
+    descriptor: (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object text(int, kotlin.coroutines.Continuation<? super java.lang.String>);
+    descriptor: (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object elements(int, kotlin.coroutines.Continuation<? super java.util.List<org.cordis.api.PageElement>>);
+    descriptor: (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object click(int, kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object type(int, java.lang.String, boolean, kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (ILjava/lang/String;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object scroll(java.lang.String, double, kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (Ljava/lang/String;DLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object screenshot(kotlin.coroutines.Continuation<? super java.lang.String>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object back(kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object forward(kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object reload(kotlin.coroutines.Continuation<? super org.cordis.api.PageState>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object waitFor(java.lang.String, long, kotlin.coroutines.Continuation<? super java.lang.Boolean>);
+    descriptor: (Ljava/lang/String;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object navigateInPlace(java.lang.String, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+public final class org.cordis.api.BrowserService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.BrowserService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.BrowserService$DefaultImpls {
+public final class org.cordis.api.BrowserSnapshot {
+  public static final org.cordis.api.BrowserSnapshot$Companion Companion;
+    descriptor: Lorg/cordis/api/BrowserSnapshot$Companion;
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.BrowserSnapshot(long, int, java.util.List<org.cordis.api.BrowserTabState>);
+    descriptor: (JILjava/util/List;)V
+  public final long getActiveId();
+    descriptor: ()J
+  public final int getMaxTabs();
+    descriptor: ()I
+  public final java.util.List<org.cordis.api.BrowserTabState> getTabs();
+    descriptor: ()Ljava/util/List;
+  public final org.cordis.api.BrowserTabState getActive();
+    descriptor: ()Lorg/cordis/api/BrowserTabState;
+  public final long component1();
+    descriptor: ()J
+  public final int component2();
+    descriptor: ()I
+  public final java.util.List<org.cordis.api.BrowserTabState> component3();
+    descriptor: ()Ljava/util/List;
+  public final org.cordis.api.BrowserSnapshot copy(long, int, java.util.List<org.cordis.api.BrowserTabState>);
+    descriptor: (JILjava/util/List;)Lorg/cordis/api/BrowserSnapshot;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.BrowserSnapshot$Companion {
+  public final org.cordis.api.BrowserSnapshot getEmpty();
+    descriptor: ()Lorg/cordis/api/BrowserSnapshot;
+  public org.cordis.api.BrowserSnapshot$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+public final class org.cordis.api.BrowserTabState {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.BrowserTabState(long, java.lang.String, java.lang.String, boolean, boolean, boolean, int, java.lang.String);
+    descriptor: (JLjava/lang/String;Ljava/lang/String;ZZZILjava/lang/String;)V
+  public org.cordis.api.BrowserTabState(long, java.lang.String, java.lang.String, boolean, boolean, boolean, int, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (JLjava/lang/String;Ljava/lang/String;ZZZILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final long getId();
+    descriptor: ()J
+  public final java.lang.String getUrl();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getTitle();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getCanGoBack();
+    descriptor: ()Z
+  public final boolean getCanGoForward();
+    descriptor: ()Z
+  public final boolean getLoading();
+    descriptor: ()Z
+  public final int getProgress();
+    descriptor: ()I
+  public final java.lang.String getError();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getLabel();
+    descriptor: ()Ljava/lang/String;
+  public final long component1();
+    descriptor: ()J
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component4();
+    descriptor: ()Z
+  public final boolean component5();
+    descriptor: ()Z
+  public final boolean component6();
+    descriptor: ()Z
+  public final int component7();
+    descriptor: ()I
+  public final java.lang.String component8();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.BrowserTabState copy(long, java.lang.String, java.lang.String, boolean, boolean, boolean, int, java.lang.String);
+    descriptor: (JLjava/lang/String;Ljava/lang/String;ZZZILjava/lang/String;)Lorg/cordis/api/BrowserTabState;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public interface org.cordis.api.BrowserUi {
+  public abstract void onSnapshot(org.cordis.api.BrowserSnapshot);
+    descriptor: (Lorg/cordis/api/BrowserSnapshot;)V
+  public default boolean requestFile(android.webkit.ValueCallback<android.net.Uri[]>, android.webkit.WebChromeClient$FileChooserParams);
+    descriptor: (Landroid/webkit/ValueCallback;Landroid/webkit/WebChromeClient$FileChooserParams;)Z
+  public default void requestPermissions(android.webkit.PermissionRequest, java.lang.String[]);
+    descriptor: (Landroid/webkit/PermissionRequest;[Ljava/lang/String;)V
+  public default void showFullscreen(android.view.View, android.webkit.WebChromeClient$CustomViewCallback);
+    descriptor: (Landroid/view/View;Landroid/webkit/WebChromeClient$CustomViewCallback;)V
+  public default void hideFullscreen();
+    descriptor: ()V
+public final class org.cordis.api.BrowserUi$DefaultImpls {
+  public static boolean requestFile(org.cordis.api.BrowserUi, android.webkit.ValueCallback<android.net.Uri[]>, android.webkit.WebChromeClient$FileChooserParams);
+    descriptor: (Lorg/cordis/api/BrowserUi;Landroid/webkit/ValueCallback;Landroid/webkit/WebChromeClient$FileChooserParams;)Z
+  public static void requestPermissions(org.cordis.api.BrowserUi, android.webkit.PermissionRequest, java.lang.String[]);
+    descriptor: (Lorg/cordis/api/BrowserUi;Landroid/webkit/PermissionRequest;[Ljava/lang/String;)V
+  public static void showFullscreen(org.cordis.api.BrowserUi, android.view.View, android.webkit.WebChromeClient$CustomViewCallback);
+    descriptor: (Lorg/cordis/api/BrowserUi;Landroid/view/View;Landroid/webkit/WebChromeClient$CustomViewCallback;)V
+  public static void hideFullscreen(org.cordis.api.BrowserUi);
+    descriptor: (Lorg/cordis/api/BrowserUi;)V
 public final class org.cordis.api.BudgetExhausted extends java.lang.IllegalStateException {
   public static final int $stable;
     descriptor: I
@@ -1274,6 +1445,126 @@ public final class org.cordis.api.BudgetUsage {
     descriptor: ()I
   public boolean equals(java.lang.Object);
     descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.CalendarEvent {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.CalendarEvent(long, long, java.lang.String, java.lang.String, java.lang.String, java.lang.String, long, long, boolean, java.lang.String, boolean, java.util.List<java.lang.Integer>);
+    descriptor: (JJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJZLjava/lang/String;ZLjava/util/List;)V
+  public org.cordis.api.CalendarEvent(long, long, java.lang.String, java.lang.String, java.lang.String, java.lang.String, long, long, boolean, java.lang.String, boolean, java.util.List, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (JJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJZLjava/lang/String;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final long getId();
+    descriptor: ()J
+  public final long getCalendarId();
+    descriptor: ()J
+  public final java.lang.String getCalendarName();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getTitle();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getDescription();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getLocation();
+    descriptor: ()Ljava/lang/String;
+  public final long getStartMillis();
+    descriptor: ()J
+  public final long getEndMillis();
+    descriptor: ()J
+  public final boolean getAllDay();
+    descriptor: ()Z
+  public final java.lang.String getTimezone();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getRecurring();
+    descriptor: ()Z
+  public final java.util.List<java.lang.Integer> getReminderMinutes();
+    descriptor: ()Ljava/util/List;
+  public final long component1();
+    descriptor: ()J
+  public final long component2();
+    descriptor: ()J
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component4();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component5();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component6();
+    descriptor: ()Ljava/lang/String;
+  public final long component7();
+    descriptor: ()J
+  public final long component8();
+    descriptor: ()J
+  public final boolean component9();
+    descriptor: ()Z
+  public final java.lang.String component10();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component11();
+    descriptor: ()Z
+  public final java.util.List<java.lang.Integer> component12();
+    descriptor: ()Ljava/util/List;
+  public final org.cordis.api.CalendarEvent copy(long, long, java.lang.String, java.lang.String, java.lang.String, java.lang.String, long, long, boolean, java.lang.String, boolean, java.util.List<java.lang.Integer>);
+    descriptor: (JJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJZLjava/lang/String;ZLjava/util/List;)Lorg/cordis/api/CalendarEvent;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.CalendarInfo {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.CalendarInfo(long, java.lang.String, java.lang.String, boolean, boolean, java.lang.String);
+    descriptor: (JLjava/lang/String;Ljava/lang/String;ZZLjava/lang/String;)V
+  public final long getId();
+    descriptor: ()J
+  public final java.lang.String getName();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getAccount();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getWritable();
+    descriptor: ()Z
+  public final boolean getVisible();
+    descriptor: ()Z
+  public final java.lang.String getColor();
+    descriptor: ()Ljava/lang/String;
+  public final long component1();
+    descriptor: ()J
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component4();
+    descriptor: ()Z
+  public final boolean component5();
+    descriptor: ()Z
+  public final java.lang.String component6();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.CalendarInfo copy(long, java.lang.String, java.lang.String, boolean, boolean, java.lang.String);
+    descriptor: (JLjava/lang/String;Ljava/lang/String;ZZLjava/lang/String;)Lorg/cordis/api/CalendarInfo;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public interface org.cordis.api.CalendarService {
+  public static final org.cordis.api.CalendarService$Companion Companion;
+    descriptor: Lorg/cordis/api/CalendarService$Companion;
+  public abstract java.lang.Object calendars(kotlin.coroutines.Continuation<? super java.util.List<org.cordis.api.CalendarInfo>>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object events(org.cordis.api.EventQuery, kotlin.coroutines.Continuation<? super java.util.List<org.cordis.api.CalendarEvent>>);
+    descriptor: (Lorg/cordis/api/EventQuery;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object event(long, kotlin.coroutines.Continuation<? super org.cordis.api.CalendarEvent>);
+    descriptor: (JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object create(org.cordis.api.EventDraft, kotlin.coroutines.Continuation<? super java.lang.Long>);
+    descriptor: (Lorg/cordis/api/EventDraft;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object createAll(java.util.List<org.cordis.api.EventDraft>, kotlin.coroutines.Continuation<? super java.util.List<java.lang.Long>>);
+    descriptor: (Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object update(long, org.cordis.api.EventDraft, kotlin.coroutines.Continuation<? super java.lang.Boolean>);
+    descriptor: (JLorg/cordis/api/EventDraft;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object delete(long, kotlin.coroutines.Continuation<? super java.lang.Boolean>);
+    descriptor: (JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+public final class org.cordis.api.CalendarService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.CalendarService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
 public interface org.cordis.api.ClipRead {
 public final class org.cordis.api.ClipRead$Content implements org.cordis.api.ClipRead {
   public static final int $stable;
@@ -1363,6 +1654,71 @@ public final class org.cordis.api.DeviceContextService$DefaultImpls {
     descriptor: (Lorg/cordis/api/DeviceContextService;)Z
   public static boolean openNotificationAccess(org.cordis.api.DeviceContextService);
     descriptor: (Lorg/cordis/api/DeviceContextService;)Z
+public interface org.cordis.api.DeviceControlService {
+  public static final org.cordis.api.DeviceControlService$Companion Companion;
+    descriptor: Lorg/cordis/api/DeviceControlService$Companion;
+  public abstract java.lang.Object state(org.cordis.api.DeviceSwitch, kotlin.coroutines.Continuation<? super org.cordis.api.SwitchState>);
+    descriptor: (Lorg/cordis/api/DeviceSwitch;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object setState(org.cordis.api.DeviceSwitch, boolean, kotlin.coroutines.Continuation<? super org.cordis.api.SwitchState>);
+    descriptor: (Lorg/cordis/api/DeviceSwitch;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object display(kotlin.coroutines.Continuation<? super org.cordis.api.DisplayState>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object setBrightness(int, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object setScreenTimeout(int, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object sound(kotlin.coroutines.Continuation<? super org.cordis.api.SoundState>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object setVolume(org.cordis.api.AudioStream, int, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (Lorg/cordis/api/AudioStream;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object setRingMode(org.cordis.api.RingMode, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (Lorg/cordis/api/RingMode;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object setDoNotDisturb(org.cordis.api.DndMode, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (Lorg/cordis/api/DndMode;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object flashlight(kotlin.coroutines.Continuation<? super java.lang.Boolean>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object setFlashlight(boolean, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object media(org.cordis.api.MediaAction, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+    descriptor: (Lorg/cordis/api/MediaAction;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public abstract java.lang.Object environment(kotlin.coroutines.Continuation<? super org.cordis.api.DeviceEnvironment>);
+    descriptor: (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+public final class org.cordis.api.DeviceControlService$Companion {
+  public final org.cordis.ServiceKey<org.cordis.api.DeviceControlService> getKey();
+    descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.DeviceEnvironment {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.DeviceEnvironment(boolean, boolean, boolean, boolean, org.cordis.api.DndMode);
+    descriptor: (ZZZZLorg/cordis/api/DndMode;)V
+  public final boolean getLocked();
+    descriptor: ()Z
+  public final boolean getSecureLock();
+    descriptor: ()Z
+  public final boolean getHeadphones();
+    descriptor: ()Z
+  public final boolean getExternalDisplay();
+    descriptor: ()Z
+  public final org.cordis.api.DndMode getDoNotDisturb();
+    descriptor: ()Lorg/cordis/api/DndMode;
+  public final boolean component1();
+    descriptor: ()Z
+  public final boolean component2();
+    descriptor: ()Z
+  public final boolean component3();
+    descriptor: ()Z
+  public final boolean component4();
+    descriptor: ()Z
+  public final org.cordis.api.DndMode component5();
+    descriptor: ()Lorg/cordis/api/DndMode;
+  public final org.cordis.api.DeviceEnvironment copy(boolean, boolean, boolean, boolean, org.cordis.api.DndMode);
+    descriptor: (ZZZZLorg/cordis/api/DndMode;)Lorg/cordis/api/DeviceEnvironment;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
 public final class org.cordis.api.DeviceStatus {
   public static final int $stable;
     descriptor: I
@@ -1430,6 +1786,168 @@ public final class org.cordis.api.DeviceStatus {
     descriptor: ()I
   public boolean equals(java.lang.Object);
     descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.DeviceSwitch extends java.lang.Enum<org.cordis.api.DeviceSwitch> {
+  public static final org.cordis.api.DeviceSwitch WIFI;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static final org.cordis.api.DeviceSwitch BLUETOOTH;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static final org.cordis.api.DeviceSwitch MOBILE_DATA;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static final org.cordis.api.DeviceSwitch AIRPLANE;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static final org.cordis.api.DeviceSwitch LOCATION;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static final org.cordis.api.DeviceSwitch NFC;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static final org.cordis.api.DeviceSwitch BATTERY_SAVER;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static final org.cordis.api.DeviceSwitch AUTO_ROTATE;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static final org.cordis.api.DeviceSwitch DARK_MODE;
+    descriptor: Lorg/cordis/api/DeviceSwitch;
+  public static org.cordis.api.DeviceSwitch[] values();
+    descriptor: ()[Lorg/cordis/api/DeviceSwitch;
+  public static org.cordis.api.DeviceSwitch valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/DeviceSwitch;
+  public static kotlin.enums.EnumEntries<org.cordis.api.DeviceSwitch> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
+public final class org.cordis.api.DisplayState {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.DisplayState(int, boolean, int, java.lang.Boolean);
+    descriptor: (IZILjava/lang/Boolean;)V
+  public org.cordis.api.DisplayState(int, boolean, int, java.lang.Boolean, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (IZILjava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final int getBrightnessPercent();
+    descriptor: ()I
+  public final boolean getAutoBrightness();
+    descriptor: ()Z
+  public final int getScreenTimeoutSeconds();
+    descriptor: ()I
+  public final java.lang.Boolean getAutoRotate();
+    descriptor: ()Ljava/lang/Boolean;
+  public final int component1();
+    descriptor: ()I
+  public final boolean component2();
+    descriptor: ()Z
+  public final int component3();
+    descriptor: ()I
+  public final java.lang.Boolean component4();
+    descriptor: ()Ljava/lang/Boolean;
+  public final org.cordis.api.DisplayState copy(int, boolean, int, java.lang.Boolean);
+    descriptor: (IZILjava/lang/Boolean;)Lorg/cordis/api/DisplayState;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.DndMode extends java.lang.Enum<org.cordis.api.DndMode> {
+  public static final org.cordis.api.DndMode$Companion Companion;
+    descriptor: Lorg/cordis/api/DndMode$Companion;
+  public static final org.cordis.api.DndMode OFF;
+    descriptor: Lorg/cordis/api/DndMode;
+  public static final org.cordis.api.DndMode PRIORITY;
+    descriptor: Lorg/cordis/api/DndMode;
+  public static final org.cordis.api.DndMode ALARMS;
+    descriptor: Lorg/cordis/api/DndMode;
+  public static final org.cordis.api.DndMode SILENT;
+    descriptor: Lorg/cordis/api/DndMode;
+  public final int getZen();
+    descriptor: ()I
+  public static org.cordis.api.DndMode[] values();
+    descriptor: ()[Lorg/cordis/api/DndMode;
+  public static org.cordis.api.DndMode valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/DndMode;
+  public static kotlin.enums.EnumEntries<org.cordis.api.DndMode> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
+public final class org.cordis.api.DndMode$Companion {
+  public final org.cordis.api.DndMode ofZen(int);
+    descriptor: (I)Lorg/cordis/api/DndMode;
+  public org.cordis.api.DndMode$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+public final class org.cordis.api.EventDraft {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.EventDraft(java.lang.String, long, java.lang.Long, boolean, java.lang.Long, java.lang.String, java.lang.String, java.lang.String, java.util.List<java.lang.Integer>);
+    descriptor: (Ljava/lang/String;JLjava/lang/Long;ZLjava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+  public org.cordis.api.EventDraft(java.lang.String, long, java.lang.Long, boolean, java.lang.Long, java.lang.String, java.lang.String, java.lang.String, java.util.List, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;JLjava/lang/Long;ZLjava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.lang.String getTitle();
+    descriptor: ()Ljava/lang/String;
+  public final long getStartMillis();
+    descriptor: ()J
+  public final java.lang.Long getEndMillis();
+    descriptor: ()Ljava/lang/Long;
+  public final boolean getAllDay();
+    descriptor: ()Z
+  public final java.lang.Long getCalendarId();
+    descriptor: ()Ljava/lang/Long;
+  public final java.lang.String getDescription();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getLocation();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getTimezone();
+    descriptor: ()Ljava/lang/String;
+  public final java.util.List<java.lang.Integer> getReminderMinutes();
+    descriptor: ()Ljava/util/List;
+  public final java.lang.String component1();
+    descriptor: ()Ljava/lang/String;
+  public final long component2();
+    descriptor: ()J
+  public final java.lang.Long component3();
+    descriptor: ()Ljava/lang/Long;
+  public final boolean component4();
+    descriptor: ()Z
+  public final java.lang.Long component5();
+    descriptor: ()Ljava/lang/Long;
+  public final java.lang.String component6();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component7();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component8();
+    descriptor: ()Ljava/lang/String;
+  public final java.util.List<java.lang.Integer> component9();
+    descriptor: ()Ljava/util/List;
+  public final org.cordis.api.EventDraft copy(java.lang.String, long, java.lang.Long, boolean, java.lang.Long, java.lang.String, java.lang.String, java.lang.String, java.util.List<java.lang.Integer>);
+    descriptor: (Ljava/lang/String;JLjava/lang/Long;ZLjava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lorg/cordis/api/EventDraft;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.EventQuery {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.EventQuery(long, long, java.lang.String, int);
+    descriptor: (JJLjava/lang/String;I)V
+  public org.cordis.api.EventQuery(long, long, java.lang.String, int, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (JJLjava/lang/String;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final long getFromMillis();
+    descriptor: ()J
+  public final long getToMillis();
+    descriptor: ()J
+  public final java.lang.String getKeyword();
+    descriptor: ()Ljava/lang/String;
+  public final int getLimit();
+    descriptor: ()I
+  public final long component1();
+    descriptor: ()J
+  public final long component2();
+    descriptor: ()J
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final int component4();
+    descriptor: ()I
+  public final org.cordis.api.EventQuery copy(long, long, java.lang.String, int);
+    descriptor: (JJLjava/lang/String;I)Lorg/cordis/api/EventQuery;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
 public interface org.cordis.api.HostNavigation {
   public static final org.cordis.api.HostNavigation$Companion Companion;
     descriptor: Lorg/cordis/api/HostNavigation$Companion;
@@ -1465,6 +1983,12 @@ public final class org.cordis.api.HostPermission extends java.lang.Enum<org.cord
   public static final org.cordis.api.HostPermission ROOT_SHELL;
     descriptor: Lorg/cordis/api/HostPermission;
   public static final org.cordis.api.HostPermission SECRETS;
+    descriptor: Lorg/cordis/api/HostPermission;
+  public static final org.cordis.api.HostPermission CALENDAR;
+    descriptor: Lorg/cordis/api/HostPermission;
+  public static final org.cordis.api.HostPermission DEVICE_CONTROL;
+    descriptor: Lorg/cordis/api/HostPermission;
+  public static final org.cordis.api.HostPermission BROWSER;
     descriptor: Lorg/cordis/api/HostPermission;
   public static org.cordis.api.HostPermission[] values();
     descriptor: ()[Lorg/cordis/api/HostPermission;
@@ -1767,6 +2291,25 @@ public final class org.cordis.api.ManagedPlugin {
 public interface org.cordis.api.ManifestProvider {
   public abstract org.cordis.api.PluginManifest getManifest();
     descriptor: ()Lorg/cordis/api/PluginManifest;
+public final class org.cordis.api.MediaAction extends java.lang.Enum<org.cordis.api.MediaAction> {
+  public static final org.cordis.api.MediaAction PLAY;
+    descriptor: Lorg/cordis/api/MediaAction;
+  public static final org.cordis.api.MediaAction PAUSE;
+    descriptor: Lorg/cordis/api/MediaAction;
+  public static final org.cordis.api.MediaAction PLAY_PAUSE;
+    descriptor: Lorg/cordis/api/MediaAction;
+  public static final org.cordis.api.MediaAction NEXT;
+    descriptor: Lorg/cordis/api/MediaAction;
+  public static final org.cordis.api.MediaAction PREVIOUS;
+    descriptor: Lorg/cordis/api/MediaAction;
+  public static final org.cordis.api.MediaAction STOP;
+    descriptor: Lorg/cordis/api/MediaAction;
+  public static org.cordis.api.MediaAction[] values();
+    descriptor: ()[Lorg/cordis/api/MediaAction;
+  public static org.cordis.api.MediaAction valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/MediaAction;
+  public static kotlin.enums.EnumEntries<org.cordis.api.MediaAction> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
 public final class org.cordis.api.NotificationEntry {
   public static final int $stable;
     descriptor: I
@@ -1850,6 +2393,53 @@ public final class org.cordis.api.NotifyOutcome$Posted implements org.cordis.api
     descriptor: ()I
   public boolean equals(java.lang.Object);
     descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.PageElement {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.PageElement(int, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String, boolean);
+    descriptor: (ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V
+  public org.cordis.api.PageElement(int, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String, boolean, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final int getIndex();
+    descriptor: ()I
+  public final java.lang.String getTag();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getKind();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getText();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getSelector();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getTypeable();
+    descriptor: ()Z
+  public final java.lang.String getInputType();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getVisible();
+    descriptor: ()Z
+  public final int component1();
+    descriptor: ()I
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component4();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component5();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component6();
+    descriptor: ()Z
+  public final java.lang.String component7();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component8();
+    descriptor: ()Z
+  public final org.cordis.api.PageElement copy(int, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String, boolean);
+    descriptor: (ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)Lorg/cordis/api/PageElement;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
 public interface org.cordis.api.PageReader {
   public static final org.cordis.api.PageReader$Companion Companion;
     descriptor: Lorg/cordis/api/PageReader$Companion;
@@ -1863,6 +2453,45 @@ public final class org.cordis.api.PageReader$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.PageReader> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
 public final class org.cordis.api.PageReader$DefaultImpls {
+public final class org.cordis.api.PageState {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.PageState(java.lang.String, java.lang.String, boolean, boolean, java.lang.String, long);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;J)V
+  public org.cordis.api.PageState(java.lang.String, java.lang.String, boolean, boolean, java.lang.String, long, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.lang.String getUrl();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String getTitle();
+    descriptor: ()Ljava/lang/String;
+  public final boolean getCanGoBack();
+    descriptor: ()Z
+  public final boolean getCanGoForward();
+    descriptor: ()Z
+  public final java.lang.String getError();
+    descriptor: ()Ljava/lang/String;
+  public final long getTabId();
+    descriptor: ()J
+  public final java.lang.String component1();
+    descriptor: ()Ljava/lang/String;
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final boolean component3();
+    descriptor: ()Z
+  public final boolean component4();
+    descriptor: ()Z
+  public final java.lang.String component5();
+    descriptor: ()Ljava/lang/String;
+  public final long component6();
+    descriptor: ()J
+  public final org.cordis.api.PageState copy(java.lang.String, java.lang.String, boolean, boolean, java.lang.String, long);
+    descriptor: (Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;J)Lorg/cordis/api/PageState;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
 public interface org.cordis.api.PermissionService {
   public static final org.cordis.api.PermissionService$Companion Companion;
     descriptor: Lorg/cordis/api/PermissionService$Companion;
@@ -2212,6 +2841,19 @@ public final class org.cordis.api.RenderedPage {
     descriptor: ()I
   public boolean equals(java.lang.Object);
     descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.RingMode extends java.lang.Enum<org.cordis.api.RingMode> {
+  public static final org.cordis.api.RingMode NORMAL;
+    descriptor: Lorg/cordis/api/RingMode;
+  public static final org.cordis.api.RingMode VIBRATE;
+    descriptor: Lorg/cordis/api/RingMode;
+  public static final org.cordis.api.RingMode SILENT;
+    descriptor: Lorg/cordis/api/RingMode;
+  public static org.cordis.api.RingMode[] values();
+    descriptor: ()[Lorg/cordis/api/RingMode;
+  public static org.cordis.api.RingMode valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lorg/cordis/api/RingMode;
+  public static kotlin.enums.EnumEntries<org.cordis.api.RingMode> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
 public interface org.cordis.api.RuntimeBudgetService {
   public static final org.cordis.api.RuntimeBudgetService$Companion Companion;
     descriptor: Lorg/cordis/api/RuntimeBudgetService$Companion;
@@ -2347,6 +2989,58 @@ public interface org.cordis.api.ServiceDirectory {
 public final class org.cordis.api.ServiceDirectory$Companion {
   public final org.cordis.ServiceKey<org.cordis.api.ServiceDirectory> getKey();
     descriptor: ()Lorg/cordis/ServiceKey;
+public final class org.cordis.api.SoundState {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.SoundState(java.util.Map<org.cordis.api.AudioStream, java.lang.Integer>, org.cordis.api.RingMode, org.cordis.api.DndMode);
+    descriptor: (Ljava/util/Map;Lorg/cordis/api/RingMode;Lorg/cordis/api/DndMode;)V
+  public final java.util.Map<org.cordis.api.AudioStream, java.lang.Integer> getVolumes();
+    descriptor: ()Ljava/util/Map;
+  public final org.cordis.api.RingMode getRingMode();
+    descriptor: ()Lorg/cordis/api/RingMode;
+  public final org.cordis.api.DndMode getDoNotDisturb();
+    descriptor: ()Lorg/cordis/api/DndMode;
+  public final java.util.Map<org.cordis.api.AudioStream, java.lang.Integer> component1();
+    descriptor: ()Ljava/util/Map;
+  public final org.cordis.api.RingMode component2();
+    descriptor: ()Lorg/cordis/api/RingMode;
+  public final org.cordis.api.DndMode component3();
+    descriptor: ()Lorg/cordis/api/DndMode;
+  public final org.cordis.api.SoundState copy(java.util.Map<org.cordis.api.AudioStream, java.lang.Integer>, org.cordis.api.RingMode, org.cordis.api.DndMode);
+    descriptor: (Ljava/util/Map;Lorg/cordis/api/RingMode;Lorg/cordis/api/DndMode;)Lorg/cordis/api/SoundState;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+public final class org.cordis.api.SwitchState {
+  public static final int $stable;
+    descriptor: I
+  public org.cordis.api.SwitchState(org.cordis.api.DeviceSwitch, java.lang.Boolean, java.lang.String);
+    descriptor: (Lorg/cordis/api/DeviceSwitch;Ljava/lang/Boolean;Ljava/lang/String;)V
+  public org.cordis.api.SwitchState(org.cordis.api.DeviceSwitch, java.lang.Boolean, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Lorg/cordis/api/DeviceSwitch;Ljava/lang/Boolean;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final org.cordis.api.DeviceSwitch getTarget();
+    descriptor: ()Lorg/cordis/api/DeviceSwitch;
+  public final java.lang.Boolean getEnabled();
+    descriptor: ()Ljava/lang/Boolean;
+  public final java.lang.String getDetail();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.DeviceSwitch component1();
+    descriptor: ()Lorg/cordis/api/DeviceSwitch;
+  public final java.lang.Boolean component2();
+    descriptor: ()Ljava/lang/Boolean;
+  public final java.lang.String component3();
+    descriptor: ()Ljava/lang/String;
+  public final org.cordis.api.SwitchState copy(org.cordis.api.DeviceSwitch, java.lang.Boolean, java.lang.String);
+    descriptor: (Lorg/cordis/api/DeviceSwitch;Ljava/lang/Boolean;Ljava/lang/String;)Lorg/cordis/api/SwitchState;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
 public interface org.cordis.api.ThemeCatalogService {
   public static final org.cordis.api.ThemeCatalogService$Companion Companion;
     descriptor: Lorg/cordis/api/ThemeCatalogService$Companion;
