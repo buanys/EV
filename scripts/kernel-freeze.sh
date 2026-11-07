@@ -6,7 +6,7 @@
 # （gradle/kernel-freeze-allowlist.txt）之外的文件即失败，退出码 1。
 #
 # 用法：
-#   scripts/kernel-freeze.sh                    # 基线 = 本仓库根提交
+#   scripts/kernel-freeze.sh                    # 基线 = 内核落库的那次提交（自动找）
 #   scripts/kernel-freeze.sh --baseline <ref>   # 临时指定基线（排查用）
 #   KERNEL_FREEZE_BASELINE=<ref> scripts/kernel-freeze.sh
 #
@@ -15,9 +15,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# 基线默认取本仓库根提交，不写死哈希：历史一旦被重写（rebase / filter-branch），
+# 基线默认取「内核落库的那一次提交」，不写死哈希：历史一旦被重写（rebase / filter-branch），
 # 任何硬编码的提交都会消失，门禁会以"找不到对象"的方式坏掉，而不是继续保护内核。
-BASELINE=${KERNEL_FREEZE_BASELINE:-$(git rev-list --max-parents=0 HEAD | tail -1)}
+#
+# 为什么不是根提交：EV 的历史起点是"导入一个应用"的空壳，内核是在后来的 vendor 提交里
+# 才进来的。拿根提交当基线，整个内核都会算成"改动"，门禁从第一天起就是红的——而红着的
+# 门禁不保护任何东西（2026-11-07 实测：根提交里 third_party/cordis 的文件数是 0）。
+default_baseline() {
+    local vendored
+    vendored=$(git log --diff-filter=A --format=%H --reverse -- third_party/cordis 2>/dev/null | head -1)
+    if [[ -n "$vendored" ]]; then
+        printf '%s\n' "$vendored"
+        return
+    fi
+    git rev-list --max-parents=0 HEAD | tail -1
+}
+BASELINE=${KERNEL_FREEZE_BASELINE:-$(default_baseline)}
 while [[ $# -gt 0 ]]; do
   case $1 in
     --baseline)

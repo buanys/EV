@@ -32,12 +32,11 @@ jobs:
       # Runs before the toolchain setup: it only needs git and bash. The kernel directories are
       # consumed as dependencies and must not be edited, so this is the cheapest failure to surface.
       #
-      # The baseline is this repository's root commit, not upstream's 7b13e6b: this history starts at
-      # the first import, so the upstream commit is not in the object store by design. Diffing
-      # against the root commit keeps the gate meaningful - every later change to the kernel
-      # directories is still measured against a real commit and must be allowlisted.
+      # The script picks its own baseline: the commit that vendored third_party/cordis, not the
+      # repository root. The root predates the kernel, so diffing against it would mark the whole
+      # kernel as "changed" and keep this gate permanently red - see the note in the script.
       - name: Kernel freeze gate
-        run: bash scripts/kernel-freeze.sh --baseline "$(git rev-list --max-parents=0 HEAD)"
+        run: bash scripts/kernel-freeze.sh
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
