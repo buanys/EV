@@ -15,7 +15,7 @@ import org.cordis.api.PluginManifest
     internal val evUiManifest: PluginManifest = PluginManifest(
         id = "ev.buan.plugins.ev.ui",
         name = "EV 界面",
-        version = "0.1.0",
+        version = "1.1.0",
         description = "主界面：对话、抽屉、快捷菜单、终端、设置页。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("agent-surface", org.cordis.api.PluginCapability.Kind.UI, "主界面", "宿主首页渲染的聊天界面。"),

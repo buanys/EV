@@ -36,7 +36,7 @@ class AgentLogPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvi
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.log",
         name = "审计日志",
-        version = "0.1.0",
+        version = "1.0.0",
         description = "把事件流写进自己的存储：截断、隔离与缺口都会被记录，重启后可恢复。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("event-log", org.cordis.api.PluginCapability.Kind.BACKGROUND, "事件日志", "按容量滚动写入，损坏的行进隔离区并补一条 sys.gap。"),

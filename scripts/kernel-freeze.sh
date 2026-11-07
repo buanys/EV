@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # EV 内核冻结门禁
 #
-# 内核目录（loader core hmr include packages）在 EV 里只当依赖用，不接受业务改动。
+# 内核目录（third_party/cordis 下的 core 与 loader）在 EV 里只当依赖用，不接受业务改动。
 # 本脚本把内核目录与基线提交比对：出现白名单
 # （gradle/kernel-freeze-allowlist.txt）之外的文件即失败，退出码 1。
 #
@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 ALLOWLIST=gradle/kernel-freeze-allowlist.txt
-KERNEL_PATHS=(loader core hmr include packages)
+KERNEL_PATHS=(third_party/cordis)
 
 [[ -f $ALLOWLIST ]] || { echo "缺少白名单 $ALLOWLIST" >&2; exit 1; }
 git rev-parse --verify --quiet "${BASELINE}^{commit}" >/dev/null ||

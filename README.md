@@ -13,7 +13,8 @@
 > **内核已冻结。** `third_party/cordis` 只当依赖用，不接受业务改动；
 > `scripts/verify-kernel-lock.sh` 用目录树哈希强制这一点。规则与例外流程见
 > [docs/kernel-freeze.md](docs/kernel-freeze.md)。
-> 三条架构门禁的入口是 `sh scripts/check.sh`（内核冻结 / 模块边界 / 文件行数）。
+> 三条架构门禁的入口是 `sh scripts/check.sh`（内核冻结 / 模块边界 / 文件行数），CI 与本地跑的是同一个；
+> 另有一道 `scripts/kernel-freeze.sh` 兜住"改内核又顺手刷新 KERNEL.lock"。
 
 > **API 版本 0.x，未稳定。** `PLUGIN_API_VERSION = 1` 只表示当前契约代次，
 > 不表示向后兼容承诺；插件与宿主必须同代编译。不要基于它做第三方分发。

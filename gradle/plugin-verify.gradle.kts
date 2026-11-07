@@ -48,6 +48,25 @@ tasks.matching { it.name == "bundlePlugin" }.configureEach {
             }
         }
 
+        // sidecar 的 version 与代码里 PluginManifest.version 是两份手写的事实，
+        // 漂移过一次（agent-browse 1.2.0 vs 2.0.0）：依赖门禁读的是 sidecar，
+        // 界面显示的是 manifest，两边不一致时"装的是哪个版本"没有唯一答案。
+        val sidecarVersion = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
+            .find(sidecars[0].readText())?.groupValues?.get(1)
+        val manifestVersion = project.fileTree("src/main/kotlin") { include("**/*.kt") }
+            .files.asSequence().mapNotNull { source ->
+                val text = source.readText()
+                val at = text.indexOf("PluginManifest(")
+                if (at < 0) null
+                else Regex("version\\s*=\\s*\"([^\"]+)\"")
+                    .find(text.substring(at))?.groupValues?.get(1)
+            }.firstOrNull()
+        if (sidecarVersion != null && manifestVersion != null) {
+            check(sidecarVersion == manifestVersion) {
+                "sidecar 版本 $sidecarVersion 与代码里 PluginManifest.version = $manifestVersion 不一致；两处必须相同"
+            }
+        }
+
         val needle = "androidx/compose/material/icons/extended"
         jars.forEach { jar ->
             java.util.zip.ZipFile(jar).use { zip ->

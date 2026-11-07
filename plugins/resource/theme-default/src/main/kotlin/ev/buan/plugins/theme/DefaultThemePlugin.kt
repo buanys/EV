@@ -43,7 +43,7 @@ class DefaultThemePlugin : Plugin<Unit> , org.cordis.api.ManifestProvider {
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.theme.default",
         name = "默认主题",
-        version = "0.1.0",
+        version = "1.0.0",
         description = "自带三套全局主题：方正、柔和、方正-方图标。颜色、字号、间距、圆角、动效、图标都在里面。",
         capabilities = listOf(
             org.cordis.api.PluginCapability(

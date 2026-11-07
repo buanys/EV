@@ -35,7 +35,7 @@ class AgentPromptPlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
     override val manifest: PluginManifest = PluginManifest(
         id = PLUGIN_ID,
         name = "系统提示词",
-        version = "0.1.0",
+        version = "1.0.4",
         description = "分层拼装 agent 的行为基线，可被替换或再加一份做对照。",
         capabilities = listOf(
             PluginCapability(

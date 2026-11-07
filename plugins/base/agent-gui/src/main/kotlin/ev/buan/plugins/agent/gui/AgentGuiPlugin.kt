@@ -89,7 +89,7 @@ class AgentGuiPlugin : Plugin<Unit>, AgentSurface, ManifestProvider {
     override val manifest: PluginManifest = PluginManifest(
         id = PLUGIN_ID,
         name = "屏幕操作",
-        version = "0.1.0",
+        version = "1.0.0",
         description = "看屏幕、点、滑、输入、截图。全部通过宿主的无障碍服务，需要系统授权。",
         capabilities = listOf(
             PluginCapability("screen_dump", PluginCapability.Kind.TOOL, "读屏", "压平的无障碍节点树。"),

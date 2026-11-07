@@ -51,7 +51,7 @@ class AgentBrowsePlugin :
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.browse",
         name = "浏览器",
-        version = "2.0.0",
+        version = "1.2.0",
         description = "网页抓取与搜索，供模型查资料；内置浏览器支持多窗口，界面与 agent 共用同一组页面。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("web_fetch", org.cordis.api.PluginCapability.Kind.TOOL, "抓取网页", "取正文文本，供模型阅读。"),

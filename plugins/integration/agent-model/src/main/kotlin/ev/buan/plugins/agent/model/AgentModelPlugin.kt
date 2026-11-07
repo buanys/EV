@@ -37,7 +37,7 @@ class AgentModelPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.model",
         name = "模型服务",
-        version = "0.1.0",
+        version = "1.0.1",
         description = "OpenAI 兼容的模型调用：provider、Key、模型清单都在这里。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("agent/model", org.cordis.api.PluginCapability.Kind.SERVICE, "提供模型调用", "complete() 跑一次补全，供 agent-brain 使用。"),

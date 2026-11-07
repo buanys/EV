@@ -39,7 +39,7 @@ class LinuxPlugin : Plugin<Unit>, org.cordis.api.ManifestProvider, PluginSetting
     override val manifest: org.cordis.api.PluginManifest = PluginManifest(
         id = "ev.buan.plugins.linux",
         name = "Linux 环境",
-        version = "0.1.0",
+        version = "1.0.0",
         description = "内置 Debian 根文件系统：apt、编译器和完整的用户态，与 Android 系统隔离。",
         capabilities = listOf(
             PluginCapability("linux_status", PluginCapability.Kind.TOOL, "查看环境状态", "是否已安装、占用空间、发行版版本。"),

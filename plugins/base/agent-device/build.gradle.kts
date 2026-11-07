@@ -76,3 +76,5 @@ tasks.register("bundlePlugin") {
     }
 }
 
+
+apply(from = rootProject.file("gradle/plugin-verify.gradle.kts"))

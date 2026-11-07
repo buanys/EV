@@ -167,14 +167,18 @@ docs/                        文档（见 §11）
 ## 6. 三条门禁
 
 ```sh
-sh scripts/check.sh     # CI 与提交前都跑这一个
+sh scripts/check.sh              # 三条门禁合跑（本地与 CI 共用）
+bash scripts/kernel-freeze.sh    # 第二道：内核相对 vendor 提交没被改过
 ```
+
+CI（`.github/workflows/android.yml` 与 `release.yml`）跑的是**同两个脚本**，
+步骤名分别是 `Architecture gates` 与 `Kernel freeze gate`。
 
 | 门禁 | 检查什么 | 为什么 |
 |---|---|---|
 | `verify-kernel-lock.sh` | `third_party/cordis` 目录树哈希 == `KERNEL.lock` | 内核冻结，改内核必须回上游 |
-| `verify-module-boundaries.sh` | 插件不依赖宿主内部模块，宿主不依赖插件 | 依赖方向单向 |
-| `verify-file-size.sh` | 主代码单文件 ≤ 400 行，白名单只减不增 | 超过 400 行的文件通常开始同时回答好几个问题 |
+| `verify-module-boundaries.sh` | 插件不依赖宿主内部模块（`host-core`/`host-runtime`/`host-app`），宿主不依赖插件 | 依赖方向单向 |
+| `verify-file-size.sh` | 主代码单文件 ≤ 400 行；白名单每条带**行数上限**，文件变长直接失败 | 超过 400 行的文件通常开始同时回答好几个问题 |
 
 白名单 `scripts/architecture-allowlist.txt` 是**待办清单**，不是豁免。新文件超限直接失败，
 不允许加进去。

@@ -31,7 +31,7 @@ class AgentBrainPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.brain",
         name = "Agent 主循环",
-        version = "0.1.0",
+        version = "1.0.4",
         description = "把对话变成行动：规划、调工具、收尾，带预算与进度事件。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("agent/service", org.cordis.api.PluginCapability.Kind.SERVICE, "运行一轮对话", "接收消息与工具清单，产出回复与事件流。"),

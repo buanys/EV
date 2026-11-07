@@ -48,6 +48,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Architecture gates
+        run: sh scripts/check.sh
+
       - name: Kernel freeze gate
         run: bash scripts/kernel-freeze.sh
 

@@ -2,7 +2,7 @@
 # 模块边界门禁。
 #
 # 规则：插件只能依赖契约（:plugin-api，将来叫 :host-api）和设计系统（:ui-kit），
-# 不能依赖宿主（:host / :host-core / :host-runtime / :host-app）；宿主也不能反向依赖插件。
+# 不能依赖宿主（:host-core / :host-runtime / :host-app）；宿主也不能反向依赖插件。
 #
 # 这两条一旦破，插件就变成了宿主的一部分：换不了、卸不掉、也没法单独测试。
 # 所以不靠评审，靠脚本。
@@ -25,7 +25,7 @@ else
 fi
 
 # 2) 宿主 → 插件：禁止
-hits=$(grep -rn --include=build.gradle.kts -E 'project\(":plugins:' host host-core 2>/dev/null || true)
+hits=$(grep -rn --include=build.gradle.kts -E 'project\(":plugins:' host-app host-runtime host-core 2>/dev/null || true)
 if [ -n "$hits" ]; then
     echo "FAIL：宿主依赖了某个插件" >&2
     echo "$hits" >&2

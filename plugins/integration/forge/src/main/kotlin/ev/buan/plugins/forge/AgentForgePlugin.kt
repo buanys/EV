@@ -29,7 +29,7 @@ class AgentForgePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPro
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.forge",
         name = "插件工坊",
-        version = "0.1.0",
+        version = "1.0.0",
         description = "在设备上把源码编译成插件并安装，全在本机完成。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("forge", org.cordis.api.PluginCapability.Kind.TOOL, "编译并安装", "一步完成编译到安装。"),

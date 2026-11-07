@@ -26,7 +26,7 @@ class ForgeCompilerPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.Manifest
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.forge.compiler",
         name = "插件编译器",
-        version = "0.1.0",
+        version = "1.0.1",
         description = "Kotlin 源码到 dex 的编译链，供插件工坊调用。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("forge/compiler", org.cordis.api.PluginCapability.Kind.SERVICE, "编译源码", "编译并返回 dex 与依赖信息。"),

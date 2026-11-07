@@ -1,8 +1,10 @@
 # 超过 400 行的主代码文件——**待办清单**，不是豁免名单。
 #
-# 规则：只减不增。拆掉一个就从这里删一行；缩到 400 行以下，verify-file-size.sh 会提醒删。
+# 规则：只减不增。每行必须写「路径 最大行数」——文件比登记上限更长会直接失败（挂名的豁免
+# 等于没有门禁）。拆掉一个就从这里删一行；缩到 400 行以下，verify-file-size.sh 会提醒删；
+# 拆短了但还没到 400 行，把上限收紧到当前行数。
 # 新增文件超限不允许进这里：先拆，再写。
 #
 # 顺序按"先拆哪个"排：越靠前越像枢纽、越该先动。
 
-host-runtime/src/main/kotlin/ev/buan/HostComposition.kt
+host-runtime/src/main/kotlin/ev/buan/HostComposition.kt 794

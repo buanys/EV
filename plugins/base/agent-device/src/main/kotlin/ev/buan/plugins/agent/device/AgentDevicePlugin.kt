@@ -89,7 +89,7 @@ class AgentDevicePlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestPr
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.device",
         name = "设备能力",
-        version = "0.1.0",
+        version = "1.0.0",
         description = "查看和操作这台手机：应用、读屏与输入、文件、剪贴板、通知。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("app_list", org.cordis.api.PluginCapability.Kind.TOOL, "列出应用"),

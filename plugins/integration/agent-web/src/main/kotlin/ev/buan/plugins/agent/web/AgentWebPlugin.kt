@@ -27,7 +27,7 @@ class AgentWebPlugin : Plugin<Unit>, AgentSurface , org.cordis.api.ManifestProvi
     override val manifest: org.cordis.api.PluginManifest = org.cordis.api.PluginManifest(
         id = "ev.buan.plugins.agent.web",
         name = "网页控制台",
-        version = "0.1.0",
+        version = "1.0.0",
         description = "在本机起一个带 token 的网页控制台，可以用浏览器连上同一个 agent。",
         capabilities = listOf(
             org.cordis.api.PluginCapability("web-console", org.cordis.api.PluginCapability.Kind.BACKGROUND, "网页控制台", "本机端口 + token；禁用插件即关闭端口。"),

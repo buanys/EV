@@ -35,6 +35,13 @@ jobs:
       # The script picks its own baseline: the commit that vendored third_party/cordis, not the
       # repository root. The root predates the kernel, so diffing against it would mark the whole
       # kernel as "changed" and keep this gate permanently red - see the note in the script.
+      # 三条架构门禁（内核哈希锁 / 模块边界 / 文件行数）。这是真正的门禁，
+      # 以前只在本地 check.sh 里跑，CI 跑的是另一个（当时作用域已经空掉的）脚本。
+      - name: Architecture gates
+        run: sh scripts/check.sh
+
+      # 第二道网：内核有没有相对 vendor 那次提交被改过（check.sh 的哈希锁只保证
+      # 与 KERNEL.lock 一致；改了内核又顺手更新 lock 的情况要靠这一步拦）。
       - name: Kernel freeze gate
         run: bash scripts/kernel-freeze.sh
 
