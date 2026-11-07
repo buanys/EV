@@ -18,6 +18,23 @@
 > **API 版本 0.x，未稳定。** `PLUGIN_API_VERSION = 1` 只表示当前契约代次，
 > 不表示向后兼容承诺；插件与宿主必须同代编译。不要基于它做第三方分发。
 
+## 现在能做什么（2026-11-07）
+
+| 能力 | 现状 | 插件 |
+|---|---|---|
+| 读屏与操作 | 无障碍读树 + 截图；点按 \/ 滑动 \/ 滚动 \/ 输入 \/ 按键 \/ 条件等待，11 个 `screen_*` 工具 | `agent-gui` |
+| 内置浏览器 | 搜索、抓正文、可交互页面（登录 \/ 翻页 \/ 填表）；**多窗口**，agent 与界面共用同一组页面；16 个 `browser_*` \/ `web_*` 工具 | `agent-browse` |
+| 设备与文件 | 共享存储读写、应用启动、剪贴板、通知、亮度 \/ 音量 \/ 勿扰 \/ 手电筒等；28 个工具 | `agent-device` |
+| 个人数据 | 日历（读写）、闹钟、便签（只读）；14 个工具 | `agent-phone` |
+| root shell | 单条命令，带总线级审批与"灾难命令"拒绝清单 | `agent-shell` |
+| 记忆 | 三层：会话全量 \/ 可检索笔记 \/ 常驻提示词；空闲后自动蒸馏 | `agent-memory` |
+| 设备端编译 | 在手机上编插件（26 MB 载荷，默认关闭、单独安装） | `forge` + `forge-compiler` |
+
+合计约 **86 个工具**（按 `ToolSpec` 计），17 个插件全部可独立装卸，宿主 APK 与插件分开分发。
+
+要求 **Android 13（API 33）及以上**；`run_shell`、设备开关这类能力需要 root。发布包见
+[Releases](https://github.com/buanys/EV/releases)。
+
 ## 插件格式
 
 一个插件 = **一个容器 + 一份元数据**：
@@ -29,7 +46,7 @@
 
 容器里必须是 `classes*.dex`（jar 只放 `.class` 会在加载期 `ClassNotFoundException`）。
 产物生成：插件模块跑 `bundlePlugin`，把 APK 的 dex 抽出来封成 jar 并写 sidecar，
-见 [plugins/feature/settings/build.gradle.kts](plugins/feature/settings/build.gradle.kts)。
+见 [plugins/base/agent-device/build.gradle.kts](plugins/base/agent-device/build.gradle.kts)。
 
 插件类**不得**位于平台、Kotlin 运行时、内核或共享包所在的任何前缀下（完整清单在
 [PluginPolicy.kt](host-runtime/src/main/kotlin/ev/buan/PluginPolicy.kt)，拒绝码是 `DUPLICATE_PLATFORM_CLASS`）。
@@ -74,7 +91,7 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 ### 压缩库的可选编解码不受支持
 
 宿主不打包 `zstd` / `brotli` / `asm`（commons-compress 的可选桥接），
-对应 `-dontwarn` 已加在 [host/proguard-rules.pro](host/proguard-rules.pro)。
+对应 `-dontwarn` 已加在 [host-app/proguard-rules.pro](host-app/proguard-rules.pro)。
 **插件不得依赖 zstd/brotli 压缩路径**，运行时这些类不存在。
 
 ## 信任模型
@@ -120,7 +137,9 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 不在插件里复制配置表单。
 
 抽屉还提供三个插件内面板：**工具**只读展示 `ToolRegistry.specs()`（不执行工具）；**浏览器**是
-面板内 WebView（地址栏/后退/前进/刷新，不打开外部应用、无标签页/下载）；**记忆**通过
+内置引擎的界面壳——多窗口（标签条，上限 5 个）、地址栏/前进后退/刷新、`target=_blank` 开新窗口、
+下载交给系统，外链 `tel:`/`mailto:`/`intent:` 同样交出去；WebView 归宿主，界面与 agent 操作的是
+同一组页面，离开面板不销毁；**记忆**通过
 `MemoryService` 查看/清空当前会话的 agent-memory（不删除 ev-ui 聊天历史）。三者都不新增宿主权限。
 **角色**面板管理角色库（`characters.json`），角色按会话选择：发送/重新生成时把角色设定作为
 `AgentService.send(..., systemPrompt=)` 传入；agent-brain 把它放在本轮模型输入最前，但不写入记忆。
@@ -178,6 +197,10 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 
 ## 安装与运行
 
+- **最快的方式**：从 [Releases](https://github.com/buanys/EV/releases) 拿 `EV-<版本>.apk` 与
+  `EV-<版本>-plugins.zip`，解压插件到 `/storage/emulated/0/EV/mods`（jar 与同名 json 必须成对）
+- 装过 debug 签名（或不同发布密钥）的旧版无法覆盖安装，**必须先卸载**；应用数据会丢，
+  `/sdcard/EV` 下的插件文件不受影响
 - 插件放 `/storage/emulated/0/EV/mods`，需要「所有文件访问权限」
 - 每次启动扫描该目录 → 校验 → 复制进应用私有目录并置只读 → 加载
 - 外部文件删除，私有副本同步删除；启用/禁用开关立即生效
@@ -186,7 +209,7 @@ org.json  org.apache.http  org.xmlpull  org.w3c.dom  org.xml.sax  javax.xml  jun
 
 ```bash
 sh scripts/check.sh                       # 三条架构门禁（内核冻结 / 模块边界 / 行数）
-./gradlew test                            # 全部单测（约 750 个用例）
+./gradlew test                            # 全部单测（CI 跑的就是这一条；含内核 JVM 测试）
 ./gradlew assembleDebug                   # 宿主 APK
 sh scripts/release-smoke.sh               # 单测 + releaseGate + 插件 jar
 
@@ -204,6 +227,10 @@ sh scripts/release-smoke.sh               # 单测 + releaseGate + 插件 jar
 ```
 
 ⚠️ `bundlePlugin` 有时会**假绿**：源文件改了仍复用旧 jar。部署前看时间戳，或加 `--rerun-tasks`。
+它也不兼容配置缓存，批量打的时候带 `--no-configuration-cache`。
+
+CI 在 push 到 `main` 时跑 [.github/workflows/android.yml](.github/workflows/android.yml)：
+内核冻结 → `assembleDebug` → 全量单测 → SDK 单测 → API 快照 → `:host-app:releaseGate`。
 
 ## 真机验收清单（agent 层）
 
@@ -252,6 +279,13 @@ jar/json；真机问答需要一个可用的 OpenAI 兼容服务。本仓库的 
   记录与截图见 [DEVICE-VERIFICATION.md](docs/archive/2026-10-24-arch-hardening/DEVICE-VERIFICATION.md)；
   BACKGROUND 前台服务与真实崩溃 handler 仍无活体验证。
 - 第三方插件分发**尚不可用**：API 未稳定、信任模型只覆盖自侧载场景。
+- CI 里跳过了内核的一个时序用例（`FiberLifecycleTest > config update coalesces…`，只在 runner 上
+  失败；内核冻结不能改）。本地仍会跑它，原因与删除条件见
+  [docs/build-on-device.md](docs/build-on-device.md)。
+- 自动出包（`release.yml`，推 `v*` tag 触发）需要仓库配置 `KEYSTORE_BASE64` 与
+  `KEYSTORE_PROPERTIES` 两个 secret；没配时它会带着可读错误失败，不会产出 debug 签名的包。
+  当前 v0.1.0 是本地构建后手工发布的。
+- `forge-compiler` 不在发布包里：它的载荷要 `scripts/forge-payload.sh` 生成，默认关闭、按需安装。
 
 ## 来源与许可
 
