@@ -146,7 +146,7 @@ docs/                        文档（见 §11）
 | base/linux | …linux | chroot Debian 环境 | ServiceDirectory, PluginStorage |
 | feature/ev-ui | …ev.ui | 主界面：对话、抽屉、快捷菜单、设置页、页面栈 | AppearanceService 等 |
 | feature/agent-brain | …agent.brain | 一轮对话的编排：工具轮、审批、预算、收尾 | ServiceDirectory, HudService |
-| feature/agent-browse | …agent.browse | `web_search` / `web_fetch` + 浏览器面板 | ServiceDirectory, RuntimeBudgetService |
+| feature/agent-browse | …agent.browse | `web_search` / `web_fetch` + 浏览器 14 个动作（含 `browser_tabs` 多窗口）。WebView 归宿主，插件只做界面（`BrowserPanel`） | ServiceDirectory, RuntimeBudgetService, BrowserService |
 | feature/agent-prompt | …agent.prompt | 系统提示词（分层拼装） | ServiceDirectory |
 | feature/settings | …settings | 设置页（宿主的，不是 ev-ui 里的） | AppearanceService |
 | integration/agent-model | …agent.model | 模型 Provider（OpenAI 兼容，多模型） | ServiceDirectory（多行） |
