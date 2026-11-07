@@ -36,6 +36,15 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") && !it.name.conta
 val forgeCompilerClasses = rootProject.file(
     "plugins/integration/forge-compiler/build/intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar",
 )
+
+// 文件依赖不会自己带任务顺序：干净检出时上面那个 classes.jar 还不存在，forge 的
+// compileDebugKotlin 会报 "File/directory does not exist"（CI 上就是这么红的，本地因为
+// 之前的构建留着中间产物而看不出来）。补一条顺序边，跟当年 agent-api 那次同一个修法。
+// 根治办法是把 ForgeCompiler / ForgeRequest / ForgeResult 这三个类型搬进 :host-api，
+// 那一步动的是契约定居，留到单独一次改。
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(":plugins:integration:forge-compiler:bundleDebugClassesToCompileJar")
+}
 dependencies {
     compileOnly(project(":host-api"))
     compileOnly(project(":loader"))
