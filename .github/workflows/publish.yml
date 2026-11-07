@@ -16,8 +16,10 @@ on:
         required: true
         type: boolean
         default: true
-  release:
-    types: [released, prereleased]
+  # 刻意不监听 release 事件：这个仓库的 release 是**应用**发布（APK + 插件包），
+  # 和 Maven Central 上的库没有关系。以前它挂在 release 上，于是每次发版都会
+  # 多出一个必然失败的 Publish 任务（v0.1.0 就是这么红的）。
+  # 真要发库，手动跑这个 workflow。
 
 permissions:
   contents: read
