@@ -72,6 +72,12 @@ jobs:
       - name: Assemble debug APKs
         run: ./gradlew assembleDebug --console=plain
 
+      # 内核 :core 里有一个时序用例只在这类 runner 上失败（根 build.gradle.kts 里有完整说明）。
+      # 显式打一行，避免"CI 少跑了一个用例"变成隐藏信息。
+      - name: Note the one kernel test skipped in CI
+        run: |
+          echo "::notice title=已跳过一个内核用例::FiberLifecycleTest > config update coalesces with injected provider reload —— 只在 CI 跳过（内核冻结，不能改），本地仍会跑。"
+
       # Root `test` aggregates the kernel JVM tests, the packager plugin tests, :host-core:test and
       # every Android module's debug unit tests.
       - name: Run JVM and unit tests
