@@ -64,9 +64,17 @@ class AgentBrowsePlugin :
     /** Opened from a menu, never the app root. */
     override val isHomeCandidate: Boolean = false
 
+    /**
+     * 标签集合挂在插件实例上，**不是**挂在页面组合里。
+     *
+     * 这是"退出浏览器页再回来，页面还在"的全部秘密：组合可以被销毁重建，
+     * 而插件实例活到停用为止。WebView 的销毁只发生在用户关标签和插件停用（见 apply 的 effect）。
+     */
+    private val browser = BrowserTabs()
+
     @Composable
     override fun Page(modifier: Modifier, onBack: () -> Unit) {
-        BrowserPage(onBack = onBack, modifier = modifier)
+        BrowserPage(onBack = onBack, modifier = modifier, tabs = browser)
     }
 
     override suspend fun apply(ctx: Context, config: Unit, effect: EffectScope) {
@@ -79,7 +87,7 @@ class AgentBrowsePlugin :
             .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
-        val browser = ctx.require(org.cordis.api.BrowserService.Key)
+        val service = ctx.require(org.cordis.api.BrowserService.Key)
         registry.register(
             PLUGIN_ID,
             BrowseTools(
@@ -87,8 +95,10 @@ class AgentBrowsePlugin :
                 pageReader = directory.lookup(PageReader.Key),
                 // 宿主的执行预算：渲染走 Long 档位，由宿主决定这一刻能不能开。
                 budget = ctx.require(RuntimeBudgetService.Key),
-            ).all() + BrowserTools.all(browser),
+            ).all() + BrowserTools.all(service),
         )
+        // 插件停用：五个标签的 WebView 一起销毁。这里不做就等于把几 MB 留在进程里。
+        effect.collect { browser.dispose() }
     }
 
     private companion object {

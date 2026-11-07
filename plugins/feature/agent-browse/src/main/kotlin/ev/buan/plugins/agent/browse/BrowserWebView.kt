@@ -125,14 +125,24 @@ internal fun BrowserWebView(
     Box(modifier) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
+            // 复用这个标签**已有的** WebView：离开页面再回来要接着看同一页，
+            // 不是重开一个。只有第一次进来时 view 是 null。
             factory = { webViewContext ->
-                WebView(webViewContext).apply {
+                session.view ?: WebView(webViewContext).apply {
                     configureWebView(this)
                     webViewClient = browserWebViewClient(session)
-                    webChromeClient = browserChromeClient(context, session, callbacks)
-                    attachWebViewListeners(this, session)
-                    session.attach(this)
                 }
+            },
+            // 客户端每家一次重组都重新绑：回调对象是这一次组合的，旧的指向已经消失的
+            // 文件选择器/权限请求状态。监听器只挂一次（session.listenersAttached 挡住）。
+            update = { web ->
+                web.webViewClient = browserWebViewClient(session)
+                web.webChromeClient = browserChromeClient(context, session, callbacks)
+                if (!session.listenersAttached) {
+                    attachWebViewListeners(web, session)
+                    session.listenersAttached = true
+                }
+                session.attach(web)
             },
         )
 
@@ -158,18 +168,11 @@ internal fun BrowserWebView(
         }
     }
 
-    // 面板关闭时销毁 WebView：先摘掉两个 client（它们捕获了页面状态），
-    // 再从父容器移除，最后 destroy——挂在父容器上的 WebView 会泄漏。
+    // 离开页面**只放下视图**，不销毁：页面、JS 上下文、滚动位置都留在这个标签里，
+    // 下次进来接着用。真正的 destroy 在 BrowserTabs.close（用户关标签）与插件停用时。
     DisposableEffect(Unit) {
         onDispose {
             fullscreen.leave()
-            session.view?.let { view ->
-                view.stopLoading()
-                view.webViewClient = WebViewClient()
-                view.webChromeClient = WebChromeClient()
-                (view.parent as? ViewGroup)?.removeView(view)
-                view.destroy()
-            }
             session.detach()
         }
     }

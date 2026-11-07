@@ -33,15 +33,19 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 用普通 [Column] 而不是 `EvPage`：EvPage 的页面槽是 LazyColumn，而 WebView 需要占满
  * 剩余高度并自己处理滚动。
  *
- * 范围刻意很小：打开一个页面看看，不是标签页浏览器——链接留在面板里，不拉起外部应用，
- * WebView 随面板销毁，所以关掉之后不保留页面、JS 上下文或定时器。
+ * 范围：标签页浏览器。标签集合由**插件实例**持有（[BrowserTabs]），所以离开这个页面
+ * 再回来，页面、JS 上下文与滚动位置都还在；销毁只发生在用户关标签与插件停用时。
  */
 @Composable
-fun BrowserPage(
+internal fun BrowserPage(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 标签集合由**插件实例**持有：离开这个页面再回来，页面还在（见 [BrowserTabs]）。 */
+    tabs: BrowserTabs = remember { BrowserTabs() },
 ) {
-    val session = remember { BrowserSession() }
+    // 没有标签就开一个；返回时标签还在，所以这里通常什么都不做。
+    if (tabs.tabs.isEmpty()) tabs.openTab()
+    val session = tabs.active ?: return
     val keyboard = LocalSoftwareKeyboardController.current
 
     // 系统返回先走网页历史，没有历史才离开面板；聊天页自己也装了返回处理，
@@ -52,12 +56,17 @@ fun BrowserPage(
     }
 
     Column(modifier.fillMaxSize().background(MiuixTheme.colorScheme.background).imePadding()) {
+        BrowserTabStrip(tabs = tabs, activeId = session.id)
         BrowserChrome(session = session, onBack = onBack)
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // WebView 常驻：从组合里移除会触发 DisposableEffect 把它销毁，
             // 再打开页面又要重建一个。首页只是盖在它上面的一层。
-            BrowserWebView(session = session, modifier = Modifier.fillMaxSize())
+            // key 到标签 id：切换标签时 AndroidView 必须重建，否则它继续显示上一个标签的
+            // WebView（factory 只在首次创建时跑一次）。
+            androidx.compose.runtime.key(session.id) {
+                BrowserWebView(session = session, modifier = Modifier.fillMaxSize())
+            }
 
             if (session.currentUrl.isEmpty() && session.error == null) {
                 BrowserHome(

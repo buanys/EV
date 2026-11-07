@@ -23,11 +23,18 @@ import androidx.compose.runtime.setValue
  * 所有方法都在主线程调用（Compose 事件与 WebView 回调都在主线程），因此没有加锁。
  */
 @Stable
-internal class BrowserSession {
+internal class BrowserSession(
+    /** 标签 id，由 [BrowserTabs] 发；0 表示"还没挂上标签"（不该出现）。 */
+    val id: Long = 0L,
+) {
 
-    /** 当前挂着的平台视图；面板销毁后为 null。 */
+    /** 这个标签自己的 WebView；离开页面时只 detach，不销毁（见 [dispose]）。 */
     var view: WebView? = null
         private set
+
+    /** 监听器只挂一次：`AndroidView.update` 会在每次重组时跑，重复 addJavascriptInterface 之类的会叠加。 */
+    var listenersAttached: Boolean = false
+
 
     /** 地址栏里的文本。用户编辑期间不会被页面跳转覆盖。 */
     var address by mutableStateOf("")
@@ -81,7 +88,29 @@ internal class BrowserSession {
     }
 
     fun detach() {
+        // 只放下视图，不销毁：WebView 里还有页面、JS 上下文和滚动位置，下次回来接着用。
+        view?.let { web -> (web.parent as? android.view.ViewGroup)?.removeView(web) }
         view = null
+        listenersAttached = false
+    }
+
+    /**
+     * 销毁这个标签的 WebView。
+     *
+     * 只有两处调用：用户关掉这个标签、插件停用。`BrowserTabs` 保证不会漏。
+     */
+    fun dispose() {
+        view?.let { web ->
+            (web.parent as? android.view.ViewGroup)?.removeView(web)
+            runCatching {
+                web.stopLoading()
+                web.webViewClient = android.webkit.WebViewClient()
+                web.webChromeClient = android.webkit.WebChromeClient()
+                web.destroy()
+            }
+        }
+        view = null
+        listenersAttached = false
     }
 
     /** 从 WebView 读回前进/后退能力。页面每次跳转后都要调。 */
