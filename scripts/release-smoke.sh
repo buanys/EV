@@ -15,36 +15,53 @@ export ANDROID_HOME=${ANDROID_HOME:-/opt/android-sdk}
 JAVA_PATHS=${JAVA_PATHS:-/usr/lib/jvm/java-21-openjdk-arm64,/usr/lib/jvm/java-25-openjdk-arm64}
 
 echo "== 1/3 单测 =="
-"$GRADLE" :plugin-api:testDebugUnitTest :ui-kit:testDebugUnitTest \
+"$GRADLE" :host-api:testDebugUnitTest :ui-kit:testDebugUnitTest \
   --no-configuration-cache --console=plain \
   -Dorg.gradle.java.installations.paths="$JAVA_PATHS"
 
 echo "== 2/3 release 构建 + 门禁 =="
 # 显式放行 debug 签名：没有 keystore.properties 时，门禁按 debug key 放行，仅用于侧载冒烟，
 # 产物不能发布；有 keystore.properties 时该 flag 不改变签名结果（仍用发布 key 签名，门禁只不再拦截）。
-"$GRADLE" :host:releaseGate -PallowDebugSigning=true \
+"$GRADLE" :host-app:releaseGate -PallowDebugSigning=true \
   --no-configuration-cache --console=plain \
   -Dorg.gradle.java.installations.paths="$JAVA_PATHS"
 
 echo "== 3/3 插件 jar =="
-# 当前在构建内的 9 个插件，与 settings.gradle.kts 保持一致。
+# 16 个插件（插件住在 plugins/<类>/<名>，Gradle 路径是 :plugins:<类>:<名>）。
+# forge-compiler 不在冒烟清单里：它要 scripts/forge-payload.sh 生成的载荷。
 # ev-ui / agent-* 依赖 ev.buan.plugins.agent.api，必须一起构建/投放，
 # 单独安装会因 DEPENDENCY_MISSING 被拒。
-"$GRADLE" :plugins:settings:bundlePlugin :plugins:ev-ui:bundlePlugin \
-  :plugins:agent-api:bundlePlugin :plugins:agent-model:bundlePlugin \
-  :plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
-  :plugins:agent-brain:bundlePlugin :plugins:agent-web:bundlePlugin \
-  :plugins:agent-shell:bundlePlugin \
-  --no-configuration-cache --console=plain \
+"$GRADLE" --no-configuration-cache \
+  :plugins:base:agent-tools:bundlePlugin \
+  :plugins:base:agent-memory:bundlePlugin \
+  :plugins:base:agent-log:bundlePlugin \
+  :plugins:base:agent-device:bundlePlugin \
+  :plugins:base:agent-gui:bundlePlugin \
+  :plugins:base:agent-phone:bundlePlugin \
+  :plugins:base:agent-shell:bundlePlugin \
+  :plugins:base:linux:bundlePlugin \
+  :plugins:feature:ev-ui:bundlePlugin \
+  :plugins:feature:agent-brain:bundlePlugin \
+  :plugins:feature:agent-prompt:bundlePlugin \
+  :plugins:feature:agent-browse:bundlePlugin \
+  :plugins:integration:agent-model:bundlePlugin \
+  :plugins:integration:agent-web:bundlePlugin \
+  :plugins:integration:forge:bundlePlugin \
+  :plugins:resource:theme-default:bundlePlugin \
+  --console=plain \
   -Dorg.gradle.java.installations.paths="$JAVA_PATHS"
 
-APK=host-app/build/outputs/apk/release/host-release.apk
+APK=host-app/build/outputs/apk/release/host-app-release.apk
 test -f "$APK" || { echo "缺少 $APK"; exit 1; }
 echo "APK: $APK ($(du -h "$APK" | cut -f1))"
 
-for jar in settings eta-ui agent-api agent-model agent-tools agent-memory agent-brain; do
-  test -f "plugins/$jar/build/dist/$jar.jar" || { echo "缺少 $jar.jar"; exit 1; }
-  test -f "plugins/$jar/build/dist/$jar.json" || { echo "缺少 $jar.json"; exit 1; }
+for id in agent-tools agent-memory agent-log agent-device agent-gui agent-phone \
+          agent-shell linux ev-ui agent-brain agent-prompt agent-browse \
+          agent-model agent-web forge theme-default; do
+  dist=$(ls -d plugins/*/"$id"/build/dist 2>/dev/null | head -1)
+  [ -n "$dist" ] || { echo "找不到 $id 的产物目录"; exit 1; }
+  test -f "$dist/$id.jar" || { echo "缺少 $dist/$id.jar"; exit 1; }
+  test -f "$dist/$id.json" || { echo "缺少 $dist/$id.json"; exit 1; }
 done
 
 if [[ "${1:-}" == "--install" ]] && command -v adb >/dev/null 2>&1; then

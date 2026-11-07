@@ -15,7 +15,7 @@ Kotlin Multiplatform 项目（[settings.gradle.kts](../../settings.gradle.kts)�
 [.github/workflows/publish.yml](../../.github/workflows/publish.yml)）。
 
 宿主与内核在本仓库里共存：`:host` 通过 project 依赖直接消费 `:core` 与 `:loader`
-（[host/build.gradle.kts](../../host/build.gradle.kts)）。这种同仓共存让「临时改一下内核」非常容易——
+（[host-app/build.gradle.kts](../../host-app/build.gradle.kts)）。这种同仓共存让「临时改一下内核」非常容易——
 提交 `c1c73cc` 就把 `AndroidModuleVerifier.verify(descriptor)` 改成了
 `verify(id, sha256, descriptor)`，只为了让宿主在回调里拿到哈希。这是一次真实的边界失守。
 
@@ -38,7 +38,7 @@ Kotlin Multiplatform 项目（[settings.gradle.kts](../../settings.gradle.kts)�
    已发布版本；发布流程与主线共用 `.github/workflows/publish.yml`。
 
 配套动作（T01）：把 `c1c73cc` 的签名改动回退成 `verify(descriptor)`，宿主自己测量哈希
-（[host/src/main/kotlin/ev/buan/PluginHash.kt](../../host/src/main/kotlin/ev/buan/PluginHash.kt)）。
+（[host-runtime/src/main/kotlin/ev/buan/PluginHash.kt](../../host-runtime/src/main/kotlin/ev/buan/PluginHash.kt)）。
 验收线是 `git diff 7b13e6b -- loader/src/androidMain core hmr include packages` 为空。
 
 ## 代价与限制

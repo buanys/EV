@@ -1,12 +1,11 @@
 name: Android
 
-# Main-line Android build: debug APKs, JVM + unit tests, the release gates and the kernel freeze
-# gate. `demo/` is deliberately not part of this workflow - it is a separate Gradle build pinned to
-# Kotlin 2.1.21 / AGP 8.7.2 (see demo/README.md) and is frozen for this cycle.
+# Main-line Android build: debug APKs, JVM + unit tests, the release gates and the kernel freeze gate.
+# Module paths follow the plugin layout: the host is :host-app, plugins are :plugins:<kind>:<name>.
 
 on:
   push:
-    branches: [main, build/gradle9-agp9]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -94,4 +93,4 @@ jobs:
       # the resulting artifact is debug-signed and only good for side-loading smoke tests, never for
       # distribution (see docs/release-signing.md). Without the flag this step fails by design.
       - name: Release gate
-        run: ./gradlew :host:releaseGate -PallowDebugSigning=true --console=plain
+        run: ./gradlew :host-app:releaseGate -PallowDebugSigning=true --console=plain

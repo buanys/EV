@@ -1,6 +1,15 @@
 name: Release
 
-# 出包流程：打 tag（v*）或手动触发 → 构建签名 release APK 与 9 个插件 jar → 创建 GitHub Release。
+# 出包流程：打 tag（v*）或手动触发 → 构建签名 release APK 与 16 个插件 jar → 创建 GitHub Release。
+#
+# 模块路径跟着插件归位走：插件住在 plugins/<类>/<名>，Gradle 路径就是 :plugins:<类>:<名>
+# （见 settings.gradle.kts）。宿主是 :host-app，不是早期的 :host。
+#
+# **forge-compiler 不在这个清单里**：它的载荷（26 MB 编译器 dex + jar）由
+# scripts/forge-payload.sh 从一次已验证的探针产物生成，CI 里既没有探针、也没有
+# /sdcard/EV/mods/compileprobe.jar；而它默认关闭、按需安装。要发它就单独跑：
+#   scripts/forge-payload.sh --from-probe <probe.jar> --out plugins/integration/forge-compiler/payload
+#   ./gradlew :plugins:integration:forge-compiler:bundlePlugin --no-configuration-cache
 #
 # 签名材料不在仓库里（keystore.properties 与 *.jks 都被 gitignore），CI 从 Secrets 还原：
 #   KEYSTORE_BASE64      release-keystore.jks 的 base64（`base64 -w0 release-keystore.jks`）
@@ -30,7 +39,7 @@ jobs:
   release:
     name: Build signed release
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       # fetch-depth: 0 是硬要求：内核冻结门禁把基线解析成真实提交，浅克隆会让它无法工作。
       - name: Check out repository
@@ -89,12 +98,18 @@ jobs:
       - name: Check SDK API snapshots
         run: ./gradlew :host-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
 
+      # 发布必须走 :host-app:releaseGate（签名 + 共享包 + 禁忌包三重校验）。
+      # assembleRelease 本身 deliberately 不跑 verifyReleaseSigning，直接拿它的产物发版
+      # 等于跳过门禁——这一行就是那道门。
+      - name: Release gate
+        run: ./gradlew :host-app:releaseGate --console=plain
+
       - name: Assemble signed release APK
-        run: ./gradlew :host:assembleRelease --console=plain
+        run: ./gradlew :host-app:assembleRelease --console=plain
 
       - name: Verify the APK is signed with the release key
         run: |
-          apk=host-app/build/outputs/apk/release/host-release.apk
+          apk=host-app/build/outputs/apk/release/host-app-release.apk
           test -f "$apk"
           # apksigner 不在 hosted runner 的 PATH 上，要从 SDK 的 build-tools 里取最新一份。
           sdk_root="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
@@ -107,21 +122,46 @@ jobs:
             exit 1
           fi
 
-      - name: Bundle the nine plugin jars
+      # 16 个插件：4 类（base / feature / integration / resource）。
+      # forge-compiler 见文件头：要载荷，单独发。
+      # bundlePlugin 不兼容配置缓存（gradle/plugin-verify.gradle.kts 已声明），显式关掉。
+      - name: Bundle plugin jars
         run: |
           set -euo pipefail
-          ./gradlew \
-            :plugins:settings:bundlePlugin :plugins:ev-ui:bundlePlugin \
-            :plugins:agent-api:bundlePlugin :plugins:agent-model:bundlePlugin \
-            :plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
-            :plugins:agent-brain:bundlePlugin :plugins:agent-web:bundlePlugin \
-            :plugins:agent-shell:bundlePlugin \
+          ./gradlew --no-configuration-cache \
+            :plugins:base:agent-tools:bundlePlugin \
+            :plugins:base:agent-memory:bundlePlugin \
+            :plugins:base:agent-log:bundlePlugin \
+            :plugins:base:agent-device:bundlePlugin \
+            :plugins:base:agent-gui:bundlePlugin \
+            :plugins:base:agent-phone:bundlePlugin \
+            :plugins:base:agent-shell:bundlePlugin \
+            :plugins:base:linux:bundlePlugin \
+            :plugins:feature:ev-ui:bundlePlugin \
+            :plugins:feature:agent-brain:bundlePlugin \
+            :plugins:feature:agent-prompt:bundlePlugin \
+            :plugins:feature:agent-browse:bundlePlugin \
+            :plugins:integration:agent-model:bundlePlugin \
+            :plugins:integration:agent-web:bundlePlugin \
+            :plugins:integration:forge:bundlePlugin \
+            :plugins:resource:theme-default:bundlePlugin \
             --console=plain
           mkdir -p dist/plugins
           # 每个插件目录里除了 jar 还有一份同名 .json sidecar，必须一起发，否则加载期缺元数据。
-          for dir in plugins/*/build/dist; do
+          # forge-compiler 跳过：它的 dist 只有在本地跑过载荷之后才会存在，不属于这个包。
+          for dir in plugins/*/*/build/dist; do
+            case "$dir" in *forge-compiler*) continue;; esac
             cp -v "$dir"/*.jar "$dir"/*.json dist/plugins/ 2>/dev/null || true
           done
+          # 逐个点名校验，而不是数个数：缺了哪一个要能一眼看出来。
+          missing=0
+          for id in agent-tools agent-memory agent-log agent-device agent-gui agent-phone \
+                    agent-shell linux ev-ui agent-brain agent-prompt agent-browse \
+                    agent-model agent-web forge theme-default; do
+            [ -f "dist/plugins/$id.jar" ]  || { echo "::error::缺少 $id.jar"  >&2; missing=1; }
+            [ -f "dist/plugins/$id.json" ] || { echo "::error::缺少 $id.json" >&2; missing=1; }
+          done
+          test "$missing" -eq 0
           ls -l dist/plugins
           ( cd dist/plugins && zip -q -9 ../plugins.zip ./* )
 
@@ -130,7 +170,7 @@ jobs:
         run: |
           version="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           mkdir -p dist
-          cp host-app/build/outputs/apk/release/host-release.apk "dist/EV-${version}.apk"
+          cp host-app/build/outputs/apk/release/host-app-release.apk "dist/EV-${version}.apk"
           mv dist/plugins.zip "dist/EV-${version}-plugins.zip" 2>/dev/null || true
           echo "version=$version" >> "$GITHUB_OUTPUT"
           ls -lh dist
@@ -150,7 +190,9 @@ jobs:
 
             **安装说明**
             - `EV-<version>.apk`：宿主应用，release 签名
-            - `EV-<version>-plugins.zip`：9 个插件（jar + json sidecar）
+            - `EV-<version>-plugins.zip`：16 个插件（jar + json sidecar）
+            - `forge-compiler`（设备端编译器，26 MB）**不在这包里**：它需要 `scripts/forge-payload.sh`
+              生成的载荷，默认关闭、按需安装。
 
             插件是独立分发的：解压后把 jar 和 json 一起放进 `/sdcard/EV/mods/`，
             启动应用后在「插件管理」里逐个确认（未签名插件需要人工批准，这是刻意的设计）。

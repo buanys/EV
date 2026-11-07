@@ -36,5 +36,5 @@
 2. 为 `null`（本进程没跑过 sync）→ `startActivity(MainActivity, CLEAR_TOP|NEW_TASK)` 并 `finish()`；
 3. 主界面执行完整 sync（扫描、校验、批准检查、加载），用户可再次打开插件页。
 
-运行时归 `EvApplication` 所有（[EvApplication.kt](../host/src/main/kotlin/ev/buan/EvApplication.kt)），
+运行时归 `EvApplication` 所有（[EvApplication.kt](../host-app/src/main/kotlin/ev/buan/EvApplication.kt)），
 不再由 Activity 赋值；`hasStarted` 标记本进程是否完成过一次 sync。

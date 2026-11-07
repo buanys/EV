@@ -113,33 +113,38 @@ chroot "$U" /usr/bin/env -i \
 ### 四个常用目标
 
 ```sh
-# 宿主 APK（约 45 MB）→ host/build/outputs/apk/debug/host-debug.apk
-:host:assembleDebug
+# 宿主 APK（约 45 MB）→ host-app/build/outputs/apk/debug/host-app-debug.apk
+:host-app:assembleDebug
 
-# 单个插件容器 → plugins/<id>/build/dist/<id>.jar + <id>.json
-:plugins:<id>:bundlePlugin
+# 单个插件容器 → plugins/<类>/<名>/build/dist/<名>.jar + <名>.json
+:plugins:<类>:<名>:bundlePlugin
 
 # 单测（宿主与插件）
-:plugins:<id>:testDebugUnitTest
-:host:testDebugUnitTest :host-core:test :plugin-api:testDebugUnitTest
+:plugins:<类>:<名>:testDebugUnitTest
+:host-app:testDebugUnitTest :host-core:test :host-api:testDebugUnitTest
 
-# 公开契约快照（改了 plugin-api / ui-kit 必须跑并提交）
-:plugin-api:apiSnapshot
+# 公开契约快照（改了 host-api / ui-kit 必须跑并提交）
+:host-api:apiSnapshot
 ```
 
-### 一次打全部 12 个插件
+### 一次打全部 17 个插件
+
+插件住在 `plugins/<类>/<名>`，Gradle 路径就是 `:plugins:<类>:<名>`（见 `settings.gradle.kts`）。
 
 ```sh
-:plugins:settings:bundlePlugin :plugins:ev-ui:bundlePlugin \
-:plugins:agent-api:bundlePlugin :plugins:agent-model:bundlePlugin \
-:plugins:agent-tools:bundlePlugin :plugins:agent-memory:bundlePlugin \
-:plugins:agent-brain:bundlePlugin :plugins:agent-log:bundlePlugin \
-:plugins:agent-device:bundlePlugin :plugins:agent-browse:bundlePlugin \
-:plugins:agent-web:bundlePlugin :plugins:agent-shell:bundlePlugin \
-:plugins:forge:bundlePlugin :plugins:forge-compiler:bundlePlugin
+:plugins:base:agent-tools:bundlePlugin :plugins:base:agent-memory:bundlePlugin \
+:plugins:base:agent-log:bundlePlugin :plugins:base:agent-device:bundlePlugin \
+:plugins:base:agent-gui:bundlePlugin :plugins:base:agent-phone:bundlePlugin \
+:plugins:base:agent-shell:bundlePlugin :plugins:base:linux:bundlePlugin \
+:plugins:feature:ev-ui:bundlePlugin :plugins:feature:agent-brain:bundlePlugin \
+:plugins:feature:agent-prompt:bundlePlugin :plugins:feature:agent-browse:bundlePlugin \
+:plugins:integration:agent-model:bundlePlugin :plugins:integration:agent-web:bundlePlugin \
+:plugins:integration:forge:bundlePlugin :plugins:resource:theme-default:bundlePlugin \
+:plugins:integration:forge-compiler:bundlePlugin
 ```
 
-（`forge-compiler` 需要先有载荷，见第 9 节。）
+（`forge-compiler` 需要先有载荷，见第 9 节；发版清单里不含它。`bundlePlugin` 记得配
+`--no-configuration-cache`。）
 
 ---
 
@@ -147,9 +152,9 @@ chroot "$U" /usr/bin/env -i \
 
 | 目标 | 能否离线跑 | 说明 |
 |---|---|---|
-| `:host:assembleDebug` | ✅ | 首次约 50 s（含 aapt2 转译），之后增量 10–15 s |
-| `:plugins:*:bundlePlugin` | ✅ | 12 个插件一起约 13 s（已 up-to-date 时更快） |
-| `:host-core:test` / `:host:testDebugUnitTest` / `:plugin-api:testDebugUnitTest` | ✅ | 本轮：host-core 120、host 36、plugin-api 4 例全过 |
+| `:host-app:assembleDebug` | ✅ | 首次约 50 s（含 aapt2 转译），之后增量 10–15 s |
+| `:plugins:*:*:bundlePlugin` | ✅ | 16 个插件一起约 13 s（已 up-to-date 时更快）；`forge-compiler` 另算，要先有载荷 |
+| `:host-core:test` / `:host-app:testDebugUnitTest` / `:host-api:testDebugUnitTest` | ✅ | 本轮：host-core 120、host-app 36、host-api 4 例全过 |
 | `:plugins:*:testDebugUnitTest` | ✅ | 各插件自带用例 |
 | **根 `test`（含内核 JVM 测试）** | ❌ | `:include` 需要 `com.charleskorn.kaml:0.78.0`，缓存里没有；`--offline` 下必然失败 |
 
@@ -173,8 +178,8 @@ cat "$T"/classes*.dex | strings | grep -c 'ev.buan.plugins.ev.ui.EvUiPlugin'   #
 
 ```sh
 chroot "$U" /usr/bin/env -i PATH=/usr/bin:/bin \
-  /bin/sh -c 'cd /root/EV/host/build/outputs/apk/debug && \
-    /opt/tools/aapt2-9.4.1/aapt2 dump badging host-debug.apk | head -5'
+  /bin/sh -c 'cd /root/EV/host-app/build/outputs/apk/debug && \
+    /opt/tools/aapt2-9.4.1/aapt2 dump badging host-app-debug.apk | head -5'
 # 期望：package: name='ev.buan' … minSdk 33 / targetSdk 37
 ```
 
@@ -221,7 +226,7 @@ am force-stop ev.buan; am start -W -n ev.buan/ev.buan.MainActivity
 
 ```sh
 am force-stop ev.buan
-pm install -r -d /root/EV/host/build/outputs/apk/debug/host-debug.apk
+pm install -r -d /root/EV/host-app/build/outputs/apk/debug/host-app-debug.apk
 ```
 
 `-d` 允许降级（versionCode 常年是 1）。签名一致才能覆盖；不一致会失败但不会把已装的删掉。
@@ -259,7 +264,7 @@ pm install -r -d /root/EV/host/build/outputs/apk/debug/host-debug.apk
 
 上面写的是"在构建机上编 EV"。另有一条链路是**EV 自己编插件**：
 
-- 能力入口：`:plugins:forge`（工具面）+ `:plugins:forge-compiler`（编译器载荷）
+- 能力入口：`:plugins:integration:forge`（工具面）+ `:plugins:integration:forge-compiler`（编译器载荷）
 - 设计决策：[ADR-0004](adr/0004-on-device-forge.md)
 - 原理与 10 个 ART 兼容坑：[research/on-device-compiler.md](research/on-device-compiler.md)
 
@@ -269,10 +274,10 @@ pm install -r -d /root/EV/host/build/outputs/apk/debug/host-debug.apk
 # Tier 1：从已验证的探针产物搬运（当前可用）
 scripts/forge-payload.sh --from-probe /sdcard/EV/mods/compileprobe.jar \
   --plugin-api <plugin-api 的 classes.jar> \
-  --out plugins/forge-compiler/payload
+  --out plugins/integration/forge-compiler/payload
 
 # 然后照常打包
-:plugins:forge-compiler:bundlePlugin
+:plugins:integration:forge-compiler:bundlePlugin
 ```
 
 Gradle 里的 `prepareCompilerPayload` 会自动带上 `--plugin-api`（取当前构建产物），

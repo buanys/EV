@@ -15,10 +15,10 @@ cordis-kotlin）**已冻结**，只当依赖用；业务都在 `:host`、`:ui-ki
 | `:host` | Android 应用（EV）：启动、插件管理、安全模式、崩溃审计 |
 | `:ui-kit` | 设计系统：`EvThemeTokens`、`EvDrawer`、通用组件 |
 | `:host-api` | 插件契约（`AgentService`、`AgentReply`、`AgentEvent`、`AgentProgress`…） |
-| `:plugins:*` | 9 个插件，见 `settings.gradle.kts` |
-| `:plugins:agent-brain` | agent 主循环：预算、工具执行、收尾、进度事件 |
-| `:plugins:ev-ui` | 聊天界面（最重要的插件） |
-| `:plugins:agent-tools` / `agent-shell` | 文件工具 / shell（审批门控） |
+| `:plugins:<类>:<名>` | 17 个插件，按 base / feature / integration / resource 分四类，见 `settings.gradle.kts` |
+| `:plugins:feature:agent-brain` | agent 主循环：预算、工具执行、收尾、进度事件 |
+| `:plugins:feature:ev-ui` | 聊天界面（最重要的插件） |
+| `:plugins:base:agent-tools` / `:plugins:base:agent-shell` | 文件工具 / shell（审批门控） |
 
 入口文档：`docs/project-overview.md` → `docs/README.md`（分类索引）。
 UI 规范：`docs/DESIGN-EXTRACT.md`（从 Eta 提取，**判定栏写"照搬"的必须照抄数值**）。
@@ -42,7 +42,7 @@ ANDROID_HOME=/opt/android-sdk \
 
 - **`--offline` 是硬要求**：官方源在这里走不通
 - JDK 21（Eta 那个项目要 JDK 25，别混用）
-- 常用任务：`:host:assembleDebug`、`:plugins:<id>:bundlePlugin`、`:plugins:<id>:testDebugUnitTest`
+- 常用任务：`:host-app:assembleDebug`、`:plugins:<类>:<名>:bundlePlugin`、`:plugins:<类>:<名>:testDebugUnitTest`（bundlePlugin 要配 `--no-configuration-cache`）
 
 ---
 
@@ -109,7 +109,7 @@ scripts/plugin.sh deploy <id>     # Android root 环境
   （`curl -H @/root/.dsh/.bridge_headers http://127.0.0.1:3090/app/help`）。
 - `adb-shell` 有守卫：`am start` / `pm install` / `screencap` / `uiautomator` 会被拦，
   `am force-stop`、`cp`、`md5sum`、`strings` 之类可用；复杂管道会被拒，命令要单条。
-- APK 构建产物：`host/build/outputs/apk/debug/host-debug.apk`。
+- APK 构建产物：`host-app/build/outputs/apk/debug/host-app-debug.apk`（release 是同目录的 `host-app-release.apk`）。
 
 ---
 
