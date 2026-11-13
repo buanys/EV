@@ -67,6 +67,7 @@ fun EvChatScreen(
     onOpenSettings: () -> Unit,
     onOpenPlugins: () -> Unit,
     onOpenPermissions: () -> Unit,
+    onOpenFiles: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var sideOpen by remember { mutableStateOf(false) }
@@ -220,6 +221,7 @@ fun EvChatScreen(
             }
             EvDivider()
             Spacer(Modifier.height(6.dp))
+            SideEntry("文件管理", EvIcon.Folder) { onOpenFiles(); sideOpen = false }
             SideEntry("权限中心", EvIcon.Shield) { onOpenPermissions(); sideOpen = false }
             SideEntry("插件管理", EvIcon.Apps) { onOpenPlugins(); sideOpen = false }
             SideEntry("设置", EvIcon.Setting) { onOpenSettings(); sideOpen = false }

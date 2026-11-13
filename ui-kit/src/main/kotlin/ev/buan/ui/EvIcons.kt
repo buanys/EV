@@ -37,7 +37,35 @@ fun EvIcon(name: EvIcon): ImageVector {
         EvIcon.Apps -> EvAppsIcon
         EvIcon.NewChat -> EvNewChatIcon
         EvIcon.Shield -> EvShieldIcon
+        EvIcon.Folder -> EvFolderIcon
     }
+}
+
+/** 文件管理：一个文件夹（带页签的轮廓，20dp 下仍读得出是"目录"）。 */
+private val EvFolderIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "EvFolder",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        addPath(
+            pathData = PathData {
+                moveTo(3f, 7f)
+                lineTo(9.5f, 7f)
+                lineTo(11.5f, 9.2f)
+                lineTo(21f, 9.2f)
+                lineTo(21f, 19f)
+                lineTo(3f, 19f)
+                close()
+            },
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.9f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        )
+    }.build()
 }
 
 /**

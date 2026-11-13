@@ -121,16 +121,23 @@ class PluginInstaller(
 
     private val collector = PluginCollector(context, files, metadata)
 
-    // 文件搬运的实现搬进了 PluginFiles；这四个仍是安装器的公开面（宿主与插件页在用）。
-
-    fun hasAllFilesAccess(): Boolean = files.hasAllFilesAccess()
-
-    fun removeExternal(id: String): List<String> = files.removeExternal(id)
+    // 文件搬运的实现搬进了 PluginFiles；这两个仍是安装器的公开面（宿主与插件页在用）。
 
     fun removePrivate(id: String): Boolean = files.removePrivate(id)
 
-    fun importExternal(source: File, fileName: String, overwrite: Boolean): File? =
-        files.importExternal(source, fileName, overwrite)
+    /**
+     * 把一份已校验的容器直接发布进私有目录：jar 与 sidecar 一起落地。
+     *
+     * 这是现在**唯一**的安装路径。没有外部投放目录之后，安装器不再需要"先写外面、
+     * 再扫描回来"两段式：字节从哪里来回哪里去，属主永远是宿主自己。
+     */
+    fun publishFromStaging(id: String, jar: File, sidecar: String): Boolean = runCatching {
+        val hash = androidModuleHash(jar)
+        files.beginSync()
+        files.publish(files.targetFor(id), jar, id, hash, sidecar)
+        files.endSync()
+        true
+    }.getOrDefault(false)
 
     fun rollback(id: String, jarName: String): List<String> = files.restorePrevious(id, jarName)
     fun hasRollback(id: String): Boolean = files.hasPrevious(id)
@@ -148,7 +155,7 @@ class PluginInstaller(
         // names or from which source (bundled or external) a container came from.
         val sources = mutableListOf<PluginSource>()
         collector.bundled(sources, errors)
-        collector.external(sources, errors)
+        collector.installed(sources, errors)
         acceptOrder(sources, errors).forEach { source ->
             // Per-container isolation: one jar that makes a gate throw used to abort the whole
             // accept loop, and the plugin simply vanished from every list with no message. A bad
@@ -371,8 +378,14 @@ class PluginInstaller(
             // 缓存命中且长度相同：私有副本就是同一份，不必再整读一遍。
             if (reused && existing.length() == source.length()) hash else androidModuleHash(existing)
         }
-        // 存档只留字节：外部 sidecar 已被新版本覆盖（见 restorePrevious）。
-        if (installed != hash) files.publish(target, source, meta.id, hash)
+        // 安装走的是"先落私有目录、再由扫描读回来"，所以这里的 source 和 target 可能
+        // 是同一个文件。自己复制自己会把内容写坏（先删 target 再 rename），必须跳过。
+        val inPlace = runCatching { source.canonicalFile == target.canonicalFile }.getOrDefault(false)
+        // sidecar 与容器同名，已经在同一目录里；发布时一并写回私有目录。
+        val sidecar = runCatching {
+            File(source.parentFile, "${source.nameWithoutExtension}.json").readText()
+        }.getOrNull().orEmpty()
+        if (installed != hash && !inPlace) files.publish(target, source, meta.id, hash, sidecar)
 
         hashes[meta.id] = hash
         accepted[meta.id] = InstalledPlugin(

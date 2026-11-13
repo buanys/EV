@@ -1,37 +1,30 @@
 package ev.buan
 
 import android.content.Context
-import android.os.Environment
 import ev.buan.hostcore.plugin.PluginId
 import java.io.File
 
 /**
- * 宿主的插件文件系统：外部 `EV/mods`、私有 `files/mods`、代码缓存，以及它们之间的搬运。
+ * 宿主的插件文件系统：私有 `files/mods`、代码缓存。
  *
- * 从 `PluginInstaller` 拆出来，因为这一块和"装不装"无关——它只知道**字节放哪儿**：
+ * **没有外部投放目录了。** 从 2026-11-13 起插件只从应用内部安装：用户选文件 →
+ * 宿主自己把字节写进私有目录 → 扫描读同一份。这样做的理由很实际：
  *
- *  - 外部目录是投放口（人拷进来、forge 写进来），装卸都在这里；
- *  - 私有目录是加载口，只读挂锁，防止容器被就地改写；
- *  - 代码缓存按 (id, version) 分目录，dexopt 产物过期就是白占空间。
+ *  - 外部目录里的文件属主是"谁拷进来的"，不是 EV；`/sdcard` 由 MediaProvider 管，
+ *    `chmod`/`chown` 都不生效，于是"读不到"和"没装"在界面上长得一模一样；
+ *  - 私有目录里的文件属主就是 EV 自己，权限问题从根上不存在。
  *
- * 三条路径以前散在安装器 700 行里，卸载要同时动两个目录时最容易漏掉一个——
- * 现在同一条规则只有一处。
+ * 私有目录现在同时存 jar 和它的 sidecar（`<id>.jar` + `<id>.json`）：元数据不再
+ * 依赖一个可被外部改写的位置。
  *
- * 两个"锁"的时机是这里唯一的时序要求：`sync` 开始时打开私有目录的可写位（
- * 否则 rename 进不去），结束时立刻锁回只读。写在这一层，是因为只有这一层知道
- * 什么时候有写入在发生。
+ * 两个"锁"的时机是这里唯一的时序要求：写入前打开私有目录的可写位，
+ * 写完立刻锁回只读——容器一旦发布就不该被就地改写。
  */
 internal class PluginFiles(
     private val context: Context,
     private val privateRoot: File = File(context.filesDir, "mods"),
     private val codeCacheRoot: File = File(context.codeCacheDir, "cordis-plugins"),
 ) {
-
-    /** The drop-box: anything with storage access can put a container here. */
-    val externalRoot: File
-        get() = File(Environment.getExternalStorageDirectory(), "EV/mods")
-
-    fun hasAllFilesAccess(): Boolean = Environment.isExternalStorageManager()
 
     /** `sync` 第一件事：私有目录必须可写，否则 rename 与删除都会静默失败。 */
     fun beginSync() {
@@ -42,26 +35,6 @@ internal class PluginFiles(
     /** `sync` 最后一件事：锁回只读。容器一旦发布就不该被就地改写。 */
     fun endSync() {
         privateRoot.setReadOnly()
-    }
-
-    /**
-     * Deletes one container from the external mods directory: the jar and its sidecar json.
-     *
-     * Plugin *storage* is deliberately untouched - "卸载" removes the code, not the user's data,
-     * and the management page offers "清理" separately for that. The private mirror is refreshed by
-     * the next sync, which no longer finds these files and drops them.
-     *
-     * Returns the names that were actually removed, so the caller can report a partial failure
-     * instead of claiming success.
-     */
-    fun removeExternal(id: String): List<String> {
-        val targets = listOf("$id.jar", "$id.json")
-        val removed = mutableListOf<String>()
-        for (name in targets) {
-            val file = File(externalRoot, name)
-            if (file.isFile && file.delete()) removed += name
-        }
-        return removed
     }
 
     /**
@@ -77,27 +50,14 @@ internal class PluginFiles(
         // 目录平时是 r-x：宿主在 sync 结束时锁住，防止容器被就地改写。
         // unlink 需要的是**目录**可写，所以这里短暂解锁、删、立刻锁回去——与 sync 同一套写法。
         privateRoot.setWritable(true)
-        val deleted = runCatching { file.delete() }.getOrDefault(false)
+        val deleted = runCatching {
+            val json = sidecarFor(id)
+            if (json.isFile) json.delete()
+            file.delete()
+        }.getOrDefault(false)
         privateRoot.setReadOnly()
         if (!deleted) android.util.Log.w("EV", "removePrivate 失败：${file.absolutePath}（由下次 sync 的 prune 收尾）")
         return deleted
-    }
-
-    /**
-     * Copies a user-picked container into the external mods directory.
-     *
-     * The name is kept verbatim: sidecar lookup is by the jar's own file name, so renaming here
-     * would silently detach a jar from its metadata. An existing file is replaced only when
-     * [overwrite] is set, so importing twice is an explicit decision.
-     */
-    fun importExternal(source: File, fileName: String, overwrite: Boolean): File? {
-        if (!externalRoot.isDirectory && !externalRoot.mkdirs()) return null
-        val target = File(externalRoot, fileName)
-        if (target.exists() && !overwrite) return null
-        return runCatching {
-            source.copyTo(target, overwrite = true)
-            target
-        }.getOrNull()
     }
 
     /** 这个 id 在私有目录里应该待的位置。 */
@@ -115,7 +75,14 @@ internal class PluginFiles(
      * 不直接覆盖目标：加载器可能正拿着旧文件，且 rename 在同一文件系统上是原子的——
      * 要么是完整的旧版本，要么是完整的新版本，不会有半个 jar 被读到。
      */
-    fun publish(target: File, source: File, id: String, hash: String, previousSidecar: String? = null) {
+    fun publish(
+        target: File,
+        source: File,
+        id: String,
+        hash: String,
+        sidecar: String,
+        previousSidecar: String? = null,
+    ) {
         // 覆盖之前先留一份上一版：回滚是恢复章里唯一的"退回去"手段，
         // 而旧字节一旦被 rename 覆盖就再也拿不回来。
         if (target.isFile) archivePrevious(id, target, previousSidecar)
@@ -126,7 +93,43 @@ internal class PluginFiles(
         temporary.setReadOnly()
         delete(target)
         check(temporary.renameTo(target)) { "无法发布 $target" }
+        // sidecar 与容器放一起：它是元数据的唯一来源，不能再依赖外部那份 json。
+        val sidecarFile = sidecarFor(id)
+        val sidecarTemporary = File(privateRoot, "${PluginId.stagingFileName(id)}.json")
+        runCatching {
+            sidecarTemporary.writeText(sidecar)
+            sidecarFile.delete()
+            check(sidecarTemporary.renameTo(sidecarFile)) { "无法发布 $sidecarFile" }
+            sidecarFile.setReadOnly()
+        }
     }
+
+    /**
+     * 私有目录里所有容器。**扫描的唯一来源**：现在没有外部投放口了。
+     *
+     * 只认 `.jar`：sidecar（`.json`）与容器同名，[PluginMetadataReader] 会自己去找它，
+     * 这里不能把它当成一个待解析的容器。
+     */
+    fun privateContainers(): List<File> =
+        privateRoot.listFiles()
+            // 只要不是 sidecar、不是隐藏文件，就是容器。不按扩展名白名单过滤：
+            // 之前只认 .jar，而写进去的叫 .apk，于是"装好了"和"目录是空的"看起来一样。
+            ?.filter { it.isFile && !it.name.startsWith(".") && !it.name.endsWith(".json", ignoreCase = true) }
+            ?.sortedBy { it.name }
+            .orEmpty()
+
+    /** 一个文件属于哪个容器 id：`a.jar`、`a.jar.json`、`a.apk` 都归到 `a`。 */
+    private fun containerIdOf(file: File): String {
+        var name = file.name
+        if (name.endsWith(".json", ignoreCase = true)) name = name.dropLast(5)
+        for (suffix in listOf(".jar", ".apk", ".dex")) {
+            if (name.endsWith(suffix, ignoreCase = true)) return name.dropLast(suffix.length)
+        }
+        return name
+    }
+
+    /** 这个 id 的 sidecar 在私有目录里的位置。 */
+    fun sidecarFor(id: String): File = File(privateRoot, "${PluginId.fileName(id)}.json")
 
     /** 上一版存档的位置；与私有容器同根，但 `prune` 跳过目录，不会被当成陈旧文件删掉。 */
     private fun previousRoot(): File = File(privateRoot, "previous").apply { mkdirs() }
@@ -157,23 +160,21 @@ internal class PluginFiles(
         File(previousRoot(), "${PluginId.fileName(id)}.jar").takeIf { it.isFile }
 
     /**
-     * 把上一版字节写回外部投放目录，返回写进去的文件名；没有存档时返回空列表。
+     * 把上一版字节写回私有目录，返回真正写进去的文件名；没有存档时返回空列表。
      *
-     * **只回退字节，不改 sidecar**：外部那份 json 在扫描到新版本时就被覆盖了，宿主手里
-     * 没有"上一版的声明"可恢复。所以回滚后用的还是当前 sidecar（版本号、依赖都是新的），
-     * 只有 jar 是旧的。新版本起不来、类没变这一类场景够用；如果新版本改过依赖，回滚后
-     * 要人再看一眼。
-     *
-     * 写回**外部**而不是私有目录是刻意的：下一次 sync 从外部扫描，私有副本只是它的镜像，
-     * 只改私有那份会在下一轮被外部的新版本重新覆盖，等于回滚没发生。
+     * **只回退字节，不改 sidecar**：sidecar 现在和容器一起待在私有目录，回滚时用的是
+     * 当前那份声明（版本号、依赖都是新的），只有 jar 是旧的。新版本起不来、类没变
+     * 这一类场景够用；如果新版本改过依赖，回滚后要人再看一眼。
      */
     fun restorePrevious(id: String, jarName: String): List<String> {
         val jar = previousOf(id) ?: return emptyList()
-        if (!externalRoot.isDirectory && !externalRoot.mkdirs()) return emptyList()
         val written = mutableListOf<String>()
         runCatching {
-            jar.copyTo(File(externalRoot, jarName), overwrite = true)
+            privateRoot.setWritable(true)
+            jar.copyTo(targetFor(id), overwrite = true)
             written += jarName
+        }.also {
+            privateRoot.setReadOnly()
         }
         return written
     }
@@ -206,8 +207,11 @@ internal class PluginFiles(
     fun prune(expectedIds: Set<String>, currentVersions: Map<String, String>, errors: MutableList<String>) {
         privateRoot.listFiles()?.forEach { file ->
             if (!file.isFile) return@forEach
-            val stale = file.name.startsWith(".") || file.nameWithoutExtension !in expectedIds
+            // sidecar 跟着容器走：`a.jar.json` 的 id 是 `a`，不是 `a.jar`。
+            val stale = file.name.startsWith(".") || containerIdOf(file) !in expectedIds
             if (stale) {
+                // 本轮没接受任何容器时，这里会把整个目录清空——所以必须留下是谁删的、为什么。
+                tracePlugin("清理 ${file.name}（不在本轮 ${expectedIds.size} 个已接受之内）")
                 runCatching { delete(file) }.onFailure { errors += "清理 ${file.name} 失败: $it" }
             }
         }

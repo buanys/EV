@@ -20,6 +20,7 @@ import ev.buan.chat.ChatState
 import ev.buan.chat.EvApprovalDialog
 import ev.buan.chat.EvChatScreen
 import ev.buan.intro.PaperStartup
+import ev.buan.files.FileManagerScreen
 import ev.buan.permissions.PermissionCenterScreen
 import ev.buan.plugins.PluginManagerScreen
 import ev.buan.settings.SettingsScreen
@@ -81,6 +82,13 @@ class MainActivity : ComponentActivity() {
                                     onToggle = { id, enabled ->
                                         scope.launch { runtime.setEnabled(id, enabled) }
                                     },
+                                    // 直连宿主的安装入口：安装服务走 cordis.provide，UI 手上那份
+                                    // ServiceDirectory 是另一条注册链，查不到它。
+                                    onInstall = { jar, sidecar -> runtime.install(jar, sidecar) },
+                                )
+
+                                "files" -> FileManagerScreen(
+                                    onBack = { screen = "chat" },
                                 )
 
                                 "permissions" -> PermissionCenterScreen(
@@ -106,6 +114,7 @@ class MainActivity : ComponentActivity() {
                                     onOpenSettings = { screen = "settings" },
                                     onOpenPlugins = { screen = "plugins" },
                                     onOpenPermissions = { screen = "permissions" },
+                                    onOpenFiles = { screen = "files" },
                                 )
                             }
                         }

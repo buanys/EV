@@ -85,20 +85,21 @@ internal class HostInstallService(
                 message = "写入暂存区失败：${error.message ?: error::class.simpleName}",
             ).toContract(version = version)
         }
-        val importedJar = installer.importExternal(jarFile, "$id.jar", overwrite = true)
-        val importedJson = installer.importExternal(jsonFile, "$id.json", overwrite = true)
-        runCatching { jarFile.delete(); jsonFile.delete() }
-        if (importedJar == null || importedJson == null) {
+        // 哈希必须在删除暂存文件**之前**算：算完再删，否则读的是已经不存在的路径。
+        val sha = androidModuleHash(jarFile)
+        // 直接发布进私有目录：jar 与 sidecar 一起落地，不存在"先写外面再扫回来"那一段。
+        if (!installer.publishFromStaging(id, jarFile, request.sidecarJson)) {
+            runCatching { jarFile.delete(); jsonFile.delete() }
             return@withContext InstallOutcome(
                 status = InstallStatus.REJECTED,
                 pluginId = id,
                 code = "MODS_UNWRITABLE",
-                message = "无法写入 EV/mods：给宿主共享存储权限后再试",
+                message = "无法写入插件目录",
             ).toContract(version = version)
         }
+        runCatching { jarFile.delete(); jsonFile.delete() }
 
-        // 调用方只应在用户对**这一份字节**点头之后传 true；哈希在这里现算，不信调用方给的。
-        val sha = androidModuleHash(importedJar)
+        // 调用方只应在用户对**这一份字节**点头之后传 true。
         if (request.approveUnsigned) approvals.approve(id, sha)
 
         val summary = rescan()

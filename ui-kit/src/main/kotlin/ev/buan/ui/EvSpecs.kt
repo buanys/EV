@@ -25,6 +25,7 @@ enum class EvIcon {
     Apps,
     NewChat,
     Shield,
+    Folder,
 }
 
 /**

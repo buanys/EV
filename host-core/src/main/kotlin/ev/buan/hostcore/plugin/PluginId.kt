@@ -29,7 +29,14 @@ object PluginId {
     }
 
     /** File name of the private copy (`<id>.apk`); never contains a path separator. */
-    fun fileName(id: String): String = "${requireValid(id)}.apk"
+    /**
+     * 私有目录里容器的文件名。
+     *
+     * 用 `.jar` 而不是历史上的 `.apk`：容器内容是 `classes.dex` + `META-INF/plugin.json`，
+     * 不是带 AndroidManifest 的 APK。叫 `.apk` 会让读取端走错分支（去问 PackageManager
+     * 要清单，必然失败），而 `.jar` 与真实内容一致。
+     */
+    fun fileName(id: String): String = "${requireValid(id)}.jar"
 
     /** Hidden staging name used while copying a container into place. */
     fun stagingFileName(id: String): String = ".${requireValid(id)}.installing"

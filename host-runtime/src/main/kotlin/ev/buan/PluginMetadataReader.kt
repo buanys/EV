@@ -55,8 +55,63 @@ internal data class PluginMeta(
 
 internal class PluginMetadataReader(private val context: Context) {
 
-    fun read(file: File): PluginMeta? =
-        if (file.extension.lowercase() == "apk") readApkMetadata(file) else readSidecarMetadata(file)
+    fun read(file: File): PluginMeta? = when (file.extension.lowercase()) {
+        "apk" -> readApkMetadata(file)
+        "jar", "dex" -> readJarMetadata(file)
+        else -> null
+    }
+
+    /**
+     * 容器自带的元数据：**先看 jar 内部**，再回落到同目录的 `.json`。
+     *
+     * 插件是分发单元，所以它应该是**一个文件**——用户选一个 jar 就够，不需要再配一个
+     * 同名 json，"选错配对"这类错误从根上消失。回落那条只为老容器留着：它们的内嵌
+     * 元数据还没补上，重打一次就能删掉这个分支。
+     */
+    private fun readJarMetadata(file: File): PluginMeta? {
+        runCatching {
+            java.util.zip.ZipFile(file).use { zip ->
+                val entry = zip.getEntry(EMBEDDED_META) ?: zip.getEntry(LEGACY_EMBEDDED_META)
+                if (entry != null) {
+                    val text = zip.getInputStream(entry).use { it.readBytes().decodeToString() }
+                    return parseJsonMeta(JSONObject(text))
+                }
+            }
+        }
+        return readSidecarMetadata(file)
+    }
+
+    private fun readSidecarMetadata(file: File): PluginMeta? {
+        val sidecar = File(file.parentFile, "${file.nameWithoutExtension}.json")
+        if (!sidecar.isFile) return null
+        val json = runCatching { JSONObject(sidecar.readText()) }.getOrNull() ?: return null
+        return parseJsonMeta(json)
+    }
+
+    /** sidecar 与内嵌元数据共用同一套字段解析：两种来源，一份真相。 */
+    private fun parseJsonMeta(json: JSONObject): PluginMeta? {
+        val provides = ProvidesSpec.parse(json.stringList(ProvidesSpec.SIDECAR_KEY).orEmpty())
+        return runCatching {
+            PluginMeta(
+                id = json.getString("id"),
+                version = json.optString("version", "1.0.0"),
+                entryClass = json.getString("entryClass"),
+                apiVersion = json.optInt("apiVersion", 0),
+                hostApi = if (json.has("hostApi")) json.optString("hostApi").takeIf { it.isNotBlank() } else null,
+                dependencies = DependencyMetadataParser.normalize(
+                    json.stringList(DependencyMetadataParser.JAR_SIDECAR_KEY),
+                ),
+                permissions = PermissionMetadataParser.parseJarMetadata(
+                    declared = json.stringList(DependencyMetadataParser.JAR_SIDECAR_KEY),
+                    supported = HostPermission.wireNames,
+                ),
+                shortcuts = parseShortcuts(json.optJSONArray("shortcuts")),
+                separateProcess = json.optString(ISOLATION_KEY) == ISOLATION_SEPARATE,
+                provides = provides.items,
+                rejectedProvides = provides.rejected,
+            )
+        }.getOrNull()
+    }
 
     /**
      * Reads package name, version, entry class, API version, declared dependencies and declared
@@ -92,31 +147,7 @@ internal class PluginMetadataReader(private val context: Context) {
         )
     }
 
-    private fun readSidecarMetadata(file: File): PluginMeta? {
-        val sidecar = File(file.parentFile, "${file.nameWithoutExtension}.json")
-        if (!sidecar.isFile) return null
-        val json = runCatching { JSONObject(sidecar.readText()) }.getOrNull() ?: return null
-        val provides = ProvidesSpec.parse(json.stringList(ProvidesSpec.SIDECAR_KEY).orEmpty())
-        return PluginMeta(
-            id = json.getString("id"),
-            version = json.optString("version", "1.0.0"),
-            entryClass = json.getString("entryClass"),
-            apiVersion = json.optInt("apiVersion", 0),
-            hostApi = if (json.has("hostApi")) json.optString("hostApi").takeIf { it.isNotBlank() } else null,
-            dependencies = DependencyMetadataParser.normalize(
-                json.stringList(DependencyMetadataParser.JAR_SIDECAR_KEY),
-            ),
-            permissions = PermissionMetadataParser.parseJarMetadata(
-                declared = json.stringList(PermissionMetadataParser.JAR_SIDECAR_KEY),
-                supported = HostPermission.wireNames,
-            ),
-            shortcuts = parseShortcuts(json.optJSONArray("shortcuts")),
-            separateProcess = json.optString(ISOLATION_KEY) == ISOLATION_SEPARATE,
-            provides = provides.items,
-            rejectedProvides = provides.rejected,
-        )
-    }
-
+    
     /**
      * 只认完整声明：缺 id 或 label 的条目跳过，不猜。
      *
@@ -167,6 +198,12 @@ internal class PluginMetadataReader(private val context: Context) {
     }
 
     private companion object {
+        /** 容器内嵌元数据的位置：与 MANIFEST 同级，一看就知道是元数据。 */
+        const val EMBEDDED_META = "META-INF/plugin.json"
+
+        /** 兼容位置：有些打包脚本习惯直接放根目录。 */
+        const val LEGACY_EMBEDDED_META = "plugin.json"
+
         /** sidecar / APK 元数据里"要在独立进程里跑"的声明键与取值。 */
         const val ISOLATION_KEY = "isolation"
         const val ISOLATION_SEPARATE = "separate-process"

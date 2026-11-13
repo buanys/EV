@@ -58,29 +58,32 @@ fun bundled(sources: MutableList<PluginSource>, errors: MutableList<String>) {
  * The listing order is whatever the filesystem returns; two containers are only ordered against
  * each other when one of them declares the other as a dependency.
  */
-fun external(sources: MutableList<PluginSource>, errors: MutableList<String>) {
-    val external = files.externalRoot
-    if (!files.hasAllFilesAccess()) {
-        errors += "未授予「所有文件访问权限」，跳过扫描 ${external.path}"
-        return
-    }
-    if (!external.isDirectory && !external.mkdirs()) {
-        errors += "无法创建 ${external.path}"
-        return
-    }
-    external.listFiles()
-        ?.filter { it.isFile && it.extension.lowercase() in SUPPORTED_EXTENSIONS }
-        ?.forEach { source ->
-            runCatching {
-                val meta = metadata.read(source)
-                    ?: error("缺少元数据（APK 需 cordis.entry/cordis.api，jar/dex 需同名 .json）")
-                // Fail closed before accept/publish: an id containing a path separator, `..`,
-                // a drive prefix or control characters must never become a file name.
-                PluginId.requireValid(meta.id)
-                sources += PluginSource(source, meta, ev.buan.hostcore.trust.PluginOrigin.EXTERNAL)
-                tracePlugin("scanned ${meta.id} from ${source.name}")
-            }.onFailure { errors += "${source.name}: $it" }
+/**
+ * 私有目录里的容器。**外部投放已经不存在了**，所以这是唯一的"已安装"来源。
+ *
+ * 元数据来自同目录的 sidecar：宿主在安装时把两个文件一起写进私有目录，
+ * 因此这里读到的声明和字节永远是同一批、同一个属主。
+ */
+fun installed(sources: MutableList<PluginSource>, errors: MutableList<String>) {
+    val jars = files.privateContainers()
+    tracePlugin("私有目录扫描：${jars.size} 个容器")
+    if (jars.isEmpty()) return
+    jars.forEach { jar ->
+        runCatching {
+            val meta = metadata.read(jar)
+            if (meta == null) {
+                // 这里以前静默变成"没有插件"，是排障时最贵的一种沉默。
+                tracePlugin("元数据读不出来：${jar.name}（${jar.length()} 字节）")
+                error("缺少元数据（jar 内没有 META-INF/plugin.json，也没有同名 .json）")
+            }
+            PluginId.requireValid(meta.id)
+            sources += PluginSource(jar, meta, ev.buan.hostcore.trust.PluginOrigin.EXTERNAL)
+            tracePlugin("scanned ${meta.id} from ${jar.name}")
+        }.onFailure {
+            tracePlugin("解析失败 ${jar.name}：${it.message ?: it::class.simpleName}")
+            errors += "${jar.name}: $it"
         }
+    }
 }
 
     private companion object {

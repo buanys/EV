@@ -184,10 +184,8 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
             if (granted) permissions.grant(id, permission) else permissions.revoke(id, permission)
         },
         stop = { id -> activation.deactivate(id) },
-        removeFiles = { id ->
-            runCatching { installer.removeExternal(id) }
-            installer.removePrivate(id)
-        },
+        // 只有私有目录了：外部投放口已经删掉，卸载就是删这一份。
+        removeFiles = { id -> installer.removePrivate(id) },
         removePreference = { id ->
             preferences.edit().remove(key(id)).apply()
             // 卸载时把失败历史一起清掉：prefs 里留着一个再也对不上号的数字没有意义。
@@ -402,6 +400,9 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
      * 而这张表在 [activate] 交出服务之前就已经填好了。
      */
     override val budgetJobs = ConcurrentHashMap<String, Job>()
+    /** 安装服务的实例。UI 从这里直接调用，绕开 ServiceDirectory 与 cordis.provide 的注册歧义。 */
+    private var installService: PluginInstallService? = null
+
     private var installHandle: org.cordis.EffectHandle? = null
     private var restartHandle: org.cordis.EffectHandle? = null
     private var deviceContextHandle: org.cordis.EffectHandle? = null
@@ -577,9 +578,7 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
         }
         if (installHandle == null) {
             // 安装契约：插件把容器字节交给宿主装上去（forge 的产物走这条路，不再靠人工拷文件）。
-            installHandle = cordis.provide(
-                PluginInstallService.Key,
-                HostInstallService(
+            val service = HostInstallService(
                     context = context,
                     installer = installer,
                     approvals = approvals,
@@ -595,8 +594,9 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
                         if (known) uninstall(id)
                         known
                     },
-                ),
             )
+            installService = service
+            installHandle = cordis.provide(PluginInstallService.Key, service)
                 .also { runCatching { it.awaitReady() } }
             deviceContextFactory?.let { factory ->
                 deviceContextHandle = cordis.provide(DeviceContextService.Key, factory(context))
@@ -690,6 +690,29 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
      * is still recorded, but nothing is loaded until [exitSafeMode].
      */
     suspend fun setEnabled(id: String, enabled: Boolean): HostState = ops.setEnabled(id, enabled)
+
+    /**
+     * 应用内安装：UI 选完文件直接调这里。
+     *
+     * 不走 `services.lookup` 是有原因的：安装服务是 `cordis.provide` 出去的，
+     * 面向插件；宿主 UI 手上那份 [ServiceDirectory] 是另一条注册链，查不到它。
+     * 与其让两条链在 UI 层纠缠，不如这里开一个直连。
+     */
+    suspend fun install(jar: ByteArray, sidecar: String): org.cordis.api.PluginInstallResult =
+        installService?.install(
+            org.cordis.api.PluginInstallRequest(
+                jar = jar,
+                sidecarJson = sidecar,
+                // 用户亲手选的文件，等价于对这份字节点头。
+                approveUnsigned = true,
+            ),
+        ) ?: org.cordis.api.PluginInstallResult(
+            status = org.cordis.api.PluginInstallStatus.REJECTED,
+            pluginId = "",
+            code = "NOT_READY",
+            message = "宿主还没启动完成，稍后再试",
+            version = null,
+        )
 
     /**
      * 按能力项现装：谁声明了 [item] 就把谁激活，然后回报"现在有没有人接"。
