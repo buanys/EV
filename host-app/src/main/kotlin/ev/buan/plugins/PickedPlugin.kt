@@ -24,24 +24,40 @@ internal object PickedPlugin {
 
     data class Ready(val jar: ByteArray, val sidecarJson: String, val name: String)
 
-    sealed interface Result {
-        data class Ok(val plugin: Ready) : Result
-        data class Failed(val reason: String) : Result
+    /**
+     * One pick, several containers.
+     *
+     * A file that cannot be read or has no embedded metadata does not sink the
+     * rest of the batch: it lands in [failures] by name, and the others still
+     * install. Reporting "3 装好了，1 个不是插件" beats aborting on the first bad
+     * file when someone selects a whole folder.
+     */
+    data class Batch(val plugins: List<Ready>, val failures: List<String>)
+
+    fun read(context: Context, uris: List<Uri>): Batch {
+        val plugins = mutableListOf<Ready>()
+        val failures = mutableListOf<String>()
+        uris.forEach { uri ->
+            val name = displayName(context, uri) ?: "plugin.jar"
+            readOne(context, uri, name).fold(
+                onSuccess = plugins::add,
+                onFailure = { failures += "$name：${it.message ?: "读不出来"}" },
+            )
+        }
+        return Batch(plugins, failures)
     }
 
-    fun read(context: Context, uris: List<Uri>): Result {
-        val uri = uris.firstOrNull() ?: return Result.Failed("没有选择文件")
-        val name = displayName(context, uri) ?: "plugin.jar"
+    private fun readOne(context: Context, uri: Uri, name: String): kotlin.Result<Ready> {
         if (!name.endsWith(".jar", ignoreCase = true)) {
-            return Result.Failed("请选择一个 .jar（插件现在自带元数据）")
+            return kotlin.Result.failure(IllegalArgumentException("不是 .jar"))
         }
         val bytes = runCatching {
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        }.getOrNull() ?: return Result.Failed("读不到这个文件")
+        }.getOrNull() ?: return kotlin.Result.failure(IllegalStateException("读不到这个文件"))
 
         val meta = runCatching { embeddedMeta(bytes) }.getOrNull()
-            ?: return Result.Failed("这个 jar 里没有 $EMBEDDED_META，不是 EV 插件")
-        return Result.Ok(Ready(bytes, meta, name))
+            ?: return kotlin.Result.failure(IllegalStateException("缺少 $EMBEDDED_META，不是 EV 插件"))
+        return kotlin.Result.success(Ready(bytes, meta, name))
     }
 
     /** 从 zip 里把元数据原文拿出来；不解析、不校验，那是宿主的活。 */

@@ -55,36 +55,49 @@ fun PluginManagerScreen(
     var openId by remember { mutableStateOf<String?>(null) }
 
     val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        when (val read = PickedPlugin.read(context, listOf(uri))) {
-            is PickedPlugin.Result.Failed -> message = read.reason
-            is PickedPlugin.Result.Ok -> {
-                // 覆盖还是新增，看这一份声明的 id 在不在已装列表里。
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val batch = PickedPlugin.read(context, uris)
+        if (batch.plugins.isEmpty()) {
+            message = "没有可装的容器：" + batch.failures.joinToString("；")
+            return@rememberLauncherForActivityResult
+        }
+        busy = true
+        message = null
+        scope.launch {
+            var installed = 0
+            var replaced = 0
+            val problems = mutableListOf<String>()
+            batch.plugins.forEach { plugin ->
                 val incoming = runCatching {
-                    org.json.JSONObject(read.plugin.sidecarJson).optString("id")
+                    org.json.JSONObject(plugin.sidecarJson).optString("id")
                 }.getOrNull()
-                val replacing = incoming != null && cards.any { it.id == incoming }
-                busy = true
-                message = null
-                scope.launch {
-                    val attempt = runCatching { onInstall(read.plugin.jar, read.plugin.sidecarJson) }
-                    busy = false
-                    val error = attempt.exceptionOrNull()
-                    message = if (error != null) {
-                        // 不吞异常：一句"没有响应"只会让人反复点，真正的原因必须露出来。
-                        "安装失败：${error.message ?: error::class.simpleName}"
-                    } else {
-                        val result = attempt.getOrNull()
-                        when (result?.status?.name) {
-                            "INSTALLED" -> if (replacing) "已覆盖安装，旧版留在回滚位" else "已安装"
-                            "NEEDS_APPROVAL" -> "已导入，等待确认"
-                            null -> "安装失败：宿主没有返回结果"
-                            else -> result.message ?: "安装未完成（${result.status.name}）"
+                val known = incoming != null && cards.any { it.id == incoming }
+                val attempt = runCatching { onInstall(plugin.jar, plugin.sidecarJson) }
+                val error = attempt.exceptionOrNull()
+                if (error != null) {
+                    problems += "失败 ${plugin.name}：${error.message ?: error::class.simpleName}"
+                    return@forEach
+                }
+                when (val result = attempt.getOrNull()) {
+                    null -> problems += "失败 ${plugin.name}：宿主没有返回结果"
+                    else -> when (result.status.name) {
+                        "INSTALLED" -> {
+                            installed += 1
+                            if (known) replaced += 1
                         }
+                        "NEEDS_APPROVAL" -> problems += "待确认 ${plugin.name}"
+                        else -> problems += "失败 ${plugin.name}：${result.message ?: result.status.name}"
                     }
                 }
+            }
+            busy = false
+            val all = batch.failures.map { "跳过 $it" } + problems
+            message = buildString {
+                append(if (installed == 0) "没有装成" else "安装了 $installed 个")
+                if (replaced > 0) append("（其中 $replaced 个是覆盖）")
+                if (all.isNotEmpty()) append("；").append(all.joinToString("；"))
             }
         }
     }
@@ -97,11 +110,11 @@ fun PluginManagerScreen(
 
         EvSection(
             title = "安装",
-            footnote = "插件自带元数据：只需要选一个 .jar。",
+            footnote = "插件自带元数据：可以一次选多个 .jar。",
         ) {
             EvRow(
                 title = if (busy) "正在安装…" else "安装插件",
-                summary = "从文件里选，宿主会把它复制进自己的目录",
+                summary = "可以多选；宿主把它们逐个复制进自己的目录",
                 enabled = !busy,
                 onClick = { picker.launch(arrayOf("application/java-archive", "*/*")) },
                 trailing = { EvText("选择", kind = EvTextKind.Caption, tone = EvTone.Accent) },
