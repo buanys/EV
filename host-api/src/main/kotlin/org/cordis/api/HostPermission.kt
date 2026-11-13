@@ -1,0 +1,158 @@
+package org.cordis.api
+
+/**
+ * A host capability a container may ask for.
+ *
+ * Per ADR-0003 (D3 = A) this is a *declaration + user grant + API-level gate*, not an OS sandbox:
+ * a plugin runs in the host process under the host UID, so this enum cannot stop direct Android
+ * calls. What it can gate is a host-mediated service the host is willing to lend.
+ *
+ * Enforcement is not uniform; the constant KDoc below is the source of truth:
+ * - [PLUGIN_STORAGE] and [BACKGROUND] are checked by the host before it lends the corresponding
+ *   service (activation gate / service call), so they are real gates;
+ * - [NETWORK] has no host network service at all: it records intent and shows up on the user's
+ *   grant surface, but it cannot stop a plugin from calling the host-shared OkHttp directly;
+ * - [NOTIFICATIONS], [CLIPBOARD] and [INSTALL_PACKAGES] are reserved vocabulary: the host has no
+ *   mediated service for them yet, so they are declaration/grant only.
+ *
+ * Metadata spelling is the constant name (`cordis.permissions` is a comma-separated string for
+ * APKs, `"permissions": [...]` in the jar sidecar). Adding a constant is a contract change: old
+ * hosts reject containers that declare a permission they do not know, by design.
+ */
+enum class HostPermission {
+    /**
+     * Declaration and audit only - the host has **no network service** to lend.
+     *
+     * The app's `INTERNET` permission comes transitively from the host's own okhttp dependency, and
+     * plugins share the host process/UID, so a plugin can call the host-shared OkHttp directly.
+     * Revoking this grant therefore does not remove connectivity; it only records intent on the
+     * user-visible grant surface.
+     */
+    NETWORK,
+
+    /**
+     * Enforced: `PluginStorage` is not usable until the user grants this.
+     *
+     * The host checks the grant at activation and only then builds the plugin's child Context with
+     * the storage service, so an ungranted plugin has no `PluginStorage` to call.
+     */
+    PLUGIN_STORAGE,
+
+    /**
+     * Enforced: `BackgroundService.acquire` requires this grant and throws `SecurityException`
+     * without it.
+     */
+    BACKGROUND,
+
+    /**
+     * Reserved: declaration and grant only. The host has no mediated notification service yet, so
+     * this grant does not gate any API.
+     */
+    NOTIFICATIONS,
+
+    /** Reserved: declaration and grant only; no host-mediated clipboard service yet. */
+    CLIPBOARD,
+
+    /** Reserved: declaration and grant only; no host-mediated package-install service yet. */
+    INSTALL_PACKAGES,
+
+    /**
+     * Declaration, grant and audit only - **the host cannot gate `su`**.
+     *
+     * A plugin runs in the host process, so once it decides to call `Runtime.exec("su")` there is
+     * no host-mediated service to revoke; the real gates are outside this enum: Magisk (or the
+     * ROM's su provider) asks the user per-UID, and a well-behaved plugin routes every dangerous
+     * call through the agent loop's approval gate. This constant exists so the declaration shows
+     * up on the user's grant surface and the install/audit trail records that a container intends
+     * to touch root - root must never be a default capability that hides inside a generic plugin.
+     */
+    ROOT_SHELL,
+
+    /**
+     * Enforced: [CredentialService] is not provided at all without it, and every call re-checks
+     * the grant.
+     *
+     * 凭据归宿主保管（规则的要求）。未声明这个能力的插件连服务都拿不到——它的 `ctx[CredentialService.Key]`
+     * 是 null；声明了但用户没授权时，每次读写都抛 `SecurityException`。
+     *
+     * 这让"谁存了密钥"变成用户可见的一件事：插件卡片上会多一行授权，而不是像以前那样，
+     * API key 安静地躺在插件自己的 `providers.json` 里。
+     */
+    SECRETS,
+
+    /**
+     * 读写日历：`CalendarService` 的声明位。
+     *
+     * 没声明就拿不到绑定（`ctx[CalendarService.Key]` 是 null），声明了没授权则每次调用
+     * 抛 `SecurityException`。它要的 Android 权限（`READ_WRITE_CALENDAR`）归宿主所有，
+     * 插件自己不申请也申请不到——这正是这一层存在的理由。
+     */
+    CALENDAR,
+
+    /**
+     * 拨设备开关、改亮度/音量/勿扰、按媒体键：`DeviceControlService` 的声明位。
+     *
+     * 这些动作用户**立刻看得见**（屏幕变亮、静音、断网），所以单独一位：
+     * 只读的设备上下文（`DeviceContextService`）不需要它，能改才需要。
+     */
+    DEVICE_CONTROL,
+
+    /**
+     * 驱动内置浏览器：打开页面、点元素、填表、截图。
+     *
+     * 它不改设备设置，但**会以用户的身份访问网站**（带着已登录的 cookie），所以单独一位：
+     * 用户需要能说"这个插件不许替我上网"。
+     */
+    BROWSER,
+
+    /**
+     * 读通讯录：`ContactsService` 的声明位。
+     *
+     * 只读一位。写通讯录要 `WRITE_CONTACTS`，宿主没有声明那个权限，所以没有对应的写服务。
+     */
+    CONTACTS,
+
+    /**
+     * 读短信：`SmsService` 的声明位。
+     *
+     * 同样只读。短信是全设备最敏感的一类数据（验证码即账号），
+     * 所以它是单独一位，而不是并进 `CONTACTS`。
+     */
+    SMS,
+
+    /**
+     * 读媒体库：`MediaService` 的声明位。
+     *
+     * Android 13+ 把图片、视频、音频拆成三个运行时权限，这里合成一位——对用户来说
+     * "允许看相册"是一件事，不该变成三次弹窗。
+     */
+    MEDIA,
+
+    /**
+     * 定位：`LocationService` 的声明位。
+     *
+     * 单独一位，因为它比其它只读能力更"贵"：主动定位会唤醒无线电、耗电，
+     * 而且用户需要能说"知道我看相册，不代表允许知道我在哪"。
+     */
+    LOCATION,
+    ;
+
+    companion object {
+        /** The wire spelling used in plugin metadata. Deliberately the constant name. */
+        val wireNames: Set<String> = entries.mapTo(LinkedHashSet()) { it.name }
+
+        /** Metadata string to permission, or null when this host does not know the name. */
+        fun fromWireName(name: String): HostPermission? = entries.firstOrNull { it.name == name }
+
+        /**
+         * [requested] minus [granted], in declaration order.
+         *
+         * The one rule the install pass (calls it per candidate), the activation gate and the host
+         * service implementations share: a permission is usable only when both sides contain it.
+         */
+        fun missing(
+            requested: Set<HostPermission>,
+            granted: Set<HostPermission>,
+        ): Set<HostPermission> = requested.filterTo(LinkedHashSet()) { it !in granted }
+    }
+}

@@ -1,0 +1,108 @@
+name: Android
+
+# Main-line Android build: debug APKs, JVM + unit tests, the release gates and the kernel freeze gate.
+# Module paths follow the plugin layout: the host is :host-app, plugins are :plugins:<kind>:<name>.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, test and gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # fetch-depth: 0 is mandatory, not a preference: the kernel freeze gate resolves its baseline
+      # as a real commit, and a shallow clone would make that impossible.
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Runs before the toolchain setup: it only needs git and bash. The kernel directories are
+      # consumed as dependencies and must not be edited, so this is the cheapest failure to surface.
+      #
+      # The script picks its own baseline: the commit that vendored third_party/cordis, not the
+      # repository root. The root predates the kernel, so diffing against it would mark the whole
+      # kernel as "changed" and keep this gate permanently red - see the note in the script.
+      # 三条架构门禁（内核哈希锁 / 模块边界 / 文件行数）。这是真正的门禁，
+      # 以前只在本地 check.sh 里跑，CI 跑的是另一个（当时作用域已经空掉的）脚本。
+      - name: Architecture gates
+        run: sh scripts/check.sh
+
+      # 第二道网：内核有没有相对 vendor 那次提交被改过（check.sh 的哈希锁只保证
+      # 与 KERNEL.lock 一致；改了内核又顺手更新 lock 的情况要靠这一步拦）。
+      - name: Kernel freeze gate
+        run: bash scripts/kernel-freeze.sh
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      # Use the Android command line tools the hosted Ubuntu image already provides instead of
+      # fetching a second copy: fewer downloads and no dependency on a third-party action that has
+      # to install its own tools before the build even starts.
+      - name: Set up Android SDK
+        run: |
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "$sdk_root/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          export PATH="$sdk_root/cmdline-tools/latest/bin:$PATH"
+          sdkmanager --version
+
+      # compileSdk is 37, which no hosted runner image ships preinstalled; AGP downloads the missing
+      # platform and build-tools itself, but only once the licenses are accepted. `yes` dies on
+      # SIGPIPE when sdkmanager stops reading, so pipefail must not turn that into a failure.
+      - name: Accept Android SDK licenses
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses > /dev/null
+
+      # Committed as 100644, so the wrapper needs the executable bit before `./gradlew` works.
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Assemble debug APKs
+        run: ./gradlew assembleDebug --console=plain
+
+      # 内核 :core 里有一个时序用例只在这类 runner 上失败（根 build.gradle.kts 里有完整说明）。
+      # 显式打一行，避免"CI 少跑了一个用例"变成隐藏信息。
+      - name: Note the one kernel test skipped in CI
+        run: |
+          echo "::notice title=已跳过一个内核用例::FiberLifecycleTest > config update coalesces with injected provider reload —— 只在 CI 跳过（内核冻结，不能改），本地仍会跑。"
+
+      # Root `test` aggregates the kernel JVM tests, the packager plugin tests, :host-core:test and
+      # every Android module's debug unit tests.
+      - name: Run JVM and unit tests
+        run: ./gradlew test --console=plain
+
+      - name: Run SDK unit tests
+        run: ./gradlew :host-api:testDebugUnitTest :ui-kit:testDebugUnitTest --console=plain
+
+      # The SDK modules are published artifacts: a public API change must update the committed
+      # snapshot in api/*.txt in the same change. binary-compatibility-validator is not available
+      # offline, so the fallback renders javap output; see gradle/api-snapshot.gradle.kts.
+      # `apiSnapshot` refreshes the baseline (run locally), this step only verifies it.
+      - name: Check SDK API snapshots
+        run: ./gradlew :host-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
+
+      # R8 release build plus the release-key / shared-package / forbidden-package gates. CI has no
+      # release keystore and must never hold one, so it passes the gate's single explicit opt-out:
+      # the resulting artifact is debug-signed and only good for side-loading smoke tests, never for
+      # distribution (see docs/release-signing.md). Without the flag this step fails by design.
+      - name: Release gate
+        run: ./gradlew :host-app:releaseGate -PallowDebugSigning=true --console=plain

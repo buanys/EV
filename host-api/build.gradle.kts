@@ -1,0 +1,41 @@
+plugins {
+    id("com.android.library")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+android {
+    namespace = "org.cordis.api"
+    compileSdk = 37
+    defaultConfig {
+        minSdk = 33
+    }
+    buildFeatures {
+        compose = true
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // The kernel contract (org.cordis.Plugin / Context / ServiceKey) comes from the
+    // host runtime; the API module only carries host <-> plugin business types.
+    compileOnly(project(":kernel:core"))
+
+    // Exposed as api so a plugin compiles against the exact Compose the host owns. Classes are
+    // resolved from the host at runtime through HostPackages; plugins must not package them.
+    api(project(":ui-kit"))
+    api(libs.compose.runtime)
+    api(libs.compose.ui)
+    api(libs.compose.foundation)
+
+    // 单元测试要真的跑到 ServiceKey / Plugin 这些内核类型。compileOnly 只管编译，
+    // 运行时不会把 :core 放进测试 classpath——少了这一行，测试类在初始化时就 NoClassDefFoundError。
+    testImplementation(project(":kernel:core"))
+    testImplementation(libs.junit4)
+    testImplementation(libs.kotlin.test.junit)
+}
+
+// SDK public API snapshot tasks (javap fallback; see gradle/api-snapshot.gradle.kts).
+apply(from = rootProject.file("gradle/api-snapshot.gradle.kts"))

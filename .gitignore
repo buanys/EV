@@ -1,0 +1,34 @@
+.gradle/
+.kotlin/
+.idea/
+**/build/
+kotlin-js-store/
+out/
+*.iml
+
+# Local publishing credentials and signing keys must never be committed.
+local.properties
+private-key.asc
+secret-key.asc
+secring.gpg
+
+# 发布签名材料，绝不入库
+keystore.properties
+*.jks
+*.keystore
+
+# 工具运行时状态与本地构建/验收输出，不入库
+.agent-teams/
+.graphflow/
+graphflow-out/
+
+# 本地参考的姊妹项目（自带 .git，含 62MB rootfs 资产），不进本仓库
+kcode/
+
+# forge 载荷（约 26 MB 的编译器 dex + jar），由 scripts/forge-payload.sh 生成，不入库
+# 插件归位到 plugins/<类>/<名> 之后路径变了，两种写法都留着：老路径是历史，新路径是现在。
+plugins/forge-compiler/payload/
+plugins/**/forge-compiler/payload/
+
+# 本地的第三方库分析笔记（koog 等），属于个人参考材料，不入库
+koog-analysis.md

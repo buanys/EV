@@ -1,0 +1,166 @@
+package ev.buan.ui
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.couiButtonFeedback
+import com.itos.coui.theme.CouiTheme
+
+/**
+ * 按钮的三种身份。
+ *
+ * 只有三种：主操作、次操作、破坏性。多一档就多一次"这两个有什么区别"的犹豫。
+ */
+enum class EvButtonKind { Primary, Secondary, Danger }
+
+/**
+ * 按钮尺寸。Compact 只用于**已经在容器里**的按钮（输入区工具栏、行内操作），
+ * 这时候 42dp 会把整行撑高，视觉上比它承载的动作重要得多。
+ */
+enum class EvButtonSize { Regular, Compact }
+
+/**
+ * 页面里唯一的按钮。
+ *
+ * 按压反馈来自 COUI 的 [couiButtonFeedback]——那是它材质的一部分，
+ * 自己画一个 `Box + clickable` 拿不到那种"按下时向内收"的形变。
+ */
+@Composable
+fun EvButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    kind: EvButtonKind = EvButtonKind.Primary,
+    enabled: Boolean = true,
+    size: EvButtonSize = EvButtonSize.Regular,
+) {
+    val colors = EvColors
+    val dark = CouiTheme.isDark
+    val interaction = remember { MutableInteractionSource() }
+    val compact = size == EvButtonSize.Compact
+    val height = if (compact) 32.dp else 42.dp
+    val background = when {
+        !enabled -> colors.surface3
+        kind == EvButtonKind.Primary -> colors.accent
+        kind == EvButtonKind.Danger -> colors.danger
+        else -> colors.surface2
+    }
+    val tone = when {
+        !enabled -> EvTone.Muted
+        kind == EvButtonKind.Secondary -> EvTone.Normal
+        else -> EvTone.OnAccent
+    }
+
+    Box(
+        modifier = modifier
+            .height(height)
+            .background(background, RoundedCornerShape(height / 2))
+            .then(Modifier.couiButtonFeedback(dark, interaction, enabled))
+            .clickable(interaction, null, enabled, onClick = onClick)
+            .padding(horizontal = if (compact) 13.dp else 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        EvText(
+            label,
+            kind = if (compact) EvTextKind.Caption else EvTextKind.Label,
+            tone = tone,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * 实心圆形图标按钮：能执行时是强调色实心，不能执行时退到二级表面。
+ *
+ * 和 [EvIconButton] 的区别在**语气**：这个表示"按下去会立刻发生一件事"（发送、确认），
+ * 所以用实心 + 反色图标；[EvIconButton] 是入口（更多、新建），所以是玻璃底色。
+ */
+@Composable
+fun EvFilledIconButton(
+    icon: EvIcon,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val colors = EvColors
+    val vector = EvIcon(icon)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(
+        modifier
+            .size(36.dp)
+            .background(
+                when {
+                    !enabled -> colors.surface2
+                    pressed -> colors.accent.copy(alpha = 0.82f)
+                    else -> colors.accent
+                },
+                CircleShape,
+            )
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = rememberVectorPainter(vector),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(if (enabled) colors.onAccent else colors.textTertiary),
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/**
+ * 空状态：**一行话**，不是一张提示卡片。
+ *
+ * 参考图里那种带图、带建议的提示块被明确否掉了——空列表时用户需要的是一句说明，
+ * 不是一段营销。
+ */
+@Composable
+fun EvEmpty(text: String, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+        EvText(text, kind = EvTextKind.Caption, tone = EvTone.Muted)
+    }
+}
+
+/** 一行动态提示：错误、警告、被截断的原因。颜色来自 tone，不是调用方传的。 */
+@Composable
+fun EvNotice(text: String, modifier: Modifier = Modifier, tone: EvTone = EvTone.Muted) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .background(EvColors.surface1, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.Start) {
+            EvText(text, kind = EvTextKind.Caption, tone = tone)
+        }
+    }
+}

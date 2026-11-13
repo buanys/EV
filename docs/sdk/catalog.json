@@ -1,0 +1,717 @@
+{
+  "$comment": "宿主能力面机器可读清单。与 host-services.md 同源，改一处必须改两处。生成日期 2026-11-10。",
+  "schemaVersion": 1,
+  "host": {
+    "packageName": "ev.buan",
+    "repository": "buanys/EV",
+    "apiVersion": {
+      "pluginApi": 1,
+      "note": "实验期整数等值门；正式版改为 hostApi 语义化范围，见 versioning.md"
+    }
+  },
+  "delivery": {
+    "rootContext": "cordis.provide，全员可见，无权限门",
+    "serviceDirectory": "ServiceDirectory.publish，需 lookup，缺失不导致启动失败",
+    "declared": "provide*IfDeclared，声明 HostPermission 且授权才有绑定",
+    "pluginProvided": "由插件在 apply 里 publish"
+  },
+  "services": [
+    {
+      "key": "host/appearance",
+      "interface": "AppearanceService",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "HostComposition",
+      "capabilities": [
+        "update"
+      ]
+    },
+    {
+      "key": "host/navigation",
+      "interface": "HostNavigation",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "HostComposition",
+      "capabilities": [
+        "openPluginManager",
+        "openSettings"
+      ]
+    },
+    {
+      "key": "host/page-reader",
+      "interface": "PageReader",
+      "delivery": "rootContext,serviceDirectory",
+      "permission": null,
+      "impl": "HostComposition",
+      "capabilities": [
+        "render"
+      ]
+    },
+    {
+      "key": "host/service-directory",
+      "interface": "ServiceDirectory",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "HostComposition",
+      "capabilities": [
+        "publish",
+        "lookup",
+        "retract"
+      ]
+    },
+    {
+      "key": "host/plugin-install",
+      "interface": "PluginInstallService",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "HostComposition",
+      "capabilities": [
+        "install",
+        "uninstall",
+        "request"
+      ]
+    },
+    {
+      "key": "host/device-context",
+      "interface": "DeviceContextService",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "DeviceContextServiceImpl",
+      "capabilities": [
+        "apps",
+        "launch",
+        "currentApp",
+        "status",
+        "clipboard",
+        "setClipboard",
+        "notify",
+        "notifications",
+        "canReadNotifications",
+        "openNotificationAccess"
+      ]
+    },
+    {
+      "key": "host/screen",
+      "interface": "ScreenService",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "ScreenServiceImpl",
+      "capabilities": [
+        "dump",
+        "tap",
+        "tapText",
+        "input",
+        "swipe",
+        "key",
+        "currentPackage",
+        "openSettings"
+      ]
+    },
+    {
+      "key": "host/hud",
+      "interface": "HudService",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "HudServiceImpl",
+      "capabilities": [
+        "show",
+        "pulse",
+        "attachController",
+        "hide",
+        "onTogglePause",
+        "onStop"
+      ]
+    },
+    {
+      "key": "host/restart",
+      "interface": "HostRestart",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "HostRestartImpl",
+      "capabilities": [
+        "restart"
+      ]
+    },
+    {
+      "key": "host/permission",
+      "interface": "PermissionService",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "HostActivation",
+      "capabilities": [
+        "isGranted",
+        "require"
+      ]
+    },
+    {
+      "key": "host/background",
+      "interface": "BackgroundService",
+      "delivery": "rootContext",
+      "permission": "BACKGROUND",
+      "impl": "EvBackgroundService",
+      "capabilities": [
+        "acquire",
+        "release"
+      ]
+    },
+    {
+      "key": "host/runtime-budget",
+      "interface": "RuntimeBudgetService",
+      "delivery": "rootContext",
+      "permission": null,
+      "impl": "HostActivation",
+      "capabilities": [
+        "usage"
+      ]
+    },
+    {
+      "key": "host/theme-catalog",
+      "interface": "ThemeCatalogService",
+      "delivery": "serviceDirectory",
+      "permission": null,
+      "impl": "HostThemeCatalog",
+      "capabilities": [
+        "themes",
+        "available",
+        "resolve"
+      ]
+    },
+    {
+      "key": "host/plugin-catalog",
+      "interface": "PluginCatalogService",
+      "delivery": "serviceDirectory",
+      "permission": null,
+      "impl": "HostComposition",
+      "capabilities": [
+        "manifests",
+        "manifestOf",
+        "readSetting",
+        "writeSetting"
+      ]
+    },
+    {
+      "key": "host/plugin-manager",
+      "interface": "PluginManagerService",
+      "delivery": "serviceDirectory",
+      "permission": null,
+      "impl": "HostComposition",
+      "capabilities": [
+        "plugins",
+        "setEnabled",
+        "grantPermission",
+        "revokePermission",
+        "clearStorage"
+      ]
+    },
+    {
+      "key": "host/plugin-page",
+      "interface": "PluginPageService",
+      "delivery": "serviceDirectory",
+      "permission": null,
+      "impl": "HostComposition",
+      "capabilities": [
+        "pageOf"
+      ]
+    },
+    {
+      "key": "host/storage",
+      "interface": "PluginStorage",
+      "delivery": "declared",
+      "permission": "PLUGIN_STORAGE",
+      "impl": "PluginStorageImpl",
+      "capabilities": [
+        "read",
+        "write",
+        "atomicWrite",
+        "delete",
+        "list",
+        "rootPath"
+      ]
+    },
+    {
+      "key": "host/userdata",
+      "interface": "UserDataStorage",
+      "delivery": "declared",
+      "permission": "PLUGIN_STORAGE",
+      "impl": "PluginStorageImpl",
+      "capabilities": [
+        "read",
+        "write"
+      ]
+    },
+    {
+      "key": "host/credential",
+      "interface": "CredentialService",
+      "delivery": "declared",
+      "permission": "SECRETS",
+      "impl": "CredentialServiceImpl",
+      "capabilities": [
+        "names",
+        "read",
+        "write",
+        "erase"
+      ]
+    },
+    {
+      "key": "host/calendar",
+      "interface": "CalendarService",
+      "delivery": "declared",
+      "permission": "CALENDAR",
+      "impl": "CalendarServiceImpl",
+      "capabilities": [
+        "calendars",
+        "events",
+        "event",
+        "create",
+        "createAll",
+        "update",
+        "delete"
+      ]
+    },
+    {
+      "key": "host/device-control",
+      "interface": "DeviceControlService",
+      "delivery": "declared",
+      "permission": "DEVICE_CONTROL",
+      "impl": "DeviceControlServiceImpl",
+      "capabilities": [
+        "state",
+        "setState",
+        "display",
+        "setBrightness",
+        "setScreenTimeout",
+        "sound",
+        "setVolume",
+        "setRingMode",
+        "setDoNotDisturb",
+        "flashlight",
+        "setFlashlight",
+        "media"
+      ]
+    },
+    {
+      "key": "host/browser",
+      "interface": "BrowserService",
+      "delivery": "declared",
+      "permission": "BROWSER",
+      "impl": "BrowserProvision",
+      "capabilities": [
+        "open",
+        "openTab",
+        "selectTab",
+        "closeTab",
+        "state",
+        "readable",
+        "text",
+        "elements",
+        "snapshot",
+        "surface"
+      ]
+    },
+    {
+      "key": "agent/service",
+      "interface": "AgentService",
+      "delivery": "pluginProvided",
+      "impl": "ev-brain",
+      "capabilities": [
+        "send",
+        "sendStreaming"
+      ]
+    },
+    {
+      "key": "agent/tool-registry",
+      "interface": "ToolRegistry",
+      "delivery": "pluginProvided",
+      "impl": "ev-tools",
+      "capabilities": [
+        "specs",
+        "lookup",
+        "register",
+        "unregister"
+      ]
+    },
+    {
+      "key": "agent/tool-guards",
+      "interface": "ToolGuardRegistry",
+      "delivery": "pluginProvided",
+      "impl": "ev-brain",
+      "capabilities": [
+        "register",
+        "vet",
+        "beforeTool"
+      ]
+    },
+    {
+      "key": "agent/approval",
+      "interface": "ApprovalService",
+      "delivery": "pluginProvided",
+      "impl": "ev-ui",
+      "capabilities": [
+        "request"
+      ]
+    },
+    {
+      "key": "agent/approval/policy",
+      "interface": "ApprovalPolicy",
+      "delivery": "pluginProvided",
+      "impl": "ev-shell",
+      "note": "归属可疑，待归位"
+    },
+    {
+      "key": "agent/model",
+      "interface": "ModelService",
+      "delivery": "pluginProvided",
+      "impl": "ev-model",
+      "capabilities": [
+        "complete",
+        "completeStreaming"
+      ]
+    },
+    {
+      "key": "agent/model-providers",
+      "interface": "ModelProviderService",
+      "delivery": "pluginProvided",
+      "impl": "ev-model",
+      "capabilities": [
+        "providers",
+        "saveProvider",
+        "deleteProvider",
+        "resetProvider",
+        "fetchRemoteModels",
+        "testConnection"
+      ]
+    },
+    {
+      "key": "agent/memory",
+      "interface": "MemoryService",
+      "delivery": "pluginProvided",
+      "impl": "ev-memory",
+      "capabilities": [
+        "history",
+        "append",
+        "clear"
+      ]
+    },
+    {
+      "key": "agent/memory-store",
+      "interface": "MemoryStoreService",
+      "delivery": "pluginProvided",
+      "impl": "ev-memory",
+      "capabilities": [
+        "remember",
+        "similar",
+        "update",
+        "archive",
+        "recall",
+        "read",
+        "pin",
+        "notes",
+        "residentBlock"
+      ]
+    },
+    {
+      "key": "agent/session-log",
+      "interface": "SessionLog",
+      "delivery": "pluginProvided",
+      "impl": "ev-log",
+      "capabilities": [
+        "append",
+        "messages",
+        "events",
+        "clear"
+      ]
+    },
+    {
+      "key": "agent/system-prompt",
+      "interface": "SystemPromptService",
+      "delivery": "pluginProvided",
+      "impl": "ev-prompt",
+      "capabilities": [
+        "layers"
+      ]
+    },
+    {
+      "key": "host/theme-provider",
+      "interface": "ThemeService",
+      "delivery": "pluginProvided",
+      "impl": "ev-theme-*",
+      "capabilities": [
+        "themes",
+        "available",
+        "resolve"
+      ]
+    },
+    {
+      "key": "host/hud-renderer",
+      "interface": "HudRenderer",
+      "delivery": "pluginProvided",
+      "impl": "HUD 渲染插件",
+      "capabilities": [
+        "measurePill",
+        "drawPill",
+        "drawPulses",
+        "hitTest",
+        "refreshIntervalMs"
+      ]
+    },
+    {
+      "key": "host/contacts",
+      "interface": "ContactsService",
+      "delivery": "declared",
+      "permission": "CONTACTS",
+      "impl": "ContactsServiceImpl",
+      "capabilities": [
+        "search",
+        "read"
+      ],
+      "readOnly": true
+    },
+    {
+      "key": "host/sms",
+      "interface": "SmsService",
+      "delivery": "declared",
+      "permission": "SMS",
+      "impl": "SmsServiceImpl",
+      "capabilities": [
+        "recent",
+        "search",
+        "latestCode"
+      ],
+      "readOnly": true
+    },
+    {
+      "key": "host/media",
+      "interface": "MediaService",
+      "delivery": "declared",
+      "permission": "MEDIA",
+      "impl": "MediaServiceImpl",
+      "capabilities": [
+        "recent",
+        "search"
+      ],
+      "readOnly": true
+    },
+    {
+      "key": "host/location",
+      "interface": "LocationService",
+      "delivery": "declared",
+      "permission": "LOCATION",
+      "impl": "LocationServiceImpl",
+      "capabilities": [
+        "locate"
+      ],
+      "readOnly": true,
+      "note": "一次调用；timeoutMs=0 即只读缓存"
+    },
+    {
+      "key": "host/ui-slots",
+      "interface": "UiSlotRegistry",
+      "delivery": "serviceDirectory",
+      "permission": null,
+      "impl": "UiSlotRegistryImpl",
+      "capabilities": [
+        "contribute",
+        "revoke",
+        "contents"
+      ],
+      "note": "6 个槽位：home.hero / home.above-composer / message.actions / settings.sections / drawer.items / global.overlay；前两者与 global.overlay 是 replaceable"
+    }
+  ],
+  "permissions": [
+    {
+      "name": "PLUGIN_STORAGE",
+      "enforcement": "enforced",
+      "services": [
+        "host/storage",
+        "host/userdata"
+      ],
+      "androidPermissions": []
+    },
+    {
+      "name": "BACKGROUND",
+      "enforcement": "enforced",
+      "services": [
+        "host/background"
+      ],
+      "androidPermissions": [
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_SPECIAL_USE",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    {
+      "name": "SECRETS",
+      "enforcement": "enforced",
+      "services": [
+        "host/credential"
+      ],
+      "androidPermissions": []
+    },
+    {
+      "name": "CALENDAR",
+      "enforcement": "enforced",
+      "services": [
+        "host/calendar"
+      ],
+      "androidPermissions": [
+        "READ_CALENDAR",
+        "WRITE_CALENDAR"
+      ]
+    },
+    {
+      "name": "DEVICE_CONTROL",
+      "enforcement": "enforced",
+      "services": [
+        "host/device-control"
+      ],
+      "androidPermissions": [
+        "CHANGE_WIFI_STATE",
+        "CHANGE_NETWORK_STATE",
+        "BLUETOOTH_CONNECT",
+        "ACCESS_NOTIFICATION_POLICY",
+        "CAMERA"
+      ]
+    },
+    {
+      "name": "BROWSER",
+      "enforcement": "enforced",
+      "services": [
+        "host/browser"
+      ],
+      "androidPermissions": [
+        "INTERNET"
+      ]
+    },
+    {
+      "name": "NOTIFICATIONS",
+      "enforcement": "advisory",
+      "services": [
+        "host/device-context"
+      ],
+      "androidPermissions": [
+        "POST_NOTIFICATIONS"
+      ],
+      "note": "服务存在但无门，KDoc 已过期"
+    },
+    {
+      "name": "CLIPBOARD",
+      "enforcement": "advisory",
+      "services": [
+        "host/device-context"
+      ],
+      "androidPermissions": [],
+      "note": "服务存在但无门，KDoc 已过期"
+    },
+    {
+      "name": "INSTALL_PACKAGES",
+      "enforcement": "advisory",
+      "services": [],
+      "androidPermissions": [
+        "REQUEST_INSTALL_PACKAGES"
+      ]
+    },
+    {
+      "name": "NETWORK",
+      "enforcement": "advisory",
+      "services": [],
+      "androidPermissions": [
+        "INTERNET"
+      ]
+    },
+    {
+      "name": "ROOT_SHELL",
+      "enforcement": "advisory",
+      "services": [],
+      "androidPermissions": []
+    },
+    {
+      "name": "CONTACTS",
+      "enforcement": "enforced",
+      "services": [
+        "host/contacts"
+      ],
+      "androidPermissions": [
+        "READ_CONTACTS"
+      ]
+    },
+    {
+      "name": "SMS",
+      "enforcement": "enforced",
+      "services": [
+        "host/sms"
+      ],
+      "androidPermissions": [
+        "READ_SMS",
+        "READ_CALL_LOG"
+      ]
+    },
+    {
+      "name": "MEDIA",
+      "enforcement": "enforced",
+      "services": [
+        "host/media"
+      ],
+      "androidPermissions": [
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_MEDIA_AUDIO"
+      ]
+    },
+    {
+      "name": "LOCATION",
+      "enforcement": "enforced",
+      "services": [
+        "host/location"
+      ],
+      "androidPermissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    }
+  ],
+  "gaps": [
+    {
+      "capability": "scheduling",
+      "missing": [
+        "ScheduleService",
+        "SCHEDULE"
+      ],
+      "androidPermissionDeclared": true,
+      "blocksTasks": [
+        "半小时后提醒我",
+        "跨轮次定时"
+      ]
+    },
+    {
+      "capability": "contacts-write",
+      "missing": [
+        "WRITE_CONTACTS"
+      ],
+      "androidPermissionDeclared": false,
+      "blocksTasks": [
+        "新建/修改联系人"
+      ]
+    },
+    {
+      "capability": "sms-send",
+      "missing": [
+        "SEND_SMS",
+        "WRITE_SMS"
+      ],
+      "androidPermissionDeclared": false,
+      "blocksTasks": [
+        "发短信"
+      ]
+    },
+    {
+      "capability": "media-delete",
+      "missing": [
+        "MediaStore.createDeleteRequest 流程"
+      ],
+      "androidPermissionDeclared": true,
+      "blocksTasks": [
+        "删照片"
+      ]
+    }
+  ]
+}

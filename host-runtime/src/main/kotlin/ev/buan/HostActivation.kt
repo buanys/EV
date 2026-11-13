@@ -1,0 +1,432 @@
+package ev.buan
+
+import android.content.Context as AndroidContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+import org.cordis.Context as CordisContext
+import org.cordis.Fiber
+import org.cordis.Plugin
+import org.cordis.api.BackgroundService
+import org.cordis.api.HostPackages
+import org.cordis.api.PermissionService
+import org.cordis.api.PluginManifest
+import org.cordis.api.PluginSettings
+import org.cordis.api.PluginStorage
+import org.cordis.api.RuntimeBudgetService
+import org.cordis.api.UserDataStorage
+import org.cordis.loader.AndroidModuleDescriptor
+import org.cordis.loader.AndroidModuleLoader
+import org.cordis.plugin
+
+/**
+ * 激活子系统需要的宿主状态。
+ *
+ * 这张接口是整个拆分的关键，也是它的代价：这些字段以前全是 `HostComposition` 的私有成员，
+ * 而"谁可以被激活、激活失败怎么记、预算名额归谁"这三件事本来就横跨两个对象。
+ * 与其把 15 个 lambda 塞进构造函数，不如把"它需要什么"写成一份契约——读这张接口
+ * 就能知道激活依赖宿主到什么程度，以后想再解耦也有据可依。
+ *
+ * 分成三段：**依赖**（不可变，构造后不变）、**共享状态**（可变，两边都读写）、
+ * **副作用**（宿主独有的能力：后台服务与进度上报）。
+ */
+internal interface ActivationHost {
+
+    // ── 依赖 ────────────────────────────────────────────────────────────────
+
+    val cordis: CordisContext
+    val modules: AndroidModuleLoader
+    val appContext: AndroidContext
+    val permissions: PermissionStore
+    val installer: PluginInstaller
+
+    // ── 共享状态（可变）─────────────────────────────────────────────────────
+
+    val installed: MutableMap<String, InstalledPlugin>
+    val active: MutableMap<String, Fiber<Unit>>
+    val failures: MutableMap<String, String>
+    val pluginManifests: MutableMap<String, PluginManifest>
+    val pluginSettings: MutableMap<String, PluginSettings>
+
+    /** 每个插件的预算寿命；停用时取消它，在飞的任务随之结束。 */
+    val budgetJobs: MutableMap<String, Job>
+
+    /** 这一轮扫描到但还在等未签名审批的容器：它们的存储不能被当成"已卸载"清掉。 */
+    val pendingUnsigned: List<PendingUnsigned>
+
+    // ── 决策与副作用 ────────────────────────────────────────────────────────
+
+    /** 非空表示本次启动处于安全模式：一个插件都不许加载。 */
+    val safeModeNotice: SafeModeNotice?
+
+    /** 受限档位能不能**降级**在本进程里跑（正式包恒为 false，见 [RestrictedActivator]）。 */
+    val allowsRestrictedInProcess: Boolean
+
+    /** 装进子进程并把工具挂到工具总线上；失败就抛，**不降级**回同进程。 */
+    suspend fun isolate(plugin: InstalledPlugin): Int
+
+    /** 把它从子进程里撤下来；没装过是 no-op。 */
+    suspend fun stopIsolated(id: String)
+
+    /** 子进程里提供的工具数；0 表示不在隔离中。 */
+    fun isolatedToolCount(id: String): Int
+
+    /** 把这一轮扫描的结果落账（`installed` / `syncErrors` / `pendingUnsigned`）。 */
+    fun recordScan(installedNow: List<InstalledPlugin>, errors: List<String>, pending: List<PendingUnsigned>)
+
+    /** 报告激活进度；[processed] 是已经尝试过的数量。 */
+    fun reportProgress(targets: List<InstalledPlugin>, processed: Int)
+
+    /** 用户是否启用了这个插件（开关存在宿主自己的 prefs 里）。 */
+    fun isPluginEnabled(id: String): Boolean
+
+    /** 这个插件历史失败了几次；到了阈值就不再尝试激活。 */
+    fun failureScoreOf(id: String): ev.buan.hostcore.recovery.FailureScore
+
+    /** 记一次成功（减分）或失败（加分）。 */
+    fun recordFailure(id: String, success: Boolean)
+
+    /** 删掉已经不在安装清单里的插件数据；[keepIds] 之外的都算过时。 */
+    fun pruneStorage(keepIds: Set<String>)
+
+    /** 给一个插件造它自己的预算服务；[lifetime] 取消时在飞的任务随之结束。 */
+    fun makeBudget(pluginId: String, lifetime: Job): RuntimeBudgetService
+
+    /**
+     * 给一个插件造它的凭据服务。宿主自己持有存放地，这里只交出"按名字读写"的窄面——
+     * 与 [makeBudget] 同理：接口说能做什么，不说由谁实现。
+     */
+    fun makeCredentials(pluginId: String, permission: PermissionService): org.cordis.api.CredentialService
+
+    /** 给一个插件造日历服务；授权由传进来的 permission 每次调用复核。 */
+    fun makeCalendar(permission: PermissionService): org.cordis.api.CalendarService
+
+    /** 同上，设备控制。 */
+    fun makeDeviceControl(permission: PermissionService): org.cordis.api.DeviceControlService
+
+    /** 通讯录读取；只读，写通讯录的权限宿主没有声明。 */
+    fun makeContacts(permission: PermissionService): org.cordis.api.ContactsService
+
+    /** 短信读取（含验证码提取）；只读。 */
+    fun makeSms(permission: PermissionService): org.cordis.api.SmsService
+
+    /** 媒体库读取；只读。 */
+    fun makeMedia(permission: PermissionService): org.cordis.api.MediaService
+
+    /** 定位；一次调用可能唤醒无线电，超时由实现自己兜住。 */
+    fun makeLocation(permission: PermissionService): org.cordis.api.LocationService
+
+    /** 全应用共用的浏览器会话。 */
+    fun makeBrowser(permission: PermissionService): org.cordis.api.BrowserService
+
+    /** 后台常驻服务由 app 层接线；没接就是宿主配置错了，激活会失败并说明原因。 */
+    fun makeBackgroundService(pluginId: String, permission: PermissionService?): BackgroundService
+
+    fun releaseBackground(pluginId: String)
+}
+
+/**
+ * 启动时把插件从"躺在磁盘上"变成"跑起来"的那一套：扫描落账 → 定目标 → 逐个激活 / 停用。
+ *
+ * 它回答的是**一个进程怎么把插件装起来**，宿主总装回答的是**这个应用由什么组成**。
+ * 三条不变量：安全模式是本进程的决定（不写偏好）；干净的一轮扫描才能删数据；每个插件一颗 Fiber。
+ */
+internal class HostActivation(private val host: ActivationHost) {
+
+    /** 受限档的执行分流，见 [RestrictedActivator]。 */
+    private val restricted = RestrictedActivator(host)
+
+    /**
+     * The single pass both `start` and `resync` run: scan → record → order → activate.
+     *
+     * Kept as one function on purpose. Two callers meant two chances for the rules to drift, and
+     * the rules here are exactly the ones a plugin author will blame the host for ("装完为什么不生效").
+     */
+    suspend fun sync(scope: LaunchScope = LaunchScope.Full) {
+        val sync = host.installer.sync()
+        host.recordScan(sync.plugins, sync.errors, sync.pending)
+        // A re-sync can drop a plugin (uninstalled from EV/mods) while its Fiber is still alive;
+        // stop it before the cleanup below removes the storage it may be writing to.
+        host.active.keys.toList().filterNot { it in host.installed }.forEach { deactivate(it) }
+        // Uninstall cleanup: a clean sync is the only proof that a plugin is gone (an error may
+        // just mean this scan missed it), and disabled plugins stay installed, so their data is
+        // never touched here. Clearing on disable is deliberately not a thing.
+        if (sync.errors.isEmpty()) {
+            host.pruneStorage(host.installed.keys + host.pendingUnsigned.map { it.id })
+        }
+        // Progress covers exactly the plugins this pass will try to activate, in activation order.
+        // 声明了 provides 的容器不参与启动激活：它们在第一次被 ensure 命中时才装载。
+        // 没声明（空集）的按老规矩常驻启动，所以已有插件的装载时机一个字都没变。
+        val targets = if (host.safeModeNotice == null) {
+            host.installed.values.filter {
+                host.isPluginEnabled(it.id) && covers(scope, it.id) && it.provides.isEmpty()
+            }
+        } else {
+            emptyList()
+        }
+        // 一眼看清这一轮谁被当成常驻、谁进了 pending：懒加载出问题时先看这一行。
+        targetCount(host.installed.values)
+        var processed = 0
+        host.reportProgress(targets, processed)
+        host.installed.values.forEach { plugin ->
+            when {
+                host.safeModeNotice != null -> {
+                    // The user's enabled preference is left untouched: safe mode is this process's
+                    // decision, not a persistent setting. The card explains why nothing runs.
+                    deactivate(plugin.id)
+                    if (host.isPluginEnabled(plugin.id)) host.failures[plugin.id] = SAFE_MODE_BLOCKED
+                }
+                host.isPluginEnabled(plugin.id) && covers(scope, plugin.id) && plugin.provides.isEmpty() -> {
+                    activate(plugin)
+                    processed++
+                    host.reportProgress(targets, processed)
+                }
+                else -> {
+                    deactivate(plugin.id)
+                    // 停用之后不该再带着"安全模式拦住它"的解释：那条状态描述的是一次加载失败，
+                    // 而用户已经明确说了不要它。
+                    if (host.failures[plugin.id] == SAFE_MODE_BLOCKED) host.failures.remove(plugin.id)
+                }
+            }
+        }
+        // Last pass: an enabled plugin that is neither active nor failed is the one state the card
+        // used to show as a healthy row. Say it out loud instead - before this, "enabled but never
+        // imported" looked exactly like "running fine" (see the agent-prompt case).
+        host.installed.values.forEach { plugin ->
+            if (
+                host.isPluginEnabled(plugin.id) &&
+                plugin.provides.isEmpty() &&
+                plugin.id !in host.active &&
+                plugin.id !in host.failures &&
+                host.isolatedToolCount(plugin.id) == 0
+            ) {
+                host.failures[plugin.id] = NOT_LOADED
+                android.util.Log.e("EV", "plugin ${plugin.id} enabled but not loaded")
+            }
+        }
+    }
+
+    /** 这个 id 是否落在此次启动范围内。 */
+    fun covers(scope: LaunchScope, id: String): Boolean = when (scope) {
+        LaunchScope.Full -> true
+        is LaunchScope.Closure -> id in closureOf(scope.root)
+    }
+
+    /** [root] 的依赖闭包（含它自己）。环会被 [linkedSetOf] 挡住。 */
+    private fun closureOf(root: String): Set<String> {
+        val result = linkedSetOf<String>()
+        fun visit(id: String) {
+            if (!result.add(id)) return
+            host.installed[id]?.dependencies?.forEach { visit(it) }
+        }
+        visit(root)
+        return result
+    }
+
+    private fun targetCount(all: Collection<InstalledPlugin>) {
+        val lazyIds = all.filter { it.provides.isNotEmpty() }.map { "${it.id}->${it.provides.joinToString("|")}" }
+        android.util.Log.i(
+            "EV",
+            "scan: ${all.size} installed, resident=${all.count { it.provides.isEmpty() }}, " +
+                "lazy=${lazyIds.size}${if (lazyIds.isEmpty()) "" else " [${
+                    lazyIds.joinToString(", ")
+                }]"}",
+        )
+    }
+
+    suspend fun activate(plugin: InstalledPlugin) {
+        if (host.active.containsKey(plugin.id)) return
+        // Process-wide gate: even a caller that forgot to check safe mode cannot load a plugin.
+        // `exitSafeMode` clears the mode before it activates anything, so this never blocks recovery.
+        if (host.safeModeNotice != null) {
+            host.failures[plugin.id] = SAFE_MODE_BLOCKED
+            return
+        }
+        // 失败计分门：到阈值就**不再尝试**，直到用户重置。
+        // 不是"再试一次看看吧"——一个必然失败的插件每次启动都要付 90 秒超时，
+        // 而用户看到的应该是一条明确结论，不是又一条失败。
+        val history = host.failureScoreOf(plugin.id)
+        if (history.blocked) {
+            host.failures[plugin.id] = blockedMessage(history.count)
+            return
+        }
+        host.failures.remove(plugin.id)
+        // 信任门：不可信的一档不执行；受限的一档要隔离执行，没有隔离环境时同样不执行。
+        // 档位在安装期判定过（InstalledPlugin.trust），这里只处置，不重算。
+        val trust = plugin.trust
+        when (trust.tier) {
+            ev.buan.hostcore.trust.TrustTier.TRUSTED -> Unit
+            ev.buan.hostcore.trust.TrustTier.UNTRUSTED -> {
+                host.failures[plugin.id] = "不可信（${trust.reason}），拒绝执行"
+                return
+            }
+
+            ev.buan.hostcore.trust.TrustTier.RESTRICTED -> if (restricted.activate(plugin)) return
+        }
+        // Capability gate before any loading work: an ungranted declaration means the plugin may
+        // not run, and the card says why so the user can grant it.
+        val missing = PermissionGate.missing(
+            plugin.requestedPermissions,
+            host.permissions.granted(plugin.id),
+        )
+        if (missing.isNotEmpty()) {
+            host.failures[plugin.id] = PermissionGate.denialMessage(plugin.id, missing)
+            return
+        }
+        // 一致性门：容器里不能自带宿主已经提供的包。Android 的 parent-first 会静默
+        // 让插件拿到宿主那份，等某个 is/=== 判断失败时已经离原因很远了，所以在这里拦。
+        val conflicts = SharedClassGuard.scan(plugin.file)
+        if (conflicts.isNotEmpty()) {
+            host.failures[plugin.id] = SharedClassGuard.message(conflicts)
+            return
+        }
+        // The sync pass already hashed these bytes and the private copy is verified across the copy
+        // and locked read-only afterwards, so re-reading every container here (27 MB twice over)
+        // only added to startup time. A private copy that somehow changed still fails the loader's
+        // own expectedSha256 check, because it is compared against this value.
+        val descriptor = AndroidModuleDescriptor(
+            id = plugin.id,
+            version = plugin.version,
+            entryClass = plugin.entryClass,
+            file = plugin.file,
+            expectedSha256 = plugin.sha256,
+            // Without this the loader never links a plugin to its dependency loader.
+            // 内核的 descriptor 只认 id：`agent.tools@1.1.0` 传下去会变成"模块未注册"。
+            // 版本在装配阶段由 PluginValidator 检查过，这里只交出 id。
+            dependencies = plugin.dependencies.mapNotNull {
+                ev.buan.hostcore.dependency.PluginDependency.parse(it)?.id
+            },
+            sharedHostPackages = HostPackages.shared,
+        )
+        var scopeFiber: Fiber<Unit>? = null
+        try {
+            host.modules.register(descriptor)
+            val instance = host.modules.import(host.modules.moduleUrl(plugin.id), null) as? Plugin<Unit>
+                ?: error("入口 ${plugin.entryClass} 未实现 org.cordis.Plugin")
+            // A declaration is recorded before the plugin can fail later: the point of the manifest
+            // is to describe the container, and it stays true even if the plugin then throws.
+            (instance as? PluginSettings)?.let { host.pluginSettings[plugin.id] = it }
+            (instance as? org.cordis.api.ManifestProvider)?.manifest?.let { declared ->
+                if (declared.id == plugin.id) host.pluginManifests[plugin.id] = declared
+            }
+            // One host-owned Fiber per plugin, and the provider is installed on it. Providing from
+            // `cordis.extend { isolate(...) }` installs the binding on the *root* Fiber's service
+            // snapshot, and the kernel resolver then hands the last provided instance to any plugin
+            // that reads the key without declaring `inject` (measured in the T06 spike). A dedicated
+            // Fiber keeps the provider reachable only from this plugin's descendants.
+            val scope = host.cordis.plugin(scopePlugin(plugin.id), Unit)
+            scopeFiber = scope
+            withTimeout(START_TIMEOUT_MS) { scope.await() }
+            val pluginContext = scope.ctx
+                .isolate(PermissionService.Key)
+                .isolate(PluginStorage.Key)
+                .isolate(UserDataStorage.Key)
+                .isolate(BackgroundService.Key)
+                // Per-plugin too: the budget service knows whose lifetime and whose name it carries,
+                // and without isolation the kernel would hand the last provided instance to every
+                // plugin that reads the key (see the note above on isolated Fibers).
+                .isolate(RuntimeBudgetService.Key)
+            val permissionService = PermissionServiceImpl(plugin.id, host.permissions)
+            pluginContext.provide(PermissionService.Key, permissionService)
+            // Bound by contract, not by convention: a plugin that wants to do work asks the host
+            // whether it may start and how long it has. The job is per-plugin so deactivation
+            // cancels everything it still had in flight (ADR-0004 验收: 卸载后任务全部被收掉).
+            val budgetLifetime = SupervisorJob()
+            host.budgetJobs[plugin.id] = budgetLifetime
+            pluginContext.provide(
+                RuntimeBudgetService.Key,
+                host.makeBudget(plugin.id, budgetLifetime),
+            )
+            // 五个"按声明提供"的服务一次挂完（见 provideDeclaredServices）：规则相同，
+            // 分开写只会让这个函数继续膨胀，也不会有人真的分别审它们。
+            provideDeclaredServices(
+                pluginContext = pluginContext,
+                requested = plugin.requestedPermissions,
+                storage = { PluginStorageImpl(host.appContext, plugin.id, permissionService) },
+                credentials = { host.makeCredentials(plugin.id, permissionService) },
+                calendar = { host.makeCalendar(permissionService) },
+                control = { host.makeDeviceControl(permissionService) },
+                browser = { host.makeBrowser(permissionService) },
+                userData = { UserDataStorageImpl(host.appContext, plugin.id, permissionService) },
+                contacts = { host.makeContacts(permissionService) },
+                sms = { host.makeSms(permissionService) },
+                media = { host.makeMedia(permissionService) },
+                location = { host.makeLocation(permissionService) },
+            )
+            // Background execution is host-mediated too: the plugin takes references, the host owns
+            // the process-wide foreground service and the notification the user can see.
+            pluginContext.provide(
+                BackgroundService.Key,
+                host.makeBackgroundService(plugin.id, permissionService),
+            )
+            val fiber = pluginContext.plugin(instance, Unit)
+            // A plugin that never finishes applying must not hold the whole host hostage.
+            withTimeout(START_TIMEOUT_MS) { fiber.await() }
+            // PENDING is the state a fiber is born in and only a started transition leaves. An
+            // inject list that was never provided leaves it exactly there: apply() is skipped,
+            // await() returns immediately, and activation would otherwise "succeed" with a plugin
+            // that registered nothing - which is how agent-shell lost run_shell without a trace.
+            if (fiber.state == org.cordis.FiberState.PENDING) {
+                error("插件没有启动：inject 声明的服务没有被提供，apply 从未执行")
+            }
+            host.active[plugin.id] = scope
+            // 成功只在**这一次真的跑起来了**之后才减分：失败后立刻重试成功不算"它还好"。
+            host.recordFailure(plugin.id, success = true)
+        } catch (timeout: TimeoutCancellationException) {
+            host.recordFailure(plugin.id, success = false)
+            host.failures[plugin.id] = "启动超时（${START_TIMEOUT_MS / 1000} 秒）"
+            host.budgetJobs.remove(plugin.id)?.cancel()
+            runCatching { scopeFiber?.dispose() }
+        } catch (error: Throwable) {
+            // The card must show *why*, not just the wrapper type: a reflective loader failure
+            // surfaces as InvocationTargetException whose cause names the missing class or method,
+            // and that cause is the only actionable part of the report.
+            android.util.Log.e("EV", "plugin ${plugin.id} activation failed", error)
+            host.recordFailure(plugin.id, success = false)
+            host.failures[plugin.id] = generateSequence(error) { it.cause }
+                .map { "${it.javaClass.name}: ${it.message.orEmpty()}" }
+                .joinToString("  ←  ")
+            host.budgetJobs.remove(plugin.id)?.cancel()
+            runCatching { scopeFiber?.dispose() }
+        }
+    }
+
+    suspend fun deactivate(id: String) {
+        // A stopped plugin must not keep the host's foreground service alive; its references are
+        // dropped before the scope (and therefore the plugin) goes away.
+        host.releaseBackground(id)
+        // Budget tasks first: cancelling the lifetime also frees the slots they hold, so the gate
+        // never counts work belonging to a plugin that is already gone.
+        host.budgetJobs.remove(id)?.cancel()
+        // The scope Fiber owns the plugin Fiber and both providers; one dispose tears down the whole
+        // per-plugin subtree. Storage is deliberately left in place: disabling keeps plugin data.
+        host.active.remove(id)?.let { scope -> runCatching { scope.dispose() } }
+        runCatching { host.modules.release(id) }
+        // 子进程那一路：解绑 + 撤工具。没装过是 no-op，所以不必判断它在哪一边。
+        runCatching { host.stopIsolated(id) }
+    }
+
+    /** Empty plugin whose only job is to own the per-plugin scope Fiber. */
+    private fun scopePlugin(id: String): Plugin<Unit> = plugin(name = "host/scope/$id") { _, _ -> }
+
+    private companion object {
+        /** Upper bound for one plugin's apply(); a stuck plugin must not block the host. */
+        const val START_TIMEOUT_MS = 90_000L
+
+        /** Card text while safe mode keeps an enabled plugin unloaded; not an activation failure. */
+        const val SAFE_MODE_BLOCKED = "安全模式：上次运行崩溃，本次启动未加载（退出安全模式后重试）"
+
+        /**
+         * Card text for an enabled plugin that the loader never produced an instance for.
+         *
+         * This is the catch-all that was missing: before it, "never imported" and "running fine"
+         * rendered identically, and the only way to tell them apart was to read the host's code.
+         */
+        const val NOT_LOADED = "已启用但未加载：导入阶段没有返回实例（详见 logcat 的 EV 标签）"
+
+        /** 失败次数到阈值后的卡片文案；出口必须写出来，否则用户不知道该做什么。 */
+        fun blockedMessage(count: Int): String =
+            "已停用：连续失败 $count 次（在插件卡片上点「重置失败计数」后可再试）"
+    }
+}

@@ -1,0 +1,166 @@
+name: Release
+
+# 出包流程：打 tag（v*）或手动触发 → 构建签名 release APK 与插件 jar → 创建 GitHub Release。
+#
+# 模块路径跟着插件归位走：插件住在 plugins/<类>/<名>，Gradle 路径就是 :plugins:<类>:<名>
+# （见 settings.gradle.kts）。宿主是 :host-app，不是早期的 :host。
+#
+# 实验版 17 个插件（agent-* / ev-ui / linux / forge* / theme-default）已于 2026-11-10
+# 移出源码树，归档在 /workspace/EV-archive/2026-11-10-experimental-plugins/，不参与构建。
+# 正式版从 ev- 前缀重新写，当前只有 ev-tools。
+#
+# 签名材料不在仓库里（keystore.properties 与 *.jks 都被 gitignore），CI 从 Secrets 还原：
+#   KEYSTORE_BASE64      release-keystore.jks 的 base64（`base64 -w0 release-keystore.jks`）
+#   KEYSTORE_PROPERTIES  完整的 keystore.properties 文本
+# 两个都缺失时 workflow 会带着可读的错误失败，而不是打出一个 debug 签名的包混进 Release。
+#
+# 已装旧版（debug 签名或不同密钥）的用户无法覆盖安装，这是签名机制决定的，不是 bug。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的版本号（例如 v0.1.0）"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build signed release
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # fetch-depth: 0 是硬要求：内核冻结门禁要把「内核落库的那次提交」解析成真实提交，
+      # 浅克隆会让它无法工作。
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Architecture gates
+        run: sh scripts/check.sh
+
+      - name: Kernel freeze gate
+        run: bash scripts/kernel-freeze.sh
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        run: |
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "$sdk_root/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          export PATH="$sdk_root/cmdline-tools/latest/bin:$PATH"
+          sdkmanager --version
+
+      - name: Accept Android SDK licenses
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses > /dev/null
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      # 签名材料还原失败必须当场失败。悄悄跳过会让 Release 里出现一个 debug 签名的包，
+      # 那种包用户装上之后再也无法被后续正式版本覆盖。
+      - name: Restore signing material
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PROPERTIES: ${{ secrets.KEYSTORE_PROPERTIES }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PROPERTIES" ]; then
+            echo "::error::缺少 KEYSTORE_BASE64 或 KEYSTORE_PROPERTIES secret，拒绝打出未签名的 release 包" >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
+          printf '%s' "$KEYSTORE_PROPERTIES" > keystore.properties
+          # 只打印别名与文件是否存在，不打印任何密码。
+          grep -E '^(storeFile|keyAlias)=' keystore.properties
+          test -s release-keystore.jks
+
+      # tag 决定 Release 名字与资产文件名，versionName 决定设备上显示的版本与升级判定。
+      # 两者是两份手写事实，对不上就不要出包（曾经 tag=v0.1.1-test、APK 里还是 0.1.0）。
+      - name: Verify the tag matches the app version
+        env:
+          EV_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: ./gradlew :host-app:verifyReleaseVersion --console=plain
+
+      # 出包前先过 CI 门禁，避免把一个本来就红的提交发出去。
+      - name: Run JVM and unit tests
+        run: ./gradlew test --console=plain
+
+      - name: Check SDK API snapshots
+        run: ./gradlew :host-api:apiSnapshotCheck :ui-kit:apiSnapshotCheck --console=plain
+
+      # 发布必须走 :host-app:releaseGate（签名 + 共享包 + 禁忌包三重校验）。
+      # assembleRelease 本身 deliberately 不跑 verifyReleaseSigning，直接拿它的产物发版
+      # 等于跳过门禁——这一行就是那道门。
+      - name: Release gate
+        run: ./gradlew :host-app:releaseGate --console=plain
+
+      - name: Assemble signed release APK
+        run: ./gradlew :host-app:assembleRelease --console=plain
+
+      - name: Verify the APK is signed with the release key
+        run: |
+          apk=host-app/build/outputs/apk/release/host-app-release.apk
+          test -f "$apk"
+          # apksigner 不在 hosted runner 的 PATH 上，要从 SDK 的 build-tools 里取最新一份。
+          sdk_root="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          apksigner="$(ls -d "$sdk_root"/build-tools/*/ | sort -V | tail -1)apksigner"
+          test -x "$apksigner" || { echo "::error::找不到 apksigner（$apksigner）" >&2; exit 1; }
+          # `verify --print-certs` 会打印证书；debug 证书的主题固定是 CN=Android Debug。
+          "$apksigner" verify --print-certs "$apk" | tee /tmp/certs.txt
+          if grep -q "CN=Android Debug" /tmp/certs.txt; then
+            echo "::error::APK 仍是 debug 签名，不可发布" >&2
+            exit 1
+          fi
+
+      # 插件不在这个仓库里：它们住在独立的 Gradle 工程（/workspace/ev-plugins），
+      # 用 includeBuild 引用本仓库。所以发布产物只有宿主 APK——插件单独分发。
+
+      - name: Name the artifacts after the version
+        id: version
+        run: |
+          version="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          mkdir -p dist
+          cp host-app/build/outputs/apk/release/host-app-release.apk "dist/EV-${version}.apk"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          ls -lh dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: EV ${{ steps.version.outputs.version }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/EV-${{ steps.version.outputs.version }}.apk
+          body: |
+            EV ${{ steps.version.outputs.version }}
+
+            **安装说明**
+            - `EV-<version>.apk`：宿主应用，release 签名
+            - 插件不在这个包里：它们住在独立工程 `ev-plugins`，单独分发。
+
+            插件是独立分发的：解压后把 jar 和 json 一起放进 `/sdcard/EV/mods/`，
+            启动应用后在「插件管理」里逐个确认（未签名插件需要人工批准，这是刻意的设计）。
+
+            如果设备上装过 debug 签名或不同密钥的版本，**必须先卸载**再安装本版本，
+            否则会因签名不一致安装失败（数据会丢，插件文件在 /sdcard 不受影响）。
