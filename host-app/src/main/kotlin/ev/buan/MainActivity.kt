@@ -85,6 +85,9 @@ class MainActivity : ComponentActivity() {
                                     // 直连宿主的安装入口：安装服务走 cordis.provide，UI 手上那份
                                     // ServiceDirectory 是另一条注册链，查不到它。
                                     onInstall = { jar, sidecar -> runtime.install(jar, sidecar) },
+                                    onUninstall = { id -> runtime.uninstall(id) },
+                                    onRollback = { id -> runtime.rollback(id); Unit },
+                                    canRollback = { id -> runtime.hasRollback(id) },
                                 )
 
                                 "files" -> FileManagerScreen(

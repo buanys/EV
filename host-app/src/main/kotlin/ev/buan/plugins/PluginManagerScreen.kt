@@ -43,11 +43,16 @@ fun PluginManagerScreen(
     onBack: () -> Unit,
     onToggle: (String, Boolean) -> Unit,
     onInstall: suspend (jar: ByteArray, sidecarJson: String) -> PluginInstallResult,
+    onUninstall: suspend (String) -> Unit,
+    onRollback: suspend (String) -> Unit,
+    canRollback: (String) -> Boolean,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    // 点开的那个插件：删除与回滚是危险动作，不该一直摊在列表里。
+    var openId by remember { mutableStateOf<String?>(null) }
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -56,6 +61,11 @@ fun PluginManagerScreen(
         when (val read = PickedPlugin.read(context, listOf(uri))) {
             is PickedPlugin.Result.Failed -> message = read.reason
             is PickedPlugin.Result.Ok -> {
+                // 覆盖还是新增，看这一份声明的 id 在不在已装列表里。
+                val incoming = runCatching {
+                    org.json.JSONObject(read.plugin.sidecarJson).optString("id")
+                }.getOrNull()
+                val replacing = incoming != null && cards.any { it.id == incoming }
                 busy = true
                 message = null
                 scope.launch {
@@ -68,7 +78,7 @@ fun PluginManagerScreen(
                     } else {
                         val result = attempt.getOrNull()
                         when (result?.status?.name) {
-                            "INSTALLED" -> "已安装"
+                            "INSTALLED" -> if (replacing) "已覆盖安装，旧版留在回滚位" else "已安装"
                             "NEEDS_APPROVAL" -> "已导入，等待确认"
                             null -> "安装失败：宿主没有返回结果"
                             else -> result.message ?: "安装未完成（${result.status.name}）"
@@ -107,7 +117,7 @@ fun PluginManagerScreen(
                         title = card.title,
                         summary = summaryOf(card),
                         tone = if (card.error != null) EvTone.Danger else EvTone.Normal,
-                        onClick = { onToggle(card.id, !card.enabled) },
+                        onClick = { openId = if (openId == card.id) null else card.id },
                         trailing = {
                             EvText(
                                 if (card.enabled) "已启用" else "已停用",
@@ -116,6 +126,54 @@ fun PluginManagerScreen(
                             )
                         },
                     )
+                    if (openId == card.id) {
+                        EvRow(
+                            title = "启用 / 停用",
+                            summary = if (card.enabled) "停用它" else "启用它",
+                            onClick = {
+                                openId = null
+                                onToggle(card.id, !card.enabled)
+                            },
+                            trailing = {
+                                EvText(
+                                    if (card.enabled) "停用" else "启用",
+                                    kind = EvTextKind.Caption,
+                                    tone = EvTone.Muted,
+                                )
+                            },
+                        )
+                        if (canRollback(card.id)) {
+                            EvRow(
+                                title = "回滚到上一版",
+                                summary = "用覆盖前存下的字节替换当前容器",
+                                onClick = {
+                                    openId = null
+                                    scope.launch {
+                                        runCatching { onRollback(card.id) }
+                                        message = "已回滚 ${card.title}"
+                                    }
+                                },
+                                trailing = {
+                                    EvText("回滚", kind = EvTextKind.Caption, tone = EvTone.Accent)
+                                },
+                            )
+                        }
+                        EvRow(
+                            title = "卸载插件",
+                            summary = "停用并删掉容器；插件自己的数据留着",
+                            tone = EvTone.Danger,
+                            onClick = {
+                                openId = null
+                                scope.launch {
+                                    runCatching { onUninstall(card.id) }
+                                    message = "已卸载 ${card.title}"
+                                }
+                            },
+                            trailing = {
+                                EvText("删除", kind = EvTextKind.Caption, tone = EvTone.Danger)
+                            },
+                        )
+                    }
                 }
             }
         }

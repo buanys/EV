@@ -90,6 +90,13 @@ internal class HostInstallService(
         // 直接发布进私有目录：jar 与 sidecar 一起落地，不存在"先写外面再扫回来"那一段。
         if (!installer.publishFromStaging(id, jarFile, request.sidecarJson)) {
             runCatching { jarFile.delete(); jsonFile.delete() }
+
+        // 覆盖安装：加载器的 oat 目录是 `cordis-plugins/<id>/<version>`，版本号没变时
+        // 路径就不变。系统会按 dex 的 checksum 重新编译，但那是它兜底、不是我们保证的；
+        // 删掉这一颗的缓存，让下一次激活干净地重新编译一次。
+        runCatching {
+            File(File(context.codeCacheDir, "cordis-plugins"), id).deleteRecursively()
+        }
             return@withContext InstallOutcome(
                 status = InstallStatus.REJECTED,
                 pluginId = id,
