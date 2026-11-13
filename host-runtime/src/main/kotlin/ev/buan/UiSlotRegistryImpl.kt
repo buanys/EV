@@ -1,6 +1,8 @@
 package ev.buan
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
 import org.cordis.api.UiSlot
 import org.cordis.api.UiSlotContent
 import org.cordis.api.UiSlotRegistry
@@ -19,6 +21,10 @@ internal class UiSlotRegistryImpl : UiSlotRegistry {
     private val lock = Any()
     private val slots = mutableMapOf<UiSlot, MutableList<UiSlotContent>>()
 
+    /** 组合观察到的那一个数；contribute / revoke 都在锁内加一。 */
+    private val changes = mutableIntStateOf(0)
+    override val version: State<Int> get() = changes
+
     override fun contribute(
         owner: String,
         slot: UiSlot,
@@ -30,12 +36,14 @@ internal class UiSlotRegistryImpl : UiSlotRegistry {
             // 同一个 owner 对同一个槽位只留一条：重新激活时重复贡献是正常路径。
             list.removeAll { it.owner == owner }
             list += UiSlotContent(owner, slot, priority, content)
+            changes.intValue += 1
         }
     }
 
     override fun revoke(owner: String) {
         synchronized(lock) {
-            slots.values.forEach { list -> list.removeAll { it.owner == owner } }
+            val removed = slots.values.any { list -> list.removeAll { it.owner == owner } }
+            if (removed) changes.intValue += 1
         }
     }
 

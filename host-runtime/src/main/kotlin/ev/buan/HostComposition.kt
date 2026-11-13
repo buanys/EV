@@ -403,6 +403,9 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     /** 安装服务的实例。UI 从这里直接调用，绕开 ServiceDirectory 与 cordis.provide 的注册歧义。 */
     private var installService: PluginInstallService? = null
 
+    /** 界面侧渲染槽位的入口；插件通过 ServiceDirectory 拿同一个实例。 */
+    private var uiSlots: UiSlotRegistryImpl? = null
+
     private var installHandle: org.cordis.EffectHandle? = null
     private var restartHandle: org.cordis.EffectHandle? = null
     private var deviceContextHandle: org.cordis.EffectHandle? = null
@@ -541,7 +544,9 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
             // 槽位注册表：宿主界面里预留的孔，插件往里放东西。
             // 放在目录里而不是 cordis.provide：与工具总线同一形态，
             // 插件用 lookup 拿，缺失时只是"没有自定义内容"，不该让插件装不上。
-            directory.publish(org.cordis.api.UiSlotRegistry.Key, UiSlotRegistryImpl())
+            uiSlots = UiSlotRegistryImpl().also {
+                directory.publish(org.cordis.api.UiSlotRegistry.Key, it)
+            }
 
             directory.publish(org.cordis.api.ThemeCatalogService.Key, HostThemeCatalog(directory))
             directory.publish(
@@ -782,6 +787,9 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
     }
 
     fun hasRollback(id: String): Boolean = installer.hasRollback(id)
+
+    /** 槽位内容，供 host-app 渲染；插件看到的是目录里的同一个注册表。 */
+    fun slotRegistry(): org.cordis.api.UiSlotRegistry? = uiSlots
 
     /**
      * 重置一个插件的失败计数并重新激活它。

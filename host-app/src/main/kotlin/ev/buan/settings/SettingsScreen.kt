@@ -1,6 +1,8 @@
 package ev.buan.settings
 
 import androidx.compose.runtime.Composable
+import ev.buan.SlotHost
+import org.cordis.api.UiSlot
 import ev.buan.ui.EvAppearance
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvRow
@@ -47,9 +49,10 @@ fun SettingsScreen(
                 trailing = { OnOff(appearance.blurEnabled) },
             )
         }
+        SlotHost(UiSlot.SettingsSections)
         EvSection(title = "关于") {
             EvRow(title = "版本", trailing = { Value("0.1.0") })
-            EvRow(title = "插件目录", trailing = { Value("/sdcard/EV/mods") })
+            EvRow(title = "插件目录", trailing = { Value("应用私有目录") })
         }
     }
 }

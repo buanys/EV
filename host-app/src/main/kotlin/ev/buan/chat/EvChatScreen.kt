@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import org.cordis.api.UiSlot
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import ev.buan.ui.EvButton
 import ev.buan.ui.EvCollapsible
 import ev.buan.ui.EvColors
+import ev.buan.SlotHost
 import ev.buan.ui.EvComposer
 import ev.buan.ui.EvDivider
 import ev.buan.ui.EvEmpty
@@ -126,6 +128,8 @@ fun EvChatScreen(
                     contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 56.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    // 首页顶部主视觉：可替换槽位，同一时刻只有一个赢家。
+                    item { SlotHost(UiSlot.HomeHero) }
                     if (state.items.isEmpty()) {
                         item {
                             // 空态居视口中心：贴在顶部会让整块屏幕看起来"掉了东西"，
@@ -152,11 +156,14 @@ fun EvChatScreen(
                     items(state.items, key = { "${it::class.simpleName}-${it.id}" }) { item ->
                         when (item) {
                             is ChatItem.User -> UserBubble(item.text)
-                            is ChatItem.Assistant -> EvText(
-                                item.text,
-                                kind = EvTextKind.Body,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            is ChatItem.Assistant -> {
+                                EvText(
+                                    item.text,
+                                    kind = EvTextKind.Body,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                SlotHost(UiSlot.MessageActions)
+                            }
 
                             is ChatItem.Tool -> EvCollapsible(
                                 title = item.name,
@@ -178,6 +185,7 @@ fun EvChatScreen(
                 }
             }
 
+            SlotHost(UiSlot.HomeAboveComposer, Modifier.padding(horizontal = 16.dp))
             EvComposer(
                 value = state.input,
                 onValueChange = state::onInputChange,
@@ -225,6 +233,10 @@ fun EvChatScreen(
             SideEntry("权限中心", EvIcon.Shield) { onOpenPermissions(); sideOpen = false }
             SideEntry("插件管理", EvIcon.Apps) { onOpenPlugins(); sideOpen = false }
             SideEntry("设置", EvIcon.Setting) { onOpenSettings(); sideOpen = false }
+            SlotHost(
+                UiSlot.DrawerItems,
+                Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
             Spacer(Modifier.weight(1f))
             EvText(
                 if (state.connected) "已连接 · EV 0.1.0" else "未连接 · EV 0.1.0",

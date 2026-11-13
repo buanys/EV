@@ -1,6 +1,7 @@
 package org.cordis.api
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import org.cordis.ServiceKey
 
 /**
@@ -57,6 +58,15 @@ data class UiSlotContent(
  * 宿主是唯一的渲染方，插件不参与布局。
  */
 interface UiSlotRegistry {
+
+    /**
+     * 每次 [contribute] / [revoke] 自增。
+     *
+     * Compose 看不见一个普通函数的返回值，所以注册表自己给一个可观察的版本号：渲染方
+     * 在组合里读它，注册一变就重组。没有它，插件把内容放进去，界面不会变——
+     * 那正是"注册了但没显示"的样子。
+     */
+    val version: State<Int>
 
     /**
      * 往 [slot] 里放一段界面。同一个 [owner] 对同一个槽位的重复调用是**替换**。

@@ -25,6 +25,7 @@ import ev.buan.permissions.PermissionCenterScreen
 import ev.buan.plugins.PluginManagerScreen
 import ev.buan.settings.SettingsScreen
 import ev.buan.ui.EvTheme
+import org.cordis.api.UiSlot
 import ev.buan.ui.evSystemBarsPadding
 
 /**
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
         // 内容和输入框会跑到状态栏与键盘下面去。
         enableEdgeToEdge()
         val runtime = (application as EvApplication).runtime
+        HostSlots.registry = runtime.slotRegistry()
 
         setContent {
             var introDone by rememberSaveable { mutableStateOf(false) }
@@ -129,6 +131,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+                    SlotHost(UiSlot.GlobalOverlay)
         }
     }
 }
