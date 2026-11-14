@@ -86,7 +86,7 @@ fun EvPageScaffold(
      * 走 Scaffold 的 topBar 而不是在内容列里画一行：只有栏位知道"内容该从哪开始"，
      * 内容区才能既不压在标题下面、也不多出一段死白。
      */
-    topBar: (@Composable () -> Unit)? = null,
+    topBar: (@Composable (CouiBackdrop) -> Unit)? = null,
     /** 悬浮栏位。**必须走这里**：Scaffold 给它独立的 backdrop 栏位，而不是塞进内容树。 */
     floating: (@Composable androidx.compose.foundation.layout.BoxScope.() -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
@@ -100,7 +100,9 @@ fun EvPageScaffold(
             // 让位于键盘：宿主只处理了 systemBars（那是它自己的窗口），
             // IME 归页面管。少了这一行，键盘弹出来会直接盖住输入框。
             modifier = modifier.fillMaxSize().imePadding(),
-            topBar = topBar ?: {},
+            // 顶栏拿到的是**同一个** backdrop：COUI 的 `TopAppBar` 靠它做玻璃底，
+            // 拿不到就退化成一块不透明纯色——截图里那个"大灰圆"返回键就是这么来的。
+            topBar = topBar?.let { bar -> { bar(backdrop) } } ?: {},
             containerColor = colors.surface0,
             floatingActionButton = floating,
         ) { padding ->

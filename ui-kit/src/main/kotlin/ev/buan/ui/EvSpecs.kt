@@ -28,6 +28,14 @@ enum class EvIcon {
     Folder,
     /** Agent 运行时：和「插件管理」必须用不同的图标，否则抽屉里两行长得一样。 */
     Agent,
+    // 下面几个是权限中心需要的。COUI 的 Filled 里有对应图形，直接映射；
+    // 没有对应图形的（短信、日历）在调用侧兜底，不自己画一套——
+    // 自绘图标和 COUI 的笔画粗细对不上，一列五个里就会露出两个体系。
+    Camera,
+    Location,
+    Contacts,
+    Overlay,
+    Usage,
 }
 
 /**

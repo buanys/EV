@@ -189,15 +189,22 @@ fun EvNotice(text: String, modifier: Modifier = Modifier, tone: EvTone = EvTone.
  * 用文字 `›` 当箭头不行：它跟着字体走，字号一变粗细就变，和旁边的图标不同源。
  */
 @Composable
-fun Chevron(modifier: Modifier = Modifier) {
+fun Chevron(modifier: Modifier = Modifier, up: Boolean = false) {
     val color = EvColors.textTertiary
-    androidx.compose.foundation.Canvas(modifier.size(width = 8.dp, height = 14.dp)) {
-        val stroke = 1.5.dp.toPx()
+    androidx.compose.foundation.Canvas(modifier.size(width = 7.dp, height = 12.dp)) {
+        val stroke = 1.2.dp.toPx()
         drawPath(
             path = androidx.compose.ui.graphics.Path().apply {
-                moveTo(0f, 0f)
-                lineTo(size.width, size.height / 2f)
-                lineTo(0f, size.height)
+                if (up) {
+                    // 展开态：同一个折角翻过来。换图标会在两帧之间闪出半个箭头。
+                    moveTo(0f, size.height)
+                    lineTo(size.width / 2f, 0f)
+                    lineTo(size.width, size.height)
+                } else {
+                    moveTo(0f, 0f)
+                    lineTo(size.width, size.height / 2f)
+                    lineTo(0f, size.height)
+                }
             },
             color = color,
             style = androidx.compose.ui.graphics.drawscope.Stroke(

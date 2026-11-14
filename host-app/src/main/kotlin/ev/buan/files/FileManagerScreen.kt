@@ -1,10 +1,6 @@
 package ev.buan.files
 
-import com.itos.coui.text.CouiTextKind
-
 import android.os.Environment
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +12,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.itos.coui.text.CouiTextKind
+import ev.buan.ui.Chevron
+import ev.buan.ui.EvDivider
 import ev.buan.ui.EvEmpty
 import ev.buan.ui.EvIcon
 import ev.buan.ui.EvPage
@@ -36,9 +35,14 @@ private sealed interface DirState {
  * 文件管理：从内部存储根开始浏览。
  *
  * 它同时也是**权限的体检工具**：这一页用的是 EV 自己的进程，
- * 所以“能不能读 /sdcard”在这里会直接显形——读不到就报原因，而不是像插件扫描那样静默变成空列表。
+ * 所以"能不能读 /sdcard"在这里会直接显形——读不到就报原因，而不是像插件扫描那样静默变成空列表。
  *
  * 只读。没有删除、没有移动：一个还在验证投放链路的阶段，给文件操作是给自己挖坑。
+ *
+ * 上一版的三处毛躁：
+ * - 箭头是 `›` 这个字符——它跟着字体走，字号一变粗细就变，和旁边图标不同源；
+ * - 每个目录的 summary 都写"目录"——名字已经说明了，这是纯噪音；
+ * - 所有行裸排在 LazyColumn 里，没有组、没有分隔线，读起来是一串漂浮的文字。
  */
 @Composable
 fun FileManagerScreen(onBack: () -> Unit) {
@@ -47,32 +51,40 @@ fun FileManagerScreen(onBack: () -> Unit) {
     val state = remember(path) { readDir(path) }
 
     EvPage(
-        title = "文件管理",
+        title = if (path == root) "文件" else File(path).name.ifBlank { "文件" },
         onBack = {
             // 到根再返回，就退出这一页；否则回到上一级。
             if (path == root) onBack() else path = File(path).parent ?: root
         },
         scrollable = false,
     ) {
-        EvSection(title = path.removePrefix(root).ifBlank { "/" }) {
+        // 当前位置 + 上级入口，合成一块：它回答"我在哪、怎么回去"。
+        EvSection(title = if (path == root) "内部存储" else "当前位置") {
             EvRow(
                 title = if (path == root) "内部存储" else "返回上一级",
-                summary = when (state) {
-                    is DirState.Loaded -> "${state.dirs.size} 个目录 · ${state.files.size} 个文件"
-                    is DirState.Failed -> state.reason
-                },
-                tone = if (state is DirState.Failed) EvTone.Danger else EvTone.Normal,
+                summary = path.removePrefix(root).ifBlank { "/" },
+                icon = if (path == root) EvIcon.Folder else EvIcon.Back,
                 onClick = { if (path == root) onBack() else path = File(path).parent ?: root },
+                trailing = {
+                    when (state) {
+                        is DirState.Loaded ->
+                            EvText(
+                                "${state.dirs.size} 目录 · ${state.files.size} 文件",
+                                kind = CouiTextKind.PreferenceSummary,
+                                tone = EvTone.Muted,
+                            )
+                        is DirState.Failed -> EvText("读不到", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Danger)
+                    }
+                },
             )
         }
 
         when (state) {
-            is DirState.Failed -> EvSection(title = "读不到", footnote = "这一页用的是 EV 自己的进程，所以这里的状态就是它的真实权限。") {
-                EvRow(
-                    title = "无法读取目录",
-                    summary = state.reason,
-                    tone = EvTone.Danger,
-                )
+            is DirState.Failed -> EvSection(
+                title = "读不到",
+                footnote = "这一页用的是 EV 自己的进程，所以这里的状态就是它的真实权限。",
+            ) {
+                EvRow(title = "无法读取目录", summary = state.reason, tone = EvTone.Danger)
             }
 
             is DirState.Loaded -> {
@@ -82,15 +94,15 @@ fun FileManagerScreen(onBack: () -> Unit) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().then(rememberEvScroll().modifier),
                         contentPadding = PaddingValues(bottom = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         items(state.dirs, key = { "d:${it.absolutePath}" }) { dir ->
                             EvRow(
                                 title = dir.name,
-                                summary = "目录",
+                                icon = EvIcon.Folder,
                                 onClick = { path = dir.absolutePath },
-                                trailing = { EvText("›", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted) },
+                                trailing = { Chevron() },
                             )
+                            EvDivider(startOffset = 52.dp)
                         }
                         items(state.files, key = { "f:${it.absolutePath}" }) { file ->
                             EvRow(

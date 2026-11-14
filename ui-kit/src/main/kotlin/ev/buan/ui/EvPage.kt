@@ -44,10 +44,15 @@ fun EvPage(
     val colors = EvColors
     EvPageScaffold(
         modifier = modifier,
-        topBar = {
+        topBar = { backdrop ->
             TopAppBar(
                 Modifier.fillMaxWidth(),
-                { EvText(title, kind = CouiTextKind.PageTitle, weight = FontWeight.Bold) },
+                {
+                    // 顶栏用 COUI 的 Toolbar 角色。之前用 PageTitle，那是"页面里的大标题"
+                    // 字号——放进 TopAppBar 后被放成一行 40 多磅的字，比内容还抢。
+                    // 顶栏是一句话说明"你在哪"，不是这一屏的主角。
+                    EvText(title, kind = CouiTextKind.Toolbar, weight = FontWeight.Bold)
+                },
                 {
                     if (onBack != null) {
                         TopAppBarButton(onClick = onBack) {
@@ -60,6 +65,7 @@ fun EvPage(
                         }
                     }
                 },
+                backdrop = backdrop,
             )
         },
     ) {
@@ -76,7 +82,9 @@ fun EvPage(
             // 水平方向不在这里加边距：二级页的内容全是 `Group`，它自己带页面边距；
             // 这里再加一层，卡片会比首页的列表窄 200 多 px，两个页面的内容宽度对不上。
             modifier = scrolled.padding(bottom = CouiPageDefaults.groupSpacing),
-            verticalArrangement = Arrangement.spacedBy(CouiPageDefaults.groupSpacing),
+            // 分组之间 20dp：`groupSpacing` 是给"页面上只有两三组"的场景留的，
+            // 权限中心这种六组的页面照抄它，卡片之间会空出半屏。
+            verticalArrangement = Arrangement.spacedBy(20.dp),
             content = content,
         )
     }

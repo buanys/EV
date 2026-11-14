@@ -102,6 +102,8 @@ fun EvRow(
     modifier: Modifier = Modifier,
     summary: String? = null,
     icon: EvIcon? = null,
+    /** 行首的自定义内容（状态点之类）。给了它就忽略 [icon]。 */
+    leading: (@Composable () -> Unit)? = null,
     tone: EvTone = EvTone.Normal,
     onClick: (() -> Unit)? = null,
     enabled: Boolean = true,
@@ -109,15 +111,19 @@ fun EvRow(
 ) {
     Item(
         modifier = modifier,
-        icon = icon?.let { symbol ->
-            {
-                Image(
-                    painter = rememberVectorPainter(EvIcon(symbol)),
-                    contentDescription = null,
-                    colorFilter = ColorFilter.tint(EvColors.textPrimary.copy(alpha = 0.86f)),
-                    modifier = Modifier.size(CouiPageDefaults.iconSize),
-                )
+        icon = when {
+            leading != null -> leading
+            icon != null -> {
+                {
+                    Image(
+                        painter = rememberVectorPainter(EvIcon(icon)),
+                        contentDescription = null,
+                        colorFilter = ColorFilter.tint(EvColors.textPrimary.copy(alpha = 0.86f)),
+                        modifier = Modifier.size(CouiPageDefaults.iconSize),
+                    )
+                }
             }
+            else -> null
         },
         title = { EvText(title, kind = CouiTextKind.Body, tone = tone, maxLines = 1) },
         summary = summary?.let { text ->

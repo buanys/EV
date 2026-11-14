@@ -45,6 +45,11 @@ fun EvIcon(name: EvIcon): ImageVector {
         // 换成两个实心的：SafeBox（存储/文件）、Radar（感知，Agent 的语义也对得上）。
         EvIcon.Folder -> CouiIcons.Filled.SafeBox
         EvIcon.Agent -> CouiIcons.Filled.Radar
+        EvIcon.Camera -> CouiIcons.Filled.Camera
+        EvIcon.Location -> CouiIcons.Filled.Location
+        EvIcon.Contacts -> CouiIcons.Filled.Users
+        EvIcon.Overlay -> CouiIcons.Filled.PanelEnterRight
+        EvIcon.Usage -> CouiIcons.Filled.Radar
     }
 }
 
