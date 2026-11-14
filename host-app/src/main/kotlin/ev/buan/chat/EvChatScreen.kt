@@ -47,6 +47,7 @@ import ev.buan.ui.EvIcon
 import ev.buan.ui.EvNotice
 import ev.buan.ui.EvPageScaffold
 import ev.buan.ui.EvSidePage
+import androidx.compose.foundation.shape.CircleShape
 import ev.buan.ui.EvText
 import ev.buan.ui.EvTextKind
 import ev.buan.ui.EvTone
@@ -102,10 +103,14 @@ fun EvChatScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     EvIconButton(EvIcon.More, "更多", onClick = { sideOpen = true })
-                    EvText(
-                        if (state.connected) "新对话" else "新对话 · 未连接",
-                        kind = EvTextKind.Micro,
-                        tone = EvTone.Muted,
+                    // 状态用形状表达，不用文字：一个点是"已连上"，空圈是"还没"。
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .background(
+                                if (state.connected) EvColors.accent else EvColors.textTertiary,
+                                CircleShape,
+                            ),
                     )
                     EvIconButton(EvIcon.NewChat, "新建对话", onClick = { state.newConversation() })
                 }
@@ -155,20 +160,37 @@ fun EvChatScreen(
                                     )
                                     if (state.connected) {
                                         Spacer(Modifier.height(28.dp))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            for (seed in listOf("看看当前屏幕", "读一下通知", "帮我点一下")) {
-                                                Box(
-                                                    Modifier
-                                                        .clip(RoundedCornerShape(50))
-                                                        .border(
-                                                            1.dp,
-                                                            EvColors.dividerGhost,
-                                                            RoundedCornerShape(50),
+                                        // 三个入口必须是**真事**：之前放的是"示例提示词"，
+                                        // 点下去只是往输入框填一句话，那不是按钮，是假的。
+                                        // 这里换成三个真实目的地，图标语义也对得上。
+                                        Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                            for (entry in listOf(
+                                                Triple(EvIcon.Apps, "插件", onOpenPlugins),
+                                                Triple(EvIcon.Shield, "权限", onOpenPermissions),
+                                                Triple(EvIcon.Setting, "设置", onOpenSettings),
+                                            )) {
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Box(
+                                                        Modifier
+                                                            .size(56.dp)
+                                                            .clip(RoundedCornerShape(18.dp))
+                                                            .background(EvColors.surface1)
+                                                            .clickable { entry.third() },
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        Image(
+                                                            painter = rememberVectorPainter(EvIcon(entry.first)),
+                                                            contentDescription = entry.second,
+                                                            colorFilter = ColorFilter.tint(EvColors.textSecondary),
+                                                            modifier = Modifier.size(22.dp),
                                                         )
-                                                        .clickable { state.onInputChange(seed) }
-                                                        .padding(horizontal = 15.dp, vertical = 9.dp),
-                                                ) {
-                                                    EvText(seed, kind = EvTextKind.Caption, tone = EvTone.Normal)
+                                                    }
+                                                    Spacer(Modifier.height(6.dp))
+                                                    EvText(
+                                                        entry.second,
+                                                        kind = EvTextKind.Caption,
+                                                        tone = EvTone.Muted,
+                                                    )
                                                 }
                                             }
                                         }
