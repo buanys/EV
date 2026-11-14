@@ -45,7 +45,7 @@ import org.cordis.api.ServiceDirectory
  * 这样页面上写的永远是进程的真实情况，而不是宿主对它的印象。
  */
 @Composable
-fun AgentScreen(services: ServiceDirectory?, onBack: () -> Unit) {
+fun AgentScreen(services: ServiceDirectory?, sessionId: String, onBack: () -> Unit) {
     val control = services?.lookup(AgentRuntime.Key)
     var tick by remember { mutableIntStateOf(0) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -60,6 +60,17 @@ fun AgentScreen(services: ServiceDirectory?, onBack: () -> Unit) {
     }
 
     val status = remember(tick) { control?.status() }
+    // 上下文现状：这一轮模型实际会看到的，就是这几十条消息。
+    var context by remember { mutableStateOf(Triple(0, 0, 0)) }
+    LaunchedEffect(tick, sessionId) {
+        val log = services?.lookup(ev.buan.plugins.agent.api.SessionLog.Key)
+        val messages = runCatching { log?.messages(sessionId) }.getOrNull().orEmpty()
+        context = Triple(
+            messages.size,
+            messages.sumOf { it.content.length },
+            messages.count { it.role == ev.buan.plugins.agent.api.AgentRole.TOOL },
+        )
+    }
 
     EvPage(title = "Agent", onBack = onBack) {
         if (control == null || status == null) {
@@ -95,6 +106,16 @@ fun AgentScreen(services: ServiceDirectory?, onBack: () -> Unit) {
                         kind = EvTextKind.Caption,
                         tone = EvTone.Muted,
                     )
+                },
+            )
+        }
+
+        EvSection(title = "上下文", footnote = "模型下一轮实际会看到的就是这些。") {
+            EvRow(
+                title = "会话 $sessionId",
+                summary = "${context.first} 条消息 · ${context.third} 条工具结果",
+                trailing = {
+                    EvText(formatBytes(context.second.toLong()), kind = EvTextKind.Caption, tone = EvTone.Muted)
                 },
             )
         }

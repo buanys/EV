@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
 
                                 "agent" -> AgentScreen(
                                     services = runtime.services,
+                                    sessionId = chat.sessionId,
                                     onBack = { screen = "chat" },
                                 )
 

@@ -51,7 +51,9 @@ class ChatState(
 
     private var job: Job? = null
     private var nextId = 0L
-    private var sessionId = "host-${System.currentTimeMillis()}"
+    /** 当前会话 id：Agent 页要靠它查"我正在看的这个会话"到底有多少内容。 */
+    var sessionId by mutableStateOf("host-main")
+        private set
 
     private val agent: AgentService? get() = services()?.lookup(AgentService.Key)
 

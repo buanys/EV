@@ -103,28 +103,46 @@ fun EvChatScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     EvIconButton(EvIcon.More, "更多", onClick = { sideOpen = true })
-                    // 悬浮胶囊：状态点 + 当前模型名。它是顶部唯一的"信息块"，
-                    // 不放装饰性文字，只放这台机器此刻真的在用哪个模型。
-                    Row(
+                    // 悬浮胶囊：状态 + 模型 + 上下文规模。点它进 Agent 页看详情。
+                    Column(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(50))
+                            .clip(RoundedCornerShape(18.dp))
                             .background(EvColors.surface1)
-                            .padding(horizontal = 12.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            .clickable(onClick = onOpenAgent)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        Box(
-                            Modifier
-                                .size(7.dp)
-                                .background(
-                                    if (state.connected) EvColors.accent else EvColors.textTertiary,
-                                    CircleShape,
-                                ),
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .background(
+                                        if (state.connected) EvColors.accent else EvColors.textTertiary,
+                                        CircleShape,
+                                    ),
+                            )
+                            EvText(
+                                state.modelLabel ?: "未连接",
+                                kind = EvTextKind.Caption,
+                                tone = if (state.connected) EvTone.Normal else EvTone.Muted,
+                            )
+                        }
+                        val turns = state.items.count { it is ChatItem.User }
+                        val chars = state.items.sumOf {
+                            when (it) {
+                                is ChatItem.User -> it.text.length
+                                is ChatItem.Assistant -> it.text.length
+                                else -> 0
+                            }
+                        }
                         EvText(
-                            state.modelLabel ?: "未连接",
+                            if (turns == 0) "还没有对话" else "$turns 轮 · ${chars / 1000}.${(chars % 1000) / 100}k 字",
                             kind = EvTextKind.Micro,
-                            tone = if (state.connected) EvTone.Normal else EvTone.Muted,
+                            tone = EvTone.Muted,
                         )
                     }
                     EvIconButton(EvIcon.NewChat, "新建对话", onClick = { state.newConversation() })
