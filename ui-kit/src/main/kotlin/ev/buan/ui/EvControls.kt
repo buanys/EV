@@ -117,7 +117,7 @@ fun EvFilledIconButton(
                     pressed -> colors.accent.copy(alpha = 0.82f)
                     else -> colors.accent
                 },
-                CircleShape,
+                RoundedCornerShape(11.dp),
             )
             .clickable(
                 interactionSource = interaction,

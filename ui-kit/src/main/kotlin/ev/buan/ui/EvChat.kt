@@ -109,6 +109,13 @@ fun EvComposer(
                 .fillMaxWidth()
                 .height(animatedHeight)
                 .background(colors.surface1, RoundedCornerShape(animatedRadius))
+                // 1dp 的强调色内描边：纯黑底上，没有它输入框只是一个灰块，
+                // 有它才读得出"这里可以写字"。
+                .border(
+                    1.dp,
+                    colors.accent.copy(alpha = 0.16f),
+                    RoundedCornerShape(animatedRadius),
+                )
                 .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
             verticalArrangement = Arrangement.Center,
         ) {

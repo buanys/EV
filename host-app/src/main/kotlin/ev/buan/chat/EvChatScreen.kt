@@ -2,6 +2,7 @@ package ev.buan.chat
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import org.cordis.api.UiSlot
 import androidx.compose.foundation.lazy.items
@@ -92,31 +94,20 @@ fun EvChatScreen(
             // 侧页打开时不画这两个：它们是页面的悬浮入口，而侧页是模态的。
             // 留着的话"更多"正好压在侧页标题上，等于按钮把面板咬掉一口。
             if (!sideOpen) {
-                Box(Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 10.dp)) {
-                    EvIconButton(
-                        EvIcon.More,
-                        "更多",
-                        onClick = { sideOpen = true },
-                        modifier = Modifier.align(Alignment.TopStart),
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    EvIconButton(EvIcon.More, "更多", onClick = { sideOpen = true })
+                    EvText(
+                        if (state.connected) "新对话" else "新对话 · 未连接",
+                        kind = EvTextKind.Micro,
+                        tone = EvTone.Muted,
                     )
-                    Box(
-                        Modifier
-                            .align(Alignment.TopCenter)
-                            .background(EvColors.surface1, RoundedCornerShape(18.dp))
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                    ) {
-                        EvText(
-                            if (state.connected) "新对话" else "新对话 · 未连接",
-                            kind = EvTextKind.Caption,
-                            tone = EvTone.Muted,
-                        )
-                    }
-                    EvIconButton(
-                        EvIcon.NewChat,
-                        "新建对话",
-                        onClick = { state.newConversation() },
-                        modifier = Modifier.align(Alignment.TopEnd),
-                    )
+                    EvIconButton(EvIcon.NewChat, "新建对话", onClick = { state.newConversation() })
                 }
             }
         },
@@ -135,21 +126,53 @@ fun EvChatScreen(
                         item {
                             // 空态居视口中心：贴在顶部会让整块屏幕看起来"掉了东西"，
                             // 居中的一行字是这一屏唯一的元素，位置就是它的语义。
-                            Box(Modifier.fillMaxWidth().fillParentMaxHeight(), contentAlignment = Alignment.Center) {
-                                // 空态是这一屏唯一的视觉锚点，用 Title 而不是 Caption：
-                                // 13sp 的灰字在这块黑色里读起来像"内容加载失败"。
+                            Box(
+                                // 在"输入框之上"的整块区域里居中：
+                                // 空态是这一屏唯一的内容，它应该在视觉中心，而不是贴在上方三分之一处。
+                                Modifier.fillMaxWidth().fillParentMaxHeight(0.88f),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                // 空态是这一屏唯一的视觉锚点，按 skill 的"英雄时刻"处理：
+                                // 一个大字号主句 + 一句说明 + 三个起步动作，其余全部安静。
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    // 一个 3dp 的强调色短线：全页唯一的彩色元素，给这块黑一个落点。
+                                    Box(
+                                        Modifier
+                                            .size(width = 22.dp, height = 3.dp)
+                                            .background(EvColors.accent, RoundedCornerShape(50)),
+                                    )
+                                    Spacer(Modifier.height(16.dp))
                                     EvText(
                                         if (state.connected) "说点什么，它就动手。" else "还没连上对话插件。",
-                                        kind = EvTextKind.Title,
+                                        kind = EvTextKind.Display,
                                         tone = EvTone.Normal,
                                     )
+                                    Spacer(Modifier.height(10.dp))
                                     EvText(
-                                        if (state.connected) "当前对话已经准备好。" else "连接后就可以让 EV 动手。",
+                                        if (state.connected) "截屏、读屏、点按——它用你手机上的手。" else "连接后就可以让 EV 动手。",
                                         kind = EvTextKind.Caption,
                                         tone = EvTone.Muted,
-                                        modifier = Modifier.padding(top = 6.dp),
                                     )
+                                    if (state.connected) {
+                                        Spacer(Modifier.height(28.dp))
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            for (seed in listOf("看看当前屏幕", "读一下通知", "帮我点一下")) {
+                                                Box(
+                                                    Modifier
+                                                        .clip(RoundedCornerShape(50))
+                                                        .border(
+                                                            1.dp,
+                                                            EvColors.dividerGhost,
+                                                            RoundedCornerShape(50),
+                                                        )
+                                                        .clickable { state.onInputChange(seed) }
+                                                        .padding(horizontal = 15.dp, vertical = 9.dp),
+                                                ) {
+                                                    EvText(seed, kind = EvTextKind.Caption, tone = EvTone.Normal)
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

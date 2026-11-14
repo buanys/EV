@@ -125,10 +125,12 @@ fun EvIconButton(
     val pressed by interaction.collectIsPressedAsState()
     Box(
         modifier
+            // 圆角方形而不是正圆：M3 Expressive 的 FAB 语言是"方中带圆"，
+            // 正圆在这套扁平表面里会读成 iOS 的老式悬浮件。
             .size(40.dp)
             .background(
-                if (pressed) colors.surface2 else colors.surface1,
-                RoundedCornerShape(16.dp),
+                if (pressed) colors.surface2 else androidx.compose.ui.graphics.Color.Transparent,
+                RoundedCornerShape(12.dp),
             )
             .clickable(
                 interactionSource = interaction,

@@ -1,9 +1,12 @@
 package ev.buan.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
 
 /**
@@ -44,20 +48,27 @@ fun EvPage(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 20.dp, top = 10.dp, bottom = 6.dp),
+                    .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (onBack != null) {
-                    Image(
-                        painter = rememberVectorPainter(EvIcon(EvIcon.Back)),
-                        contentDescription = "返回",
-                        colorFilter = ColorFilter.tint(colors.textPrimary),
+                    // 返回是一个"圆形入口"，不是一张贴边的图标：40dp 的表面给手指一个
+                    // 明确的落点，标题则在视觉上从它旁边起笔。
+                    Box(
                         modifier = Modifier
                             .size(40.dp)
-                            .clickable(onClick = onBack)
-                            .padding(8.dp),
-                    )
-                    Spacer(Modifier.size(4.dp))
+                            .background(colors.surface2, CircleShape)
+                            .clickable(onClick = onBack),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = rememberVectorPainter(EvIcon(EvIcon.Back)),
+                            contentDescription = "返回",
+                            colorFilter = ColorFilter.tint(colors.textSecondary),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Spacer(Modifier.size(14.dp))
                 }
                 EvText(title, kind = EvTextKind.Headline)
             }
@@ -68,8 +79,10 @@ fun EvPage(
                 Modifier.fillMaxSize()
             }
             Column(
-                modifier = scrolled.padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.Top,
+                // 页面级留白：20dp 侧边 + 32dp 收尾。卡片内部不再各自加边，
+                // 所有卡片因此左边缘对齐——这是"排过版"最简单的证据。
+                modifier = scrolled.padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
                 content = content,
             )
         }

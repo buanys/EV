@@ -59,38 +59,40 @@ data class EvColorTokens(
 
 fun evDarkColorTokens(accent: Color = EvAccentDefault, pureBlack: Boolean = false): EvColorTokens =
     EvColorTokens(
-        surface0 = if (pureBlack) Color.Black else Color(0xFF0E0E10),
-        surface1 = Color(0xFF1A1B1E),
-        surface2 = Color(0xFF232428),
-        surface3 = Color(0xFF2E2F34),
-        textPrimary = Color(0xFFF2F2F4),
-        textSecondary = Color(0xFFB0B1B8),
-        textTertiary = Color(0xFF7A7B83),
+        // 纯黑模式下把卡片提亮一档：否则 surface1 与 #000 的差在 AMOLED 上几乎看不见，
+        // 整页会读成"没有卡片"。
+        surface0 = if (pureBlack) Color.Black else Color(0xFF0A0A0C),
+        surface1 = if (pureBlack) Color(0xFF1A1B20) else Color(0xFF141417),
+        surface2 = if (pureBlack) Color(0xFF24252B) else Color(0xFF1E1F23),
+        surface3 = if (pureBlack) Color(0xFF2E2F36) else Color(0xFF2A2B30),
+        textPrimary = Color(0xFFF6F6F8),
+        textSecondary = Color(0xFFB6B7BF),
+        textTertiary = Color(0xFF7C7D87),
         accent = accent,
-        accentSoft = accent.copy(alpha = 0.16f),
+        accentSoft = accent.copy(alpha = 0.18f),
         onAccent = Color.White,
         success = Color(0xFF3ECF8E),
         warning = Color(0xFFF2B84B),
         danger = Color(0xFFF26D6D),
-        dividerGhost = Color.White.copy(alpha = 0.04f),
+        dividerGhost = Color.White.copy(alpha = 0.05f),
     )
 
 fun evLightColorTokens(accent: Color = EvAccentDefault): EvColorTokens =
     EvColorTokens(
-        surface0 = Color(0xFFFAFAFB),
-        surface1 = Color(0xFFF2F2F5),
-        surface2 = Color(0xFFEBEBEF),
-        surface3 = Color(0xFFE2E2E7),
-        textPrimary = Color(0xFF1A1B1E),
-        textSecondary = Color(0xFF5A5B63),
-        textTertiary = Color(0xFF9A9BA3),
+        surface0 = Color(0xFFFBFBFC),
+        surface1 = Color(0xFFF4F4F7),
+        surface2 = Color(0xFFEDEDF1),
+        surface3 = Color(0xFFE4E4EA),
+        textPrimary = Color(0xFF141519),
+        textSecondary = Color(0xFF5B5C66),
+        textTertiary = Color(0xFF8E8F99),
         accent = accent,
         accentSoft = accent.copy(alpha = 0.12f),
         onAccent = Color.White,
         success = Color(0xFF0F9D58),
         warning = Color(0xFFB26A00),
         danger = Color(0xFFD93025),
-        dividerGhost = Color.Black.copy(alpha = 0.06f),
+        dividerGhost = Color.Black.copy(alpha = 0.07f),
     )
 
 // ---------------------------------------------------------------------------
@@ -102,11 +104,14 @@ data class EvTypeToken(
     val fontSize: TextUnit,
     val lineHeight: TextUnit,
     val fontWeight: FontWeight,
+    /** 大字收紧、小字放开：中文标题在大字号下需要负字距才不松。 */
+    val letterSpacing: TextUnit = 0.sp,
 ) {
     fun style(color: Color = Color.Unspecified): TextStyle = TextStyle(
         fontSize = fontSize,
         lineHeight = lineHeight,
         fontWeight = fontWeight,
+        letterSpacing = letterSpacing,
         color = color,
     )
 }
@@ -131,13 +136,15 @@ data class EvTypeTokens(
 )
 
 val DefaultEvTypeTokens = EvTypeTokens(
-    display = EvTypeToken(28.sp, 36.sp, FontWeight.Medium),
-    headline = EvTypeToken(22.sp, 30.sp, FontWeight.Medium),
-    title = EvTypeToken(18.sp, 26.sp, FontWeight.Medium),
-    body = EvTypeToken(16.sp, 26.sp, FontWeight.Normal),
+    // 字阶拉开到"一眼、扫视、细节"三层：标题更重更紧，正文更松更好读，
+    // 小字加字距——这是让页面看起来像排过版、而不是把字号排成一列的关键。
+    display = EvTypeToken(28.sp, 36.sp, FontWeight.Bold, letterSpacing = (-0.3).sp),
+    headline = EvTypeToken(24.sp, 32.sp, FontWeight.SemiBold, letterSpacing = (-0.2).sp),
+    title = EvTypeToken(19.sp, 27.sp, FontWeight.SemiBold, letterSpacing = (-0.1).sp),
+    body = EvTypeToken(15.5.sp, 25.sp, FontWeight.Normal),
     label = EvTypeToken(14.sp, 20.sp, FontWeight.Medium),
-    caption = EvTypeToken(13.sp, 18.sp, FontWeight.Normal),
-    micro = EvTypeToken(11.sp, 14.sp, FontWeight.Medium),
+    caption = EvTypeToken(12.5.sp, 19.sp, FontWeight.Normal),
+    micro = EvTypeToken(11.sp, 15.sp, FontWeight.Medium, letterSpacing = 0.4.sp),
 )
 
 // ---------------------------------------------------------------------------
@@ -159,8 +166,8 @@ val DefaultEvSpacingTokens = EvSpacingTokens()
 
 /** Radius ladder (spec §3.2): 8 / 14 / 20 plus the full capsule. */
 data class EvRadiusTokens(
-    val small: Dp = 8.dp,
-    val medium: Dp = 14.dp,
+    val small: Dp = 10.dp,
+    val medium: Dp = 16.dp,
     val large: Dp = 20.dp,
 ) {
     val smallShape: Shape get() = RoundedCornerShape(small)
