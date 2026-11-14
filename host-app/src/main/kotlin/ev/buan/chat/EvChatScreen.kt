@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,7 @@ import com.itos.coui.theme.CouiTheme
 import ev.buan.ui.LocalEvBackdrop
 import ev.buan.ui.EvButton
 import ev.buan.ui.EvCollapsible
+import ev.buan.ui.Chevron
 import ev.buan.ui.EvColors
 import ev.buan.SlotHost
 import ev.buan.ui.EvComposer
@@ -59,8 +61,12 @@ import ev.buan.ui.EvPageScaffold
 import ev.buan.ui.EvSidePage
 
 import ev.buan.ui.EvText
+import ev.buan.ui.EvRow
+import ev.buan.ui.EvPageInset
+import ev.buan.ui.EvSection
 import ev.buan.ui.EvTone
 import ev.buan.ui.rememberEvScroll
+import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.shape.CouiCapsuleShape
 
@@ -141,7 +147,7 @@ fun EvChatScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 10.dp),
+                        .padding(start = EvPageInset, end = EvPageInset, top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
@@ -195,76 +201,58 @@ fun EvChatScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize().then(scroll.modifier),
-                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 56.dp, bottom = 12.dp),
+                    contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 56.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     // 首页顶部主视觉：可替换槽位，同一时刻只有一个赢家。
                     item { SlotHost(UiSlot.HomeHero) }
                     if (state.items.isEmpty()) {
                         item {
-                            // 空态居视口中心：贴在顶部会让整块屏幕看起来"掉了东西"，
-                            // 居中的一行字是这一屏唯一的元素，位置就是它的语义。
-                            Box(
-                                // 在"输入框之上"的整块区域里居中：
-                                // 空态是这一屏唯一的内容，它应该在视觉中心，而不是贴在上方三分之一处。
-                                Modifier.fillMaxWidth().fillParentMaxHeight(0.88f),
-                                contentAlignment = Alignment.Center,
+                            // 空态不是"居中一句话"，是这一页的**页头**。
+                            //
+                            // 上一版把它垂直居中：上下各空 750px，四块东西浮在黑色里。
+                            // 那不是留白，是没填。现在贴着顶部排——页头在上、入口在中段、
+                            // 输入框在底部，三段间距 88 / 44 / 弹性，全部走 8 的倍数。
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .fillParentMaxHeight(1f)
+                                    .padding(horizontal = EvPageInset),
                             ) {
-                                // 空态是这一屏唯一的视觉锚点，按 skill 的"英雄时刻"处理：
-                                // 一个大字号主句 + 一句说明 + 三个起步动作，其余全部安静。
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    // 这里原来有一根 22×3dp 的强调色短线，压在主句上方。
-                                    // 删掉：它不承担任何信息，只是"给这块黑一个落点"的装饰，
-                                    // 而首页的落点应该是那句话本身——一根蓝色小横条悬在标题上面，
-                                    // 读起来像上一屏漏下来的一条分隔线。
+                                // 页头：贴着顶部。空态不是"居中一句话"，是这一页的题头。
+                                Column(Modifier.padding(top = 72.dp)) {
                                     EvText(
                                         if (state.connected) "说点什么，它就动手。" else "还没连上对话插件。",
-                                        kind = CouiTextKind.HomeTitle,
+                                        kind = CouiTextKind.PageTitle,
                                         tone = EvTone.Normal,
+                                        weight = FontWeight.Bold,
                                     )
-                                    Spacer(Modifier.height(10.dp))
+                                    Spacer(Modifier.height(14.dp))
                                     EvText(
-                                        if (state.connected) "截屏、读屏、点按——它用你手机上的手。" else "连接后就可以让 EV 动手。",
-                                        kind = CouiTextKind.PreferenceSummary,
+                                        if (state.connected) "截屏、读屏、点按——它用手机上的手。" else "连接后就可以让 EV 动手。",
+                                        kind = CouiTextKind.Body,
                                         tone = EvTone.Muted,
                                     )
-                                    if (state.connected) {
-                                        Spacer(Modifier.height(28.dp))
-                                        // 三个入口必须是**真事**：之前放的是"示例提示词"，
-                                        // 点下去只是往输入框填一句话，那不是按钮，是假的。
-                                        // 这里换成三个真实目的地，图标语义也对得上。
-                                        Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                                            for (entry in listOf(
-                                                Triple(EvIcon.Apps, "插件", onOpenPlugins),
-                                                Triple(EvIcon.Shield, "权限", onOpenPermissions),
-                                                Triple(EvIcon.Setting, "设置", onOpenSettings),
-                                            )) {
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Box(
-                                                        Modifier
-                                                            .size(56.dp)
-                                                            .clip(CouiShape(18.dp))
-                                                            .background(EvColors.surface1)
-                                                            .clickable { entry.third() },
-                                                        contentAlignment = Alignment.Center,
-                                                    ) {
-                                                        Image(
-                                                            painter = rememberVectorPainter(EvIcon(entry.first)),
-                                                            contentDescription = entry.second,
-                                                            colorFilter = ColorFilter.tint(EvColors.textSecondary),
-                                                            modifier = Modifier.size(22.dp),
-                                                        )
-                                                    }
-                                                    Spacer(Modifier.height(6.dp))
-                                                    EvText(
-                                                        entry.second,
-                                                        kind = CouiTextKind.PreferenceSummary,
-                                                        tone = EvTone.Muted,
-                                                    )
-                                                }
-                                            }
-                                        }
+                                }
+                                // 入口紧跟题头，不往下飘。
+                                //
+                                // 上一版把它压在 62% 高度（两个 weight 上下夹），想让空白"分成两段"，
+                                // 结果题头和入口之间出现一道 800px 的裂缝：读起来是"上面一句话、
+                                // 下面一坨列表"，中间断了。这一屏的主角是对话区，空本来就该
+                                // 整块留在下面——入口贴着题头，空就成了一整块"还没说话的舞台"。
+                                Spacer(Modifier.height(40.dp))
+                                if (state.connected) {
+                                    // 三个入口不套卡片：一张卡片会把三行压成一个"块"，
+                                    // 而它们本来就是三个并列的出口。无卡片的行 + 从文字起笔的分隔线，
+                                    // 是这一屏唯一需要的容器。
+                                    Column(Modifier.fillMaxWidth()) {
+                                        HomeEntry("插件", "装了什么、开着没", EvIcon.Apps, onOpenPlugins)
+                                        EvDivider(startOffset = 52.dp, endOffset = 52.dp)
+                                        HomeEntry("权限", "它现在能碰到什么", EvIcon.Shield, onOpenPermissions)
+                                        EvDivider(startOffset = 52.dp, endOffset = 52.dp)
+                                        HomeEntry("设置", "外观、模型与进程", EvIcon.Setting, onOpenSettings)
                                     }
+                                    Spacer(Modifier.weight(1f))
                                 }
                             }
                         }
@@ -301,11 +289,11 @@ fun EvChatScreen(
                 }
             }
 
-            SlotHost(UiSlot.HomeAboveComposer, Modifier.padding(horizontal = 16.dp))
+            SlotHost(UiSlot.HomeAboveComposer, Modifier.padding(horizontal = EvPageInset))
             EvComposer(
                 value = state.input,
                 onValueChange = state::onInputChange,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = EvPageInset, vertical = 14.dp),
             ) {
                 if (state.sending) {
                     // 跑着的时候是"停下来"。同一个组件换图标语义，
@@ -411,4 +399,30 @@ private fun DetailLine(label: String, value: String) {
         EvText(label, kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted)
         EvText(value, kind = CouiTextKind.PreferenceSummary, tone = EvTone.Normal)
     }
+}
+
+/**
+ * 首页的一个入口。
+ *
+ * 用 COUI 的 `Item`，但**不套 `Group`**：Group 会给整组加一层卡片底，
+ * 三行并排的出口因此被压成一个灰块，右边还空一大半。
+ * 单行 + 一条分隔线是本屏需要的全部容器。
+ */
+@Composable
+private fun HomeEntry(
+    title: String,
+    summary: String,
+    icon: EvIcon,
+    onClick: () -> Unit,
+) {
+    EvRow(
+        title = title,
+        summary = summary,
+        icon = icon,
+        onClick = onClick,
+        // 每行上下各 10dp：COUI 的行高是给"设置列表"设计的，
+        // 二十行挤在一页里正合适；这里总共只有三行，撑满一屏需要更大的呼吸。
+        modifier = Modifier.padding(vertical = 10.dp),
+        trailing = { Chevron() },
+    )
 }

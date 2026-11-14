@@ -64,11 +64,22 @@ fun evDarkColorTokens(accent: Color = EvAccentDefault, pureBlack: Boolean = fals
     // 值全部来自 COUI 的预设色板，一个都不自己定：之前自造的 0xFF141417 这类值
     // 和 COUI 组件（菜单、Fab、开关）放在一起就是两种黑。
     val preset = CouiPresets.Dark
+    // 纯黑模式下**必须重新推导四级**，不能只把最底下那级换成 #000：
+    // COUI 的深色本身只有两级明度（container #1E1E1E / card #333333），
+    // 底一旦变成纯黑，`container` 就变成"最亮的那一级"，四级阶梯塌成两级，
+    // 屏幕上一排容器全是同一个灰——这正是"看起来毛躁、没有层次"的来源。
+    // 下面这一组按 0 / 22 / 30 / 42 的明度排开，相邻差值都在 8 以上，
+    // 人眼才分得出来；同时最上面那级仍然是 COUI 的 #1E1E1E。
+    val ladder = if (pureBlack) {
+        listOf(Color(0xFF000000), Color(0xFF161616), Color(0xFF1E1E1E), Color(0xFF2A2A2A))
+    } else {
+        listOf(preset.background, preset.container, preset.surface, preset.card)
+    }
     return EvColorTokens(
-        surface0 = preset.background,
-        surface1 = preset.container,
-        surface2 = preset.surface,
-        surface3 = preset.card,
+        surface0 = ladder[0],
+        surface1 = ladder[1],
+        surface2 = ladder[2],
+        surface3 = ladder[3],
         textPrimary = preset.onSurface,
         textSecondary = preset.onSurfaceVariant,
         textTertiary = preset.onSurfaceVariant.copy(alpha = 0.72f),
@@ -322,3 +333,12 @@ object EvThemeTokens {
     val reducedMotion: Boolean
         @Composable @ReadOnlyComposable get() = LocalEvAppearance.current.reducedMotionEnabled
 }
+
+/**
+ * 页面内容的唯一边距：24dp。
+ *
+ * 这一条值不允许在别处出现第二种写法。上一版首页里有 15dp、24dp、30dp 三种左边距，
+ * 屏幕左边出现三条垂直线，看起来"没对齐"——原因不是差了 48px，是**有多条线**。
+ * 现在顶部栏、页头、列表、输入框全部读这一个值。
+ */
+val EvPageInset: Dp = 24.dp

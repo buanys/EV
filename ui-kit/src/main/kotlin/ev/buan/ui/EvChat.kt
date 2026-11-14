@@ -87,17 +87,12 @@ fun EvComposer(
     val expanded = value.contains('\n')
     val targetHeight = when {
         expanded -> 96.dp
-        else -> 56.dp
+        else -> 54.dp
     }
     val animatedHeight by animateDpAsState(
         targetValue = targetHeight,
         animationSpec = EvMotionTokens.gentle<Dp>(),
         label = "composer-height",
-    )
-    val animatedRadius by animateDpAsState(
-        targetValue = if (expanded) 30.dp else 26.dp,
-        animationSpec = EvMotionTokens.snappy<Dp>(),
-        label = "composer-radius",
     )
 
     // 占位文字和输入文字必须同一套字形：字号或行高差一点，聚焦的那一刻就会跳一下。
@@ -111,15 +106,13 @@ fun EvComposer(
             modifier
                 .fillMaxWidth()
                 .height(animatedHeight)
-                .background(colors.surface1, CouiShape(animatedRadius))
-                // 1dp 的强调色内描边：纯黑底上，没有它输入框只是一个灰块，
-                // 有它才读得出"这里可以写字"。
-                .border(
-                    1.dp,
-                    colors.accent.copy(alpha = 0.16f),
-                    CouiShape(animatedRadius),
-                )
-                .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                // 真胶囊：`CouiCapsuleShape` 按高度算半径，不再写死 26dp。
+                // 上一版是 26dp 圆角配 56dp 高——半径差 2dp 就永远不是正圆头，
+                // 这种"差一点"的圆角是最容易看出毛躁的地方。
+                .background(colors.surface2, CouiCapsuleShape)
+                // 去掉 1dp 强调色描边：纯色面本身已经把"这里可以写字"说清楚了，
+                // 一圈 16% 透明的蓝边只是让框看起来脏。
+                .padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

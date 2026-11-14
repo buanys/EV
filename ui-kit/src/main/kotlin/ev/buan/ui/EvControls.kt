@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.semantics.contentDescription
@@ -99,6 +100,9 @@ fun EvButton(
  *
  * 和 [EvIconButton] 的区别在**语气**：这个表示"按下去会立刻发生一件事"（发送、确认），
  * 所以用实心 + 反色图标；[EvIconButton] 是入口（更多、新建），所以是玻璃底色。
+ *
+ * 形状用真圆（`CouiCapsuleShape`）而不是 11dp 圆角：它旁边就是一个胶囊输入框，
+ * 一个是"圆头"一个是"圆角方块"，并排时两条轮廓的曲率对不上，看起来就是不齐。
  */
 @Composable
 fun EvFilledIconButton(
@@ -117,11 +121,11 @@ fun EvFilledIconButton(
             .size(36.dp)
             .background(
                 when {
-                    !enabled -> colors.surface2
+                    !enabled -> colors.surface3
                     pressed -> colors.accent.copy(alpha = 0.82f)
                     else -> colors.accent
                 },
-                CouiShape(11.dp),
+                CouiCapsuleShape,
             )
             .clickable(
                 interactionSource = interaction,
@@ -168,4 +172,32 @@ fun EvEmpty(text: String, modifier: Modifier = Modifier) {
 @Composable
 fun EvNotice(text: String, modifier: Modifier = Modifier, tone: EvTone = EvTone.Muted) {
     Footer(modifier.fillMaxWidth(), text, tone.color())
+}
+
+/**
+ * 行的"可以去哪里"提示。
+ *
+ * COUI 的图标集里没有 chevron（`Outlined` 只有 18 个图标，`Filled` 里也没有箭头），
+ * 所以用 `Back` 转 180° 画一个——形状和 COUI 的返回箭头同一笔画，只是方向相反。
+ * 用文字 `›` 当箭头不行：它跟着字体走，字号一变粗细就变，和旁边的图标不同源。
+ */
+@Composable
+fun Chevron(modifier: Modifier = Modifier) {
+    val color = EvColors.textTertiary
+    androidx.compose.foundation.Canvas(modifier.size(width = 8.dp, height = 14.dp)) {
+        val stroke = 1.5.dp.toPx()
+        drawPath(
+            path = androidx.compose.ui.graphics.Path().apply {
+                moveTo(0f, 0f)
+                lineTo(size.width, size.height / 2f)
+                lineTo(0f, size.height)
+            },
+            color = color,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = stroke,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round,
+            ),
+        )
+    }
 }
