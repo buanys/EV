@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itos.coui.theme.CouiPresets
 
 /**
  * EV-UI design tokens, the single source of truth for color / type / spacing / radius / motion.
@@ -57,43 +58,47 @@ data class EvColorTokens(
     val dividerGhost: Color,
 )
 
-fun evDarkColorTokens(accent: Color = EvAccentDefault, pureBlack: Boolean = false): EvColorTokens =
-    EvColorTokens(
-        // 纯黑模式下把卡片提亮一档：否则 surface1 与 #000 的差在 AMOLED 上几乎看不见，
-        // 整页会读成"没有卡片"。
-        surface0 = if (pureBlack) Color.Black else Color(0xFF0A0A0C),
-        surface1 = if (pureBlack) Color(0xFF1A1B20) else Color(0xFF141417),
-        surface2 = if (pureBlack) Color(0xFF24252B) else Color(0xFF1E1F23),
-        surface3 = if (pureBlack) Color(0xFF2E2F36) else Color(0xFF2A2B30),
-        textPrimary = Color(0xFFF6F6F8),
-        textSecondary = Color(0xFFB6B7BF),
-        textTertiary = Color(0xFF7C7D87),
+fun evDarkColorTokens(accent: Color = EvAccentDefault, pureBlack: Boolean = false): EvColorTokens {
+    // 值全部来自 COUI 的预设色板，一个都不自己定：之前自造的 0xFF141417 这类值
+    // 和 COUI 组件（菜单、Fab、开关）放在一起就是两种黑。
+    val preset = CouiPresets.Dark
+    return EvColorTokens(
+        surface0 = preset.background,
+        surface1 = preset.container,
+        surface2 = preset.surface,
+        surface3 = preset.card,
+        textPrimary = preset.onSurface,
+        textSecondary = preset.onSurfaceVariant,
+        textTertiary = preset.onSurfaceVariant.copy(alpha = 0.72f),
         accent = accent,
-        accentSoft = accent.copy(alpha = 0.18f),
-        onAccent = Color.White,
+        accentSoft = preset.accent.copy(alpha = 0.18f),
+        onAccent = preset.onAccent,
         success = Color(0xFF3ECF8E),
         warning = Color(0xFFF2B84B),
         danger = Color(0xFFF26D6D),
-        dividerGhost = Color.White.copy(alpha = 0.05f),
+        dividerGhost = preset.outlineVariant,
     )
+}
 
-fun evLightColorTokens(accent: Color = EvAccentDefault): EvColorTokens =
-    EvColorTokens(
-        surface0 = Color(0xFFFBFBFC),
-        surface1 = Color(0xFFF4F4F7),
-        surface2 = Color(0xFFEDEDF1),
-        surface3 = Color(0xFFE4E4EA),
-        textPrimary = Color(0xFF141519),
-        textSecondary = Color(0xFF5B5C66),
-        textTertiary = Color(0xFF8E8F99),
+fun evLightColorTokens(accent: Color = EvAccentDefault): EvColorTokens {
+    val preset = CouiPresets.Light
+    return EvColorTokens(
+        surface0 = preset.background,
+        surface1 = preset.container,
+        surface2 = preset.surface,
+        surface3 = preset.card,
+        textPrimary = preset.onSurface,
+        textSecondary = preset.onSurfaceVariant,
+        textTertiary = preset.onSurfaceVariant.copy(alpha = 0.72f),
         accent = accent,
-        accentSoft = accent.copy(alpha = 0.12f),
-        onAccent = Color.White,
+        accentSoft = preset.accent.copy(alpha = 0.14f),
+        onAccent = preset.onAccent,
         success = Color(0xFF0F9D58),
         warning = Color(0xFFB26A00),
         danger = Color(0xFFD93025),
-        dividerGhost = Color.Black.copy(alpha = 0.07f),
+        dividerGhost = preset.outlineVariant,
     )
+}
 
 // ---------------------------------------------------------------------------
 // Typography

@@ -36,6 +36,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.dp
+import com.itos.coui.chip.ChipTab
+import com.itos.coui.menu.CouiMenuItem
+import com.itos.coui.menu.Menu
+import com.itos.coui.menu.couiMenuAnchor
+import com.itos.coui.menu.rememberCouiMenuAnchor
+import com.itos.coui.theme.CouiTheme
+import ev.buan.ui.LocalEvBackdrop
 import ev.buan.ui.EvButton
 import ev.buan.ui.EvCollapsible
 import ev.buan.ui.EvColors
@@ -92,6 +99,34 @@ fun EvChatScreen(
         }
     }
 
+    // 菜单里只放真实字段：模型名、进程号、运行时长、上下文规模。
+    val status = remember(details) { state.runtimeStatus() }
+    val agentItems = remember(details, status, state.items.size, state.modelLabel) {
+        buildList {
+            add(CouiMenuItem(value = "model", text = "模型 · ${state.modelLabel ?: "未连接"}", enabled = false))
+            add(
+                CouiMenuItem(
+                    value = "pid",
+                    text = status?.pid?.let { "进程 · PID $it" } ?: "进程 · 未启动",
+                    enabled = false,
+                ),
+            )
+            val startedAt = status?.startedAtMillis
+            if (startedAt != null) {
+                val seconds = (System.currentTimeMillis() - startedAt) / 1000
+                add(CouiMenuItem(value = "uptime", text = "已运行 · ${seconds}s", enabled = false))
+            }
+            add(
+                CouiMenuItem(
+                    value = "context",
+                    text = "上下文 · ${state.items.count { it is ChatItem.User }} 轮",
+                    enabled = false,
+                ),
+            )
+            add(CouiMenuItem(value = "agent", text = "打开 Agent 页", dividerBefore = true))
+        }
+    }
+
     EvPageScaffold(
         modifier = modifier,
         // 顶部两个是次要入口，用 EvIconButton 而不是 EvFab：Fab 是"这一屏唯一的主操作"，
@@ -108,106 +143,45 @@ fun EvChatScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     EvIconButton(EvIcon.More, "更多", onClick = { sideOpen = true })
-                    // 悬浮胶囊：状态 + 模型 + 上下文规模。点它进 Agent 页看详情。
-                    Column(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(EvColors.surface1)
-                            .clickable { details = true }
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(7.dp),
-                        ) {
+                    // 胶囊直接就是 COUI 的 ChipTab：超椭圆、玻璃材质、按下形变都由它给，
+                    // 连点开时的锚点也用同一个 Composable 的坐标，不需要量像素。
+                    val anchor = rememberCouiMenuAnchor()
+                    val chipBackdrop = LocalEvBackdrop.current
+                    Box(Modifier.couiMenuAnchor(anchor)) {
+                        if (chipBackdrop != null) {
+                            ChipTab(
+                                selected = details,
+                                onClick = { details = !details },
+                                label = state.modelLabel ?: "未连接",
+                                backdrop = chipBackdrop,
+                                dark = CouiTheme.isDark,
+                            )
+                        } else {
+                            // 没有 backdrop 就没有玻璃可采样；退回素胶囊，但仍是同一个锚点。
                             Box(
                                 Modifier
-                                    .size(7.dp)
-                                    .background(
-                                        if (state.connected) EvColors.accent else EvColors.textTertiary,
-                                        CircleShape,
-                                    ),
-                            )
-                            EvText(
-                                state.modelLabel ?: "未连接",
-                                kind = EvTextKind.Caption,
-                                tone = if (state.connected) EvTone.Normal else EvTone.Muted,
-                            )
-                        }
-                        val turns = state.items.count { it is ChatItem.User }
-                        val chars = state.items.sumOf {
-                            when (it) {
-                                is ChatItem.User -> it.text.length
-                                is ChatItem.Assistant -> it.text.length
-                                else -> 0
+                                    .clip(RoundedCornerShape(50))
+                                    .background(EvColors.surface1)
+                                    .clickable { details = !details }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                            ) {
+                                EvText(state.modelLabel ?: "未连接", kind = EvTextKind.Caption)
                             }
                         }
-                        EvText(
-                            if (turns == 0) "还没有对话" else "$turns 轮 · ${chars / 1000}.${(chars % 1000) / 100}k 字",
-                            kind = EvTextKind.Micro,
-                            tone = EvTone.Muted,
-                        )
                     }
+                    Menu(
+                        expanded = details,
+                        onDismissRequest = { details = false },
+                        items = agentItems,
+                        onItemClick = { item ->
+                            if (item.value == "agent") {
+                                details = false
+                                onOpenAgent()
+                            }
+                        },
+                        anchor = anchor,
+                    )
                     EvIconButton(EvIcon.NewChat, "新建对话", onClick = { state.newConversation() })
-                }
-            }
-            if (details) {
-                // 跟随胶囊的下拉面板：锚在胶囊正下方，宽度只够放几行事实。
-                // 不是居中弹窗，也不离开这一页——看完点别处就收起来。
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) { details = false },
-                )
-                val status = remember(details) { state.runtimeStatus() }
-                val turns = state.items.count { it is ChatItem.User }
-                val chars = state.items.sumOf {
-                    when (it) {
-                        is ChatItem.User -> it.text.length
-                        is ChatItem.Assistant -> it.text.length
-                        else -> 0
-                    }
-                }
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        // 紧贴胶囊底边：面板顶 = 胶囊底 + 8dp。
-                        // 这个数值是量出来的（胶囊底在 240px ≈ 86dp），不是猜的。
-                        .padding(top = 34.dp)
-                        .width(222.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(EvColors.surface2)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) {}
-                        .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    DetailLine("进程", if (status?.alive == true) "PID ${status.pid ?: "?"}" else "未启动")
-                    val startedAt = status?.startedAtMillis
-                    if (startedAt != null) {
-                        val seconds = (System.currentTimeMillis() - startedAt) / 1000
-                        DetailLine("已运行", if (seconds < 60) "${seconds}s" else "${seconds / 60}m ${seconds % 60}s")
-                    }
-                    DetailLine("协议", status?.protocolVersion?.let { "v$it" } ?: "未握手")
-                    DetailLine("会话", state.sessionId)
-                    DetailLine("上下文", "$turns 轮 · $chars 字")
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        EvText(
-                            "打开 Agent 页",
-                            kind = EvTextKind.Caption,
-                            tone = EvTone.Accent,
-                            modifier = Modifier
-                                .clickable { details = false; onOpenAgent() }
-                                .padding(horizontal = 6.dp, vertical = 6.dp),
-                        )
-                    }
                 }
             }
         },
