@@ -213,13 +213,10 @@ fun EvChatScreen(
                                 // 空态是这一屏唯一的视觉锚点，按 skill 的"英雄时刻"处理：
                                 // 一个大字号主句 + 一句说明 + 三个起步动作，其余全部安静。
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    // 一个 3dp 的强调色短线：全页唯一的彩色元素，给这块黑一个落点。
-                                    Box(
-                                        Modifier
-                                            .size(width = 22.dp, height = 3.dp)
-                                            .background(EvColors.accent, CouiCapsuleShape),
-                                    )
-                                    Spacer(Modifier.height(16.dp))
+                                    // 这里原来有一根 22×3dp 的强调色短线，压在主句上方。
+                                    // 删掉：它不承担任何信息，只是"给这块黑一个落点"的装饰，
+                                    // 而首页的落点应该是那句话本身——一根蓝色小横条悬在标题上面，
+                                    // 读起来像上一屏漏下来的一条分隔线。
                                     EvText(
                                         if (state.connected) "说点什么，它就动手。" else "还没连上对话插件。",
                                         kind = CouiTextKind.HomeTitle,
