@@ -77,6 +77,12 @@ class MainActivity : ComponentActivity() {
                         // 只有一个退出点：每屏的返回都回 chat。不引入导航库——
                         // 现在只有三个目的地，加一个 NavController 是给自己造抽象。
                         var screen by rememberSaveable { mutableStateOf("chat") }
+                        // 槽位内容的导航出口：插件点"模型端点"走这里进 "model" 页。
+                        // 注册表是 host-runtime 的单例，页面栈在这里；组合时把 lambda 挂上去。
+                        ev.buan.UiSlotNav.handler = { pageId: String ->
+                            android.util.Log.i("EV", "openPage -> $pageId")
+                            screen = pageId
+                        }
                         Box(Modifier.fillMaxSize().evSystemBarsPadding()) {
                             when (screen) {
                                 "plugins" -> PluginManagerScreen(
@@ -121,6 +127,22 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onBack = { screen = "chat" },
                                 )
+
+                                // 模型页是 ev-model 通过 PluginPageService 给的整页：
+                                // 插件没装、停用或失败时直接回设置——不要渲染空壳页。
+                                // 槽位里那行入口点击后置 pageRequested，这里消费掉它并跳页。
+                                "model" -> {
+                                    val page = runtime.services
+                                        ?.lookup(org.cordis.api.PluginPageService.Key)
+                                        ?.pageOf("ev.buan.plugin.model")
+                                    if (page != null) {
+                                        android.util.Log.i("EV", "rendering model page: $page")
+                                        page.Page(Modifier.fillMaxSize(), onBack = { screen = "settings" })
+                                    } else {
+                                        android.util.Log.i("EV", "model page null, back to settings")
+                                        screen = "settings"
+                                    }
+                                }
 
                                 else -> EvChatScreen(
                                     state = chat,

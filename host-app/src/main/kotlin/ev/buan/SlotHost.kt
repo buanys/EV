@@ -26,6 +26,17 @@ object HostSlots {
      */
     @Volatile
     var provider: (() -> UiSlotRegistry?)? = null
+
+    /**
+     * 插件请求宿主导航的单向通道：`navigateTo(pageId)` 由宿主在组合时设置，
+     * 插件的槽位内容在点击时调用。用全局单例而不是回调参数，是因为槽位内容
+     * 由插件注册（它拿不到宿主 Activity 的任何东西），而导航属于宿主。
+     *
+     * `null` 表示宿主还没就绪或这一页不存在——插件应当把入口行画成不可点，
+     * 而不是点了没反应。
+     */
+    @Volatile
+    var navigateTo: ((pageId: String) -> Unit)? = null
 }
 
 /**

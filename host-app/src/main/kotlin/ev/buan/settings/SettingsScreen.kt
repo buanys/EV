@@ -63,6 +63,8 @@ fun SettingsScreen(
                 onCheckedChange = onBlur,
             )
         }
+        // 模型入口由 ev-model 的槽位提供（SettingsSections）：入口、页面都是插件的，
+        // 宿主不在这里放第二份。之前两边各放一行"模型端点"，设置页出现两个同名分组。
         SlotHost(UiSlot.SettingsSections)
         EvSection(title = "关于") {
             EvRow(title = "版本", trailing = { Value("0.1.0") })

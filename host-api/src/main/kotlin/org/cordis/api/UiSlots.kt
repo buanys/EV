@@ -78,6 +78,15 @@ interface UiSlotRegistry {
     /** 撤掉 [owner] 贡献的全部内容。插件停用/卸载时调用。 */
     fun revoke(owner: String)
 
+    /**
+     * 插件请求宿主打开某个整页（例如自己的 [AgentPage]）。
+     *
+     * 槽位内容跑在宿主组合里，但导航归宿主：插件不持有 Activity 或页面栈，
+     * 只能"请求"。宿主认识 [pageId] 就跳过去，不认识就忽略——插件不应假设
+     * 请求一定成功，入口行也可以照常显示。
+     */
+    fun openPage(pageId: String)
+
     /** 某个槽位当前的内容，已按优先级排序；可替换槽位只返回赢家。 */
     fun contents(slot: UiSlot): List<UiSlotContent>
 
