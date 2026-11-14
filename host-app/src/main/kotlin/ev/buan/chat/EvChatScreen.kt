@@ -1,4 +1,5 @@
 package ev.buan.chat
+import androidx.compose.ui.graphics.Color
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -77,6 +78,9 @@ fun EvChatScreen(
     modifier: Modifier = Modifier,
 ) {
     var sideOpen by remember { mutableStateOf(false) }
+    // 胶囊点开的是**浮在这一页上**的小面板：要的是"看一眼就走"，
+    // 不是离开当前对话去另一个页面。
+    var details by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(state.items.size) {
@@ -108,7 +112,7 @@ fun EvChatScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(18.dp))
                             .background(EvColors.surface1)
-                            .clickable(onClick = onOpenAgent)
+                            .clickable { details = true }
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -146,6 +150,54 @@ fun EvChatScreen(
                         )
                     }
                     EvIconButton(EvIcon.NewChat, "新建对话", onClick = { state.newConversation() })
+                }
+            }
+            if (details) {
+                // 遮罩：点一下就关，和点按钮一样自然。
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.62f))
+                        .clickable { details = false },
+                )
+                val status = remember(details) { state.runtimeStatus() }
+                val turns = state.items.count { it is ChatItem.User }
+                val chars = state.items.sumOf {
+                    when (it) {
+                        is ChatItem.User -> it.text.length
+                        is ChatItem.Assistant -> it.text.length
+                        else -> 0
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth(0.88f)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(EvColors.surface1)
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(
+                            Modifier.size(8.dp).background(
+                                if (status?.alive == true) EvColors.accent else EvColors.textTertiary,
+                                CircleShape,
+                            ),
+                        )
+                        EvText(state.modelLabel ?: "未连接", kind = EvTextKind.Title)
+                    }
+                    DetailLine("进程", if (status?.alive == true) "PID ${status.pid ?: "?"}" else "未启动")
+                    val startedAt = status?.startedAtMillis
+                    if (startedAt != null) {
+                        val seconds = (System.currentTimeMillis() - startedAt) / 1000
+                        DetailLine("已运行", if (seconds < 60) "${seconds}s" else "${seconds / 60}m ${seconds % 60}s")
+                    }
+                    DetailLine("协议", status?.protocolVersion?.let { "v$it" } ?: "未握手")
+                    DetailLine("会话", state.sessionId)
+                    DetailLine("上下文", "$turns 轮 · ${chars} 字")
+                    Spacer(Modifier.height(4.dp))
+                    EvButton("打开 Agent 页", onClick = { details = false; onOpenAgent() })
                 }
             }
         },
@@ -364,5 +416,14 @@ private fun SideEntry(label: String, icon: EvIcon, onClick: () -> Unit) {
         )
         Spacer(Modifier.width(14.dp))
         EvText(label, kind = EvTextKind.Body)
+    }
+}
+
+/** 浮层里的一行：左边标签，右边值。 */
+@Composable
+private fun DetailLine(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        EvText(label, kind = EvTextKind.Caption, tone = EvTone.Muted)
+        EvText(value, kind = EvTextKind.Caption, tone = EvTone.Normal)
     }
 }

@@ -57,6 +57,10 @@ class ChatState(
 
     private val agent: AgentService? get() = services()?.lookup(AgentService.Key)
 
+    /** 运行态（PID / 运行时长 / 协议版本）；主循环没装或没发布时为 null。 */
+    fun runtimeStatus(): org.cordis.api.AgentRuntimeStatus? =
+        runCatching { services()?.lookup(org.cordis.api.AgentRuntime.Key)?.status() }.getOrNull()
+
     suspend fun refresh() {
         // 第一次查之前先确保有人能提供它：这就是懒加载的触发点。
         // 插件内部再 looku 时不会触发装载（那边是同步路径），所以插件要靠自己的
