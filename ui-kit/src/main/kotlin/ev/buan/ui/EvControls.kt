@@ -15,6 +15,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -199,5 +206,72 @@ fun Chevron(modifier: Modifier = Modifier) {
                 join = androidx.compose.ui.graphics.StrokeJoin.Round,
             ),
         )
+    }
+}
+
+/**
+ * 多行文本输入：标签行 + 输入区。
+ *
+ * 系统提示这类"可以慢慢写的东西"需要它。用 [androidx.compose.foundation.text.BasicTextField]
+ * 而不是 Material 的 TextField：后者自带浮动标签和自己的形状，放进这套 token
+ * 里就是"另一家的控件"。底色 [EvColors.surface2] + 聚焦提亮一级（弹簧过渡），
+ * 和输入框胶囊同一套状态表达。
+ */
+@Composable
+fun EvTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    minLines: Int = 1,
+) {
+    val colors = EvColors
+    var focused by remember { mutableStateOf(false) }
+    val fieldColor by animateColorAsState(
+        targetValue = if (focused) colors.surface3 else colors.surface2,
+        animationSpec = spring(),
+        label = "field-focus",
+    )
+    androidx.compose.foundation.text.BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
+            .background(fieldColor, CouiShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+            // 给触摸一个 48dp 以上的实际落点。
+            .defaultMinSize(minHeight = (minLines * 24).dp),
+        textStyle = androidx.compose.ui.text.TextStyle(
+            color = colors.textPrimary,
+            fontSize = 15.sp,
+            lineHeight = 22.sp,
+        ),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.accent),
+        minLines = minLines,
+        decorationBox = { inner ->
+            if (value.isEmpty() && placeholder.isNotEmpty()) {
+                EvText(placeholder, kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted)
+            }
+            inner()
+        },
+    )
+}
+
+/** 一行两个次操作按钮（保存 / 恢复这类成对的轻动作）。 */
+@Composable
+fun NoticeRow(
+    first: String,
+    second: String,
+    modifier: Modifier = Modifier,
+    onFirst: () -> Unit,
+    onSecond: () -> Unit,
+) {
+    androidx.compose.foundation.layout.Row(
+        modifier = modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+    ) {
+        EvButton(first, onClick = onFirst, kind = EvButtonKind.Secondary)
+        EvButton(second, onClick = onSecond, kind = EvButtonKind.Secondary)
     }
 }
