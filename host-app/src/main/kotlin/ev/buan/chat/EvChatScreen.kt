@@ -2,6 +2,7 @@ package ev.buan.chat
 import androidx.compose.ui.graphics.Color
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -153,12 +154,15 @@ fun EvChatScreen(
                 }
             }
             if (details) {
-                // 遮罩：点一下就关，和点按钮一样自然。
+                // 跟随胶囊的下拉面板：锚在胶囊正下方，宽度只够放几行事实。
+                // 不是居中弹窗，也不离开这一页——看完点别处就收起来。
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.62f))
-                        .clickable { details = false },
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { details = false },
                 )
                 val status = remember(details) { state.runtimeStatus() }
                 val turns = state.items.count { it is ChatItem.User }
@@ -171,22 +175,20 @@ fun EvChatScreen(
                 }
                 Column(
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .fillMaxWidth(0.88f)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(EvColors.surface1)
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                        .align(Alignment.TopCenter)
+                        // 紧贴胶囊底边：面板顶 = 胶囊底 + 8dp。
+                        // 这个数值是量出来的（胶囊底在 240px ≈ 86dp），不是猜的。
+                        .padding(top = 34.dp)
+                        .width(222.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(EvColors.surface2)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {}
+                        .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(
-                            Modifier.size(8.dp).background(
-                                if (status?.alive == true) EvColors.accent else EvColors.textTertiary,
-                                CircleShape,
-                            ),
-                        )
-                        EvText(state.modelLabel ?: "未连接", kind = EvTextKind.Title)
-                    }
                     DetailLine("进程", if (status?.alive == true) "PID ${status.pid ?: "?"}" else "未启动")
                     val startedAt = status?.startedAtMillis
                     if (startedAt != null) {
@@ -195,9 +197,17 @@ fun EvChatScreen(
                     }
                     DetailLine("协议", status?.protocolVersion?.let { "v$it" } ?: "未握手")
                     DetailLine("会话", state.sessionId)
-                    DetailLine("上下文", "$turns 轮 · ${chars} 字")
-                    Spacer(Modifier.height(4.dp))
-                    EvButton("打开 Agent 页", onClick = { details = false; onOpenAgent() })
+                    DetailLine("上下文", "$turns 轮 · $chars 字")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        EvText(
+                            "打开 Agent 页",
+                            kind = EvTextKind.Caption,
+                            tone = EvTone.Accent,
+                            modifier = Modifier
+                                .clickable { details = false; onOpenAgent() }
+                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                        )
+                    }
                 }
             }
         },
