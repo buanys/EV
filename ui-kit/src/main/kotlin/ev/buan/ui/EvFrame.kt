@@ -14,8 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -46,6 +45,7 @@ import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.effect.CouiFloatingMaterial
+import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.effect.CouiFloatingSurface
 import com.itos.coui.effect.LocalCouiContourGlowEnabled
@@ -55,6 +55,8 @@ import com.itos.coui.floatingactionbutton.Fab
 import com.itos.coui.layout.Scaffold
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.theme.CouiTheme
+import com.itos.coui.topappbar.TopAppBarButton
+import com.itos.coui.shape.CouiCapsuleShape
 
 /**
  * 页面持有的 backdrop。悬浮件（Fab、菜单、抽屉）靠它采样背后的页面内容。
@@ -78,6 +80,13 @@ val LocalEvBackdrop = staticCompositionLocalOf<CouiBackdrop?> { null }
 @Composable
 fun EvPageScaffold(
     modifier: Modifier = Modifier,
+    /**
+     * 顶部栏位。放 COUI 的 `TopAppBar`，它自己会处理玻璃底、滚动折叠、状态栏内边距。
+     *
+     * 走 Scaffold 的 topBar 而不是在内容列里画一行：只有栏位知道"内容该从哪开始"，
+     * 内容区才能既不压在标题下面、也不多出一段死白。
+     */
+    topBar: (@Composable () -> Unit)? = null,
     /** 悬浮栏位。**必须走这里**：Scaffold 给它独立的 backdrop 栏位，而不是塞进内容树。 */
     floating: (@Composable androidx.compose.foundation.layout.BoxScope.() -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
@@ -91,6 +100,7 @@ fun EvPageScaffold(
             // 让位于键盘：宿主只处理了 systemBars（那是它自己的窗口），
             // IME 归页面管。少了这一行，键盘弹出来会直接盖住输入框。
             modifier = modifier.fillMaxSize().imePadding(),
+            topBar = topBar ?: {},
             containerColor = colors.surface0,
             floatingActionButton = floating,
         ) { padding ->
@@ -102,14 +112,16 @@ fun EvPageScaffold(
 }
 
 /**
- * 图标按钮：40dp 的圆角方块，一级明度的实心底。
+ * 图标按钮：40dp 的圆角方块 + COUI 的按压反馈。
  *
- * **它不浮起来。** 玻璃材质是"临时浮起"的语义（面板、对话框、临时的浮层），
- * 常驻的入口用它，整屏就会到处都是浮着的东西，没有地面可站——
- * 这也是之前那一版看起来"不舒服"的原因。Kimi 首页的做法可以借鉴：
- * 深度全靠亮度分级（纯黑 → 容器 → 容器里的按钮），材质一概不用。
+ * **不能用 COUI 的 `TopAppBarButton`**：它要求自己处在顶栏的效果作用域里
+ * （`CouiTopAppBarButtonDefaults.style` 通过 CompositionLocal 下发），
+ * 脱离 `TopAppBar` / `TopAppBarButtonGroup` 单独使用会直接抛
+ * "顶栏按钮必须位于顶栏效果作用域内"——这条是实测崩出来的，不是猜的。
  *
- * 按下只换一级明度，不投影、不缩放：40dp 的方块做形变会显得晃。
+ * 所以页面里散落的入口（新建对话、更多操作）走这个自绘版本：
+ * 形状用 [CouiShape]、按压形变用 `couiButtonFeedback`，材质与顶栏按钮一致，
+ * 只是不参与顶栏的共享过渡。真正在顶栏里的按钮（返回）由 [EvPage] 直接用 COUI 的。
  */
 @Composable
 fun EvIconButton(
@@ -121,17 +133,13 @@ fun EvIconButton(
 ) {
     val colors = EvColors
     val vector = EvIcon(icon)
+    val dark = CouiTheme.isDark
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     Box(
         modifier
-            // 圆角方形而不是正圆：M3 Expressive 的 FAB 语言是"方中带圆"，
-            // 正圆在这套扁平表面里会读成 iOS 的老式悬浮件。
             .size(40.dp)
-            .background(
-                if (pressed) colors.surface2 else androidx.compose.ui.graphics.Color.Transparent,
-                RoundedCornerShape(12.dp),
-            )
+            .background(colors.surface2, CouiShape(12.dp))
+            .couiButtonFeedback(dark, interaction, enabled)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -145,11 +153,7 @@ fun EvIconButton(
             painter = rememberVectorPainter(vector),
             contentDescription = null,
             colorFilter = ColorFilter.tint(
-                when {
-                    !enabled -> colors.textTertiary
-                    pressed -> colors.textPrimary
-                    else -> colors.textSecondary
-                },
+                if (enabled) colors.textPrimary else colors.textTertiary,
             ),
             modifier = Modifier.size(20.dp),
         )
@@ -209,7 +213,7 @@ fun EvFab(
         Box(
             modifier = modifier
                 .size(48.dp)
-                .background(colors.surface2, CircleShape)
+                .background(colors.surface2, CouiCapsuleShape)
                 .clickable(enabled = enabled, onClick = onClick)
                 .semantics { contentDescription = label },
             contentAlignment = Alignment.Center,

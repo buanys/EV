@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itos.coui.theme.CouiPresets
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.shape.CouiCapsuleShape
 
 /**
  * EV-UI design tokens, the single source of truth for color / type / spacing / radius / motion.
@@ -175,10 +177,10 @@ data class EvRadiusTokens(
     val medium: Dp = 16.dp,
     val large: Dp = 20.dp,
 ) {
-    val smallShape: Shape get() = RoundedCornerShape(small)
-    val mediumShape: Shape get() = RoundedCornerShape(medium)
-    val largeShape: Shape get() = RoundedCornerShape(large)
-    val fullShape: Shape get() = RoundedCornerShape(percent = 50)
+    val smallShape: Shape get() = CouiShape(small)
+    val mediumShape: Shape get() = CouiShape(medium)
+    val largeShape: Shape get() = CouiShape(large)
+    val fullShape: Shape get() = CouiCapsuleShape
 
     /**
      * User bubble: asymmetric, the corner pointing at the send side stays tight (6dp) so a run

@@ -1,5 +1,7 @@
 package ev.buan.permissions
 
+import com.itos.coui.text.CouiTextKind
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -14,7 +16,6 @@ import ev.buan.ui.EvPage
 import ev.buan.ui.EvRow
 import ev.buan.ui.EvSection
 import ev.buan.ui.EvText
-import ev.buan.ui.EvTextKind
 import ev.buan.ui.EvTone
 
 /**
@@ -87,5 +88,5 @@ private fun PermissionRow(entry: PermissionEntry, context: android.content.Conte
 
 @Composable
 private fun StatusPill(text: String, tone: EvTone) {
-    EvText(text, kind = EvTextKind.Caption, tone = tone)
+    EvText(text, kind = CouiTextKind.PreferenceSummary, tone = tone)
 }

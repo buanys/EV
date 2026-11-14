@@ -1,4 +1,6 @@
 package ev.buan.chat
+
+import com.itos.coui.text.CouiTextKind
 import androidx.compose.ui.graphics.Color
 
 import androidx.compose.foundation.Image
@@ -24,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import org.cordis.api.UiSlot
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,10 +57,12 @@ import ev.buan.ui.EvIcon
 import ev.buan.ui.EvNotice
 import ev.buan.ui.EvPageScaffold
 import ev.buan.ui.EvSidePage
-import androidx.compose.foundation.shape.CircleShape
+
 import ev.buan.ui.EvText
-import ev.buan.ui.EvTextKind
 import ev.buan.ui.EvTone
+import ev.buan.ui.rememberEvScroll
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.shape.CouiCapsuleShape
 
 /**
  * 首页：对话。
@@ -160,12 +163,12 @@ fun EvChatScreen(
                             // 没有 backdrop 就没有玻璃可采样；退回素胶囊，但仍是同一个锚点。
                             Box(
                                 Modifier
-                                    .clip(RoundedCornerShape(50))
+                                    .clip(CouiCapsuleShape)
                                     .background(EvColors.surface1)
                                     .clickable { details = !details }
                                     .padding(horizontal = 14.dp, vertical = 8.dp),
                             ) {
-                                EvText(state.modelLabel ?: "未连接", kind = EvTextKind.Caption)
+                                EvText(state.modelLabel ?: "未连接", kind = CouiTextKind.PreferenceSummary)
                             }
                         }
                     }
@@ -187,10 +190,11 @@ fun EvChatScreen(
         },
     ) {
         Column(Modifier.fillMaxSize()) {
+            val scroll = rememberEvScroll()
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(scroll.modifier),
                     contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 56.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -213,18 +217,18 @@ fun EvChatScreen(
                                     Box(
                                         Modifier
                                             .size(width = 22.dp, height = 3.dp)
-                                            .background(EvColors.accent, RoundedCornerShape(50)),
+                                            .background(EvColors.accent, CouiCapsuleShape),
                                     )
                                     Spacer(Modifier.height(16.dp))
                                     EvText(
                                         if (state.connected) "说点什么，它就动手。" else "还没连上对话插件。",
-                                        kind = EvTextKind.Display,
+                                        kind = CouiTextKind.HomeTitle,
                                         tone = EvTone.Normal,
                                     )
                                     Spacer(Modifier.height(10.dp))
                                     EvText(
                                         if (state.connected) "截屏、读屏、点按——它用你手机上的手。" else "连接后就可以让 EV 动手。",
-                                        kind = EvTextKind.Caption,
+                                        kind = CouiTextKind.PreferenceSummary,
                                         tone = EvTone.Muted,
                                     )
                                     if (state.connected) {
@@ -242,7 +246,7 @@ fun EvChatScreen(
                                                     Box(
                                                         Modifier
                                                             .size(56.dp)
-                                                            .clip(RoundedCornerShape(18.dp))
+                                                            .clip(CouiShape(18.dp))
                                                             .background(EvColors.surface1)
                                                             .clickable { entry.third() },
                                                         contentAlignment = Alignment.Center,
@@ -257,7 +261,7 @@ fun EvChatScreen(
                                                     Spacer(Modifier.height(6.dp))
                                                     EvText(
                                                         entry.second,
-                                                        kind = EvTextKind.Caption,
+                                                        kind = CouiTextKind.PreferenceSummary,
                                                         tone = EvTone.Muted,
                                                     )
                                                 }
@@ -274,7 +278,7 @@ fun EvChatScreen(
                             is ChatItem.Assistant -> {
                                 EvText(
                                     item.text,
-                                    kind = EvTextKind.Body,
+                                    kind = CouiTextKind.Body,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 SlotHost(UiSlot.MessageActions)
@@ -285,7 +289,7 @@ fun EvChatScreen(
                                 summary = item.preview ?: item.argsJson,
                                 tone = item.tone,
                             ) {
-                                EvText(item.argsJson, kind = EvTextKind.Micro, tone = EvTone.Muted)
+                                EvText(item.argsJson, kind = CouiTextKind.Description, tone = EvTone.Muted)
                             }
 
                             is ChatItem.Notice -> EvNotice(item.text, tone = EvTone.Warning)
@@ -329,16 +333,16 @@ fun EvChatScreen(
         // 三行入口只是它下面的动作，不该和状态平起平坐。
         EvSidePage(visible = sideOpen, onDismiss = { sideOpen = false }) {
             Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 18.dp)) {
-                EvText("EV", kind = EvTextKind.Micro, tone = EvTone.Muted)
+                EvText("EV", kind = CouiTextKind.Description, tone = EvTone.Muted)
                 Spacer(Modifier.height(10.dp))
                 EvText(
                     if (state.connected) "已连接" else "还没连上",
-                    kind = EvTextKind.Headline,
+                    kind = CouiTextKind.PageTitle,
                 )
                 Spacer(Modifier.height(6.dp))
                 EvText(
                     if (state.connected) "说点什么，它就动手。" else "对话插件还没就位。",
-                    kind = EvTextKind.Caption,
+                    kind = CouiTextKind.PreferenceSummary,
                     tone = EvTone.Muted,
                 )
             }
@@ -357,7 +361,7 @@ fun EvChatScreen(
             Spacer(Modifier.weight(1f))
             EvText(
                 if (state.connected) "已连接 · EV 0.1.0" else "未连接 · EV 0.1.0",
-                kind = EvTextKind.Micro,
+                kind = CouiTextKind.Description,
                 tone = EvTone.Muted,
                 modifier = Modifier.padding(start = 20.dp, bottom = 12.dp),
             )
@@ -373,10 +377,10 @@ private fun UserBubble(text: String) {
         Box(
             Modifier
                 .widthIn(max = 300.dp)
-                .background(colors.surface2, RoundedCornerShape(18.dp))
+                .background(colors.surface2, CouiShape(18.dp))
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
-            EvText(text, kind = EvTextKind.Body)
+            EvText(text, kind = CouiTextKind.Body)
         }
     }
 }
@@ -399,7 +403,7 @@ private fun SideEntry(label: String, icon: EvIcon, onClick: () -> Unit) {
             modifier = Modifier.size(19.dp),
         )
         Spacer(Modifier.width(14.dp))
-        EvText(label, kind = EvTextKind.Body)
+        EvText(label, kind = CouiTextKind.Body)
     }
 }
 
@@ -407,7 +411,7 @@ private fun SideEntry(label: String, icon: EvIcon, onClick: () -> Unit) {
 @Composable
 private fun DetailLine(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        EvText(label, kind = EvTextKind.Caption, tone = EvTone.Muted)
-        EvText(value, kind = EvTextKind.Caption, tone = EvTone.Normal)
+        EvText(label, kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted)
+        EvText(value, kind = CouiTextKind.PreferenceSummary, tone = EvTone.Normal)
     }
 }

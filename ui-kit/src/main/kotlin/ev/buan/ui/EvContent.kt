@@ -11,50 +11,35 @@ import com.itos.coui.layout.Item
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text as CouiText
 
-/** 文字档位：页面只说"这是什么"，不说"多大"。 */
-enum class EvTextKind { Display, Headline, Title, Body, Label, Caption, Micro }
-
-/**
- * 语义，不是颜色。
- *
- * 五个档位是有意的上限：再多，"这个到底该用哪个"就变成每次都要想的问题。
- * 需要更醒目就用 [EvButton]，而不是给文字换颜色。
- */
+/** 语义，不是颜色。 */
 enum class EvTone { Normal, Muted, Accent, Warning, Danger, OnAccent }
 
 /**
  * 页面里唯一的文字入口。
  *
- * 直接落到 COUI 的 [CouiText]：字号、字重、字族、行高全部由 `CouiTextKind` 决定。
- * 之前这里读的是 EV 自己的一套七级字阶——那套值再讲究，也和 COUI 组件的字不是一个体系，
- * 同一屏里两种字重就会露出来。现在只有一套刻度。
+ * 直接吃 COUI 的 [CouiTextKind]：字号、字重、字族、行高全部由 COUI 的 15 个文字角色决定，
+ * 这里不再有自己的一套七级字阶，也没有"EV 档位 → COUI 角色"的映射表。
+ * 那层映射曾经把 15 个角色压成 7 个，结果是 `Category`、`GroupTitle`、`PreferenceValue`、
+ * `Toolbar` 这些 COUI 专门为某种位置准备的角色，在 EV 里根本没有机会用到，
+ * 同一屏里就会出现"这一行用的是 COUI 的 Body，那一行的标题只能凑一个 PreferenceTitle"。
+ *
+ * 需要哪一档就问 COUI 要哪一档，不再经过中间层。
  */
 @Composable
 fun EvText(
     text: String,
     modifier: Modifier = Modifier,
-    kind: EvTextKind = EvTextKind.Body,
+    kind: CouiTextKind = CouiTextKind.Body,
     tone: EvTone = EvTone.Normal,
     maxLines: Int = Int.MAX_VALUE,
 ) {
     CouiText(
         text = text,
         modifier = modifier,
-        kind = kind.toCouiKind(),
+        kind = kind,
         color = tone.color(),
         maxLines = maxLines,
     )
-}
-
-/** EV 的七个语义档位 → COUI 自己的文字角色。 */
-private fun EvTextKind.toCouiKind(): CouiTextKind = when (this) {
-    EvTextKind.Display -> CouiTextKind.HomeTitle
-    EvTextKind.Headline -> CouiTextKind.PageTitle
-    EvTextKind.Title -> CouiTextKind.SectionTitle
-    EvTextKind.Body -> CouiTextKind.Body
-    EvTextKind.Label -> CouiTextKind.PreferenceTitle
-    EvTextKind.Caption -> CouiTextKind.PreferenceSummary
-    EvTextKind.Micro -> CouiTextKind.Description
 }
 
 /**
@@ -97,9 +82,9 @@ fun EvRow(
 ) {
     Item(
         modifier = modifier,
-        title = { EvText(title, kind = EvTextKind.Body, tone = tone, maxLines = 1) },
+        title = { EvText(title, kind = CouiTextKind.Body, tone = tone, maxLines = 1) },
         summary = summary?.let { text ->
-            { EvText(text, kind = EvTextKind.Caption, tone = EvTone.Muted, maxLines = 2) }
+            { EvText(text, kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted, maxLines = 2) }
         },
         trailing = trailing,
         onClick = onClick,

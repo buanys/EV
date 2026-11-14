@@ -16,6 +16,10 @@ object HostPackages {
     val shared: Set<String> = linkedSetOf(
         // EV design system: plugin UI must inherit the host theme instead of shipping its own.
         "ev.buan.ui",
+        // COUI 是 EV 的 UI 底座（`ev.buan.ui` 的公开签名里就有 CouiTextKind、CouiShape 这些类型），
+        // 所以它必须和 androidx.compose 同级共享：插件能引用 COUI 的类型，但宿主只带一份实现。
+        // 少了这一行，插件一旦在参数里写出 CouiTextKind 就会 NoClassDefFoundError（实测）。
+        "com.itos.coui",
         "androidx.compose",
         "androidx.activity",
         "androidx.lifecycle",

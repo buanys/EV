@@ -1,5 +1,7 @@
 package ev.buan.plugins
 
+import com.itos.coui.text.CouiTextKind
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Spacer
@@ -21,8 +23,8 @@ import ev.buan.ui.EvPage
 import ev.buan.ui.EvRow
 import ev.buan.ui.EvSection
 import ev.buan.ui.EvText
-import ev.buan.ui.EvTextKind
 import ev.buan.ui.EvTone
+import com.itos.coui.switch.Switch
 import kotlinx.coroutines.launch
 import org.cordis.api.PluginInstallResult
 
@@ -118,7 +120,7 @@ fun PluginManagerScreen(
                 summary = "可以多选；宿主把它们逐个复制进自己的目录",
                 enabled = !busy,
                 onClick = { picker.launch(arrayOf("application/java-archive", "*/*")) },
-                trailing = { EvText("选择", kind = EvTextKind.Caption, tone = EvTone.Accent) },
+                trailing = { EvText("选择", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Accent) },
             )
         }
 
@@ -132,30 +134,18 @@ fun PluginManagerScreen(
                         summary = summaryOf(card),
                         tone = if (card.error != null) EvTone.Danger else EvTone.Normal,
                         onClick = { openId = if (openId == card.id) null else card.id },
+                        // 启停状态用开关本身表达：滑块在右就是开着，在左就是停着。
+                        // 之前右边写"已启用/已停用"，要先读字才知道状态，改状态还得再展开一层。
+                        // 开关直接改状态，展开层只留下危险动作。
                         trailing = {
-                            EvText(
-                                if (card.enabled) "已启用" else "已停用",
-                                kind = EvTextKind.Caption,
-                                tone = if (card.enabled) EvTone.Muted else EvTone.Warning,
+                            Switch(
+                                Modifier,
+                                card.enabled,
+                                { onToggle(card.id, it) },
                             )
                         },
                     )
                     if (openId == card.id) {
-                        EvRow(
-                            title = "启用 / 停用",
-                            summary = if (card.enabled) "停用它" else "启用它",
-                            onClick = {
-                                openId = null
-                                onToggle(card.id, !card.enabled)
-                            },
-                            trailing = {
-                                EvText(
-                                    if (card.enabled) "停用" else "启用",
-                                    kind = EvTextKind.Caption,
-                                    tone = EvTone.Muted,
-                                )
-                            },
-                        )
                         if (card.failureCount > 0) {
                             EvRow(
                                 title = "重置失败计数",
@@ -168,7 +158,7 @@ fun PluginManagerScreen(
                                     }
                                 },
                                 trailing = {
-                                    EvText("重置", kind = EvTextKind.Caption, tone = EvTone.Accent)
+                                    EvText("重置", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Accent)
                                 },
                             )
                         }
@@ -184,7 +174,7 @@ fun PluginManagerScreen(
                                     }
                                 },
                                 trailing = {
-                                    EvText("回滚", kind = EvTextKind.Caption, tone = EvTone.Accent)
+                                    EvText("回滚", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Accent)
                                 },
                             )
                         }
@@ -200,7 +190,7 @@ fun PluginManagerScreen(
                                 }
                             },
                             trailing = {
-                                EvText("删除", kind = EvTextKind.Caption, tone = EvTone.Danger)
+                                EvText("删除", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Danger)
                             },
                         )
                     }

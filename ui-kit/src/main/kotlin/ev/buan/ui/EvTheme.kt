@@ -1,7 +1,6 @@
 package ev.buan.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -14,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.itos.coui.theme.CouiColorScheme
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.theme.CouiTypography
+import com.itos.coui.shape.CouiShape
 
 /**
  * 应用的总主题。
@@ -73,12 +73,15 @@ fun EvTheme(
     val typeTokens = theme.type
 
     val couiScheme = remember(colorTokens) { colorTokens.toCouiScheme() }
-    val couiType = remember(typeTokens) { typeTokens.toCouiTypography() }
 
     CouiTheme(
         darkTheme = isDark,
         colorScheme = couiScheme,
-        typography = couiType,
+        // typography 故意不传：字阶归 COUI 自己管。
+        // 之前这里把 EV 的三档字（body/label/title）塞进 COUI 的槽位，结果同一屏里
+        // COUI 组件用自己的字体族和字号、EV 组件用另一套，`PreferenceSummary` 和 `body`
+        // 摆在一起时基线差一点——那种"说不出哪里不对"的观感就来自这里。
+        // 现在只有一套字：`CouiTextKind`。
     ) {
         val platformDensity: Density = LocalDensity.current
         val scaledDensity = remember(platformDensity, appearance.interfaceScale) {
@@ -145,12 +148,12 @@ private fun EvTypeToken.style(color: Color = Color.Unspecified): TextStyle = Tex
     color = color,
 )
 
-/** 常用形状。集中在这里，避免每个组件各写一个 `RoundedCornerShape(18.dp)`。 */
+/** 常用形状。集中在这里，避免每个组件各写一个 `CouiShape(18.dp)`。 */
 object EvShapes {
-    val card = RoundedCornerShape(20.dp)
-    val composer = RoundedCornerShape(26.dp)
-    val bubble = RoundedCornerShape(18.dp)
-    val block = RoundedCornerShape(18.dp)
+    val card = CouiShape(20.dp)
+    val composer = CouiShape(26.dp)
+    val bubble = CouiShape(18.dp)
+    val block = CouiShape(18.dp)
 }
 
 internal fun EvAccentColor.seedColor(): Color = when (this) {

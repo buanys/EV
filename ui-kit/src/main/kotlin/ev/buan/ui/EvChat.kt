@@ -1,5 +1,6 @@
 package ev.buan.ui
 
+import com.itos.coui.text.CouiTextKind
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,7 +30,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.animation.core.animateDpAsState
@@ -53,6 +54,8 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.shape.CouiCapsuleShape
 
 /**
  * 输入区：一个胶囊。空的时候 52dp，输入到多行时长高，最多 5 行。
@@ -108,13 +111,13 @@ fun EvComposer(
             modifier
                 .fillMaxWidth()
                 .height(animatedHeight)
-                .background(colors.surface1, RoundedCornerShape(animatedRadius))
+                .background(colors.surface1, CouiShape(animatedRadius))
                 // 1dp 的强调色内描边：纯黑底上，没有它输入框只是一个灰块，
                 // 有它才读得出"这里可以写字"。
                 .border(
                     1.dp,
                     colors.accent.copy(alpha = 0.16f),
-                    RoundedCornerShape(animatedRadius),
+                    CouiShape(animatedRadius),
                 )
                 .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
             verticalArrangement = Arrangement.Center,
@@ -174,7 +177,7 @@ fun EvCollapsible(
         label = "chevron",
     )
 
-    Column(modifier.fillMaxWidth().background(colors.surface1, RoundedCornerShape(18.dp))) {
+    Column(modifier.fillMaxWidth().background(colors.surface1, CouiShape(18.dp))) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -182,12 +185,12 @@ fun EvCollapsible(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(8.dp).background(tone.color(), CircleShape))
+            Box(Modifier.size(8.dp).background(tone.color(), CouiCapsuleShape))
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                EvText(title, kind = EvTextKind.Label, tone = EvTone.Normal, maxLines = 1)
+                EvText(title, kind = CouiTextKind.PreferenceTitle, tone = EvTone.Normal, maxLines = 1)
                 if (!summary.isNullOrBlank()) {
-                    EvText(summary, kind = EvTextKind.Micro, tone = EvTone.Muted, maxLines = 1)
+                    EvText(summary, kind = CouiTextKind.Description, tone = EvTone.Muted, maxLines = 1)
                 }
             }
             Image(

@@ -1,5 +1,7 @@
 package ev.buan.files
 
+import com.itos.coui.text.CouiTextKind
+
 import android.os.Environment
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,8 +22,8 @@ import ev.buan.ui.EvPage
 import ev.buan.ui.EvRow
 import ev.buan.ui.EvSection
 import ev.buan.ui.EvText
-import ev.buan.ui.EvTextKind
 import ev.buan.ui.EvTone
+import ev.buan.ui.rememberEvScroll
 import java.io.File
 
 /** 一次目录读取的结果。读不到必须和"空目录"分开——这是这个页面存在的理由之一。 */
@@ -78,7 +80,7 @@ fun FileManagerScreen(onBack: () -> Unit) {
                     EvEmpty("这个目录是空的。")
                 } else {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().then(rememberEvScroll().modifier),
                         contentPadding = PaddingValues(bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
@@ -87,7 +89,7 @@ fun FileManagerScreen(onBack: () -> Unit) {
                                 title = dir.name,
                                 summary = "目录",
                                 onClick = { path = dir.absolutePath },
-                                trailing = { EvText("›", kind = EvTextKind.Caption, tone = EvTone.Muted) },
+                                trailing = { EvText("›", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted) },
                             )
                         }
                         items(state.files, key = { "f:${it.absolutePath}" }) { file ->

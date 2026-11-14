@@ -1,5 +1,7 @@
 package ev.buan.ui
 
+import com.itos.coui.text.CouiTextKind
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,8 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -25,7 +26,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.itos.coui.effect.couiButtonFeedback
+import com.itos.coui.layout.Footer
 import com.itos.coui.theme.CouiTheme
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.shape.CouiCapsuleShape
 
 /**
  * 按钮的三种身份。
@@ -75,7 +79,7 @@ fun EvButton(
     Box(
         modifier = modifier
             .height(height)
-            .background(background, RoundedCornerShape(height / 2))
+            .background(background, CouiShape(height / 2))
             .then(Modifier.couiButtonFeedback(dark, interaction, enabled))
             .clickable(interaction, null, enabled, onClick = onClick)
             .padding(horizontal = if (compact) 13.dp else 18.dp),
@@ -83,7 +87,7 @@ fun EvButton(
     ) {
         EvText(
             label,
-            kind = if (compact) EvTextKind.Caption else EvTextKind.Label,
+            kind = if (compact) CouiTextKind.PreferenceSummary else CouiTextKind.PreferenceTitle,
             tone = tone,
             maxLines = 1,
         )
@@ -117,7 +121,7 @@ fun EvFilledIconButton(
                     pressed -> colors.accent.copy(alpha = 0.82f)
                     else -> colors.accent
                 },
-                RoundedCornerShape(11.dp),
+                CouiShape(11.dp),
             )
             .clickable(
                 interactionSource = interaction,
@@ -146,21 +150,22 @@ fun EvFilledIconButton(
 @Composable
 fun EvEmpty(text: String, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-        EvText(text, kind = EvTextKind.Caption, tone = EvTone.Muted)
+        EvText(text, kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted)
     }
 }
 
-/** 一行动态提示：错误、警告、被截断的原因。颜色来自 tone，不是调用方传的。 */
+/**
+ * 一行提示：错误、警告、被截断的原因。
+ *
+ * 用 COUI 的 [Footer]：它就是这个位置的正解——附在分组下面的一句小字，
+ * 自带左侧缩进（和 [Item] 的标题对齐）、自带的字号与行高、自带的弱化色。
+ *
+ * 之前是自己画一块 `surface1` 底 + 12dp 圆角的色块，问题有两个：
+ * 一是它和上面的分组形成"卡中卡"，两代圆角嵌套，边缘看起来是毛的；
+ * 二是提示只是一句话，画成卡片反而把它抬到和内容同等的高度。
+ * 颜色仍然由 [tone] 决定——错误必须比脚注更红，这一点 COUI 留给调用方。
+ */
 @Composable
 fun EvNotice(text: String, modifier: Modifier = Modifier, tone: EvTone = EvTone.Muted) {
-    Box(
-        modifier
-            .fillMaxWidth()
-            .background(EvColors.surface1, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.Start) {
-            EvText(text, kind = EvTextKind.Caption, tone = tone)
-        }
-    }
+    Footer(modifier.fillMaxWidth(), text, tone.color())
 }

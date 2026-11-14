@@ -1,12 +1,13 @@
 package ev.buan.agent
 
+import com.itos.coui.text.CouiTextKind
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,12 +29,13 @@ import ev.buan.ui.EvPage
 import ev.buan.ui.EvRow
 import ev.buan.ui.EvSection
 import ev.buan.ui.EvText
-import ev.buan.ui.EvTextKind
 import ev.buan.ui.EvTone
 import org.cordis.api.AgentRuntime
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.cordis.api.ServiceDirectory
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.slider.Slider
 
 /**
  * Agent 运行时管理页。
@@ -87,14 +89,14 @@ fun AgentScreen(services: ServiceDirectory?, sessionId: String, onBack: () -> Un
                 trailing = {
                     EvText(
                         if (status.alive) "PID ${status.pid ?: "?"}" else "空闲",
-                        kind = EvTextKind.Caption,
+                        kind = CouiTextKind.PreferenceSummary,
                         tone = if (status.alive) EvTone.Accent else EvTone.Muted,
                     )
                 },
             )
             status.binaryBytes?.let { bytes ->
                 EvRow(title = "二进制", summary = "native library，随宿主 APK 分发", trailing = {
-                    EvText(formatBytes(bytes), kind = EvTextKind.Caption, tone = EvTone.Muted)
+                    EvText(formatBytes(bytes), kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted)
                 })
             }
             EvRow(
@@ -103,7 +105,7 @@ fun AgentScreen(services: ServiceDirectory?, sessionId: String, onBack: () -> Un
                 trailing = {
                     EvText(
                         status.startedAtMillis?.let { uptime(it) } ?: "—",
-                        kind = EvTextKind.Caption,
+                        kind = CouiTextKind.PreferenceSummary,
                         tone = EvTone.Muted,
                     )
                 },
@@ -115,7 +117,7 @@ fun AgentScreen(services: ServiceDirectory?, sessionId: String, onBack: () -> Un
                 title = "会话 $sessionId",
                 summary = "${context.first} 条消息 · ${context.third} 条工具结果",
                 trailing = {
-                    EvText(formatBytes(context.second.toLong()), kind = EvTextKind.Caption, tone = EvTone.Muted)
+                    EvText(formatBytes(context.second.toLong()), kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted)
                 },
             )
         }
@@ -125,23 +127,32 @@ fun AgentScreen(services: ServiceDirectory?, sessionId: String, onBack: () -> Un
                 title = "模型调用上限",
                 summary = "一轮里最多问模型几次",
                 trailing = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        EvButton("−", kind = EvButtonKind.Secondary, size = ev.buan.ui.EvButtonSize.Compact, onClick = {
-                            control.setMaxTurns(status.maxTurns - 1)
-                            tick += 0
-                            note@{ notice = "上限改为 ${control.status().maxTurns} 次" }
-                        })
-                        EvText("${status.maxTurns}", kind = EvTextKind.Caption, tone = EvTone.Accent)
-                        EvButton("+", kind = EvButtonKind.Secondary, size = ev.buan.ui.EvButtonSize.Compact, onClick = {
-                            control.setMaxTurns(status.maxTurns + 1)
-                            notice = "上限改为 ${control.status().maxTurns} 次"
-                        })
+                    EvText(
+                        "${status.maxTurns}",
+                        kind = CouiTextKind.PreferenceValue,
+                        tone = EvTone.Accent,
+                    )
+                },
+            )
+            // 调数值用 COUI 的 Slider，不用 −/+ 按钮：
+            // 按钮一次一档，从 4 调到 12 要点八下；滑块一次到位，而且当前位置就是当前值，
+            // 不用再读旁边那个数字。加减按钮留给"精确一步"的场合，这里不需要。
+            Slider(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                status.maxTurns.toFloat(),
+                { value ->
+                    val turns = value.toInt()
+                    if (turns != status.maxTurns) {
+                        control.setMaxTurns(turns)
+                        notice = "上限改为 $turns 次"
                     }
                 },
+                valueRange = 1f..20f,
+                steps = 18,
             )
             val preambleValue = draftPreamble ?: status.preamble ?: ""
             Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                EvText("系统提示（留空用内置那段）", kind = EvTextKind.Caption, tone = EvTone.Muted)
+                EvText("系统提示（留空用内置那段）", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted)
                 BasicTextField(
                     value = preambleValue,
                     onValueChange = { draftPreamble = it },
@@ -149,12 +160,12 @@ fun AgentScreen(services: ServiceDirectory?, sessionId: String, onBack: () -> Un
                     cursorBrush = SolidColor(EvColors.accent),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(EvColors.surface2, RoundedCornerShape(10.dp))
+                        .background(EvColors.surface2, CouiShape(10.dp))
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     maxLines = 4,
                     decorationBox = { inner ->
                         if (preambleValue.isEmpty()) {
-                            EvText("你是运行在用户手机上的助手……", kind = EvTextKind.Caption, tone = EvTone.Muted)
+                            EvText("你是运行在用户手机上的助手……", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Muted)
                         }
                         inner()
                     },
@@ -185,7 +196,7 @@ fun AgentScreen(services: ServiceDirectory?, sessionId: String, onBack: () -> Un
                         tick += 1
                     }
                 },
-                trailing = { EvText("重启", kind = EvTextKind.Caption, tone = EvTone.Accent) },
+                trailing = { EvText("重启", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Accent) },
             )
             EvRow(
                 title = "停止进程",
@@ -197,20 +208,20 @@ fun AgentScreen(services: ServiceDirectory?, sessionId: String, onBack: () -> Un
                         tick += 1
                     }
                 },
-                trailing = { EvText("停止", kind = EvTextKind.Caption, tone = EvTone.Danger) },
+                trailing = { EvText("停止", kind = CouiTextKind.PreferenceSummary, tone = EvTone.Danger) },
             )
         }
 
         status.lastError?.let { error ->
             EvSection(title = "最近一次失败") {
-                EvText(error, kind = EvTextKind.Caption, tone = EvTone.Danger)
+                EvText(error, kind = CouiTextKind.PreferenceSummary, tone = EvTone.Danger)
             }
         }
 
         notice?.let { text ->
             EvText(
                 text,
-                kind = EvTextKind.Caption,
+                kind = CouiTextKind.PreferenceSummary,
                 tone = EvTone.Muted,
                 modifier = Modifier.padding(top = 8.dp),
             )
