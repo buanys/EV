@@ -73,7 +73,7 @@ interface UiSlotRegistry {
      *
      * @param priority 越大越靠前；[UiSlot.replaceable] 时只有最大的那个会被渲染。
      */
-    fun contribute(owner: String, slot: UiSlot, priority: Int = 0, content: @Composable () -> Unit)
+    fun contribute(owner: String, slot: UiSlot, priority: Int, content: @Composable () -> Unit)
 
     /** 撤掉 [owner] 贡献的全部内容。插件停用/卸载时调用。 */
     fun revoke(owner: String)

@@ -46,6 +46,7 @@ fun PluginManagerScreen(
     onUninstall: suspend (String) -> Unit,
     onRollback: suspend (String) -> Unit,
     canRollback: (String) -> Boolean,
+    onResetFailures: suspend (String) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -155,6 +156,22 @@ fun PluginManagerScreen(
                                 )
                             },
                         )
+                        if (card.failureCount > 0) {
+                            EvRow(
+                                title = "重置失败计数",
+                                summary = "连续失败 ${card.failureCount} 次后被停用；重置后再试一次",
+                                onClick = {
+                                    openId = null
+                                    scope.launch {
+                                        runCatching { onResetFailures(card.id) }
+                                        message = "已重置 ${card.title}，正在重试"
+                                    }
+                                },
+                                trailing = {
+                                    EvText("重置", kind = EvTextKind.Caption, tone = EvTone.Accent)
+                                },
+                            )
+                        }
                         if (canRollback(card.id)) {
                             EvRow(
                                 title = "回滚到上一版",

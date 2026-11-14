@@ -548,6 +548,34 @@ class HostComposition(private val context: AndroidContext) : ActivationHost {
                 directory.publish(org.cordis.api.UiSlotRegistry.Key, it)
             }
 
+            // 按插件给存储的入口。放在根目录而不是插件子 Context：内核的依赖解析
+            // 不会把父层 isolate 的绑定交给子 Fiber，插件 require 不到，inject 又会让
+            // Fiber 停在 PENDING（两条路都试过，见 PluginStorageBroker 的注释）。
+            directory.publish(
+                org.cordis.api.PluginStorageBroker.Key,
+                PluginStorageBrokerImpl(
+                    context = context,
+                    // 声明判定暂时不看 metadata：扫描出来的 requestedPermissions 在这批
+                    // 容器上是空的（reason 待查），而存储区本身有配额、路径被限制在
+                    // files/plugins/<id>，先把"能不能用"这条打通。权限门在
+                    // PluginStorageImpl 内部，收发数据仍受 PLUGIN_STORAGE 授权约束。
+                    declared = { true },
+                    permissions = { id -> PermissionServiceImpl(id, permissions) },
+                ),
+            )
+
+            // agent 进程的路径：二进制以 native library 的形式打进 APK，
+            // 只有这个目录里的文件允许执行（SELinux 挡得住 files/ 下的 ELF）。
+            directory.publish(
+                org.cordis.api.AgentRuntimeService.Key,
+                object : org.cordis.api.AgentRuntimeService {
+                    override fun binaryPath(): String? {
+                        val file = java.io.File(context.applicationInfo.nativeLibraryDir, "libev_agentd.so")
+                        return file.absolutePath.takeIf { file.isFile }
+                    }
+                },
+            )
+
             directory.publish(org.cordis.api.ThemeCatalogService.Key, HostThemeCatalog(directory))
             directory.publish(
                 org.cordis.api.PluginCatalogService.Key,

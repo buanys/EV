@@ -19,8 +19,13 @@ import org.cordis.api.UiSlotRegistry
  * which lives inside the registry, not this handle.
  */
 object HostSlots {
+    /**
+     * 每次都现取，而不是在 `onCreate` 里存一份：`runtime.slotRegistry()` 要等
+     * 宿主 compose 起来、发布完服务之后才有值，早读一次拿到的是 null，
+     * 而 null 会让整个槽位永远不渲染（看起来就跟"没接"一样）。
+     */
     @Volatile
-    var registry: UiSlotRegistry? = null
+    var provider: (() -> UiSlotRegistry?)? = null
 }
 
 /**
@@ -33,7 +38,7 @@ object HostSlots {
  */
 @Composable
 fun SlotHost(slot: UiSlot, modifier: Modifier = Modifier) {
-    val registry = HostSlots.registry ?: return
+    val registry = HostSlots.provider?.invoke() ?: return
     // Reading the version is what subscribes this composition to the registry;
     // without it a plugin registering later would never be drawn.
     val version = registry.version.value

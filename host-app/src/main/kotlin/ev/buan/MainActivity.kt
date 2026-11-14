@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
         // 内容和输入框会跑到状态栏与键盘下面去。
         enableEdgeToEdge()
         val runtime = (application as EvApplication).runtime
-        HostSlots.registry = runtime.slotRegistry()
+        HostSlots.provider = { runtime.slotRegistry() }
 
         setContent {
             var introDone by rememberSaveable { mutableStateOf(false) }
@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
                                     onUninstall = { id -> runtime.uninstall(id) },
                                     onRollback = { id -> runtime.rollback(id); Unit },
                                     canRollback = { id -> runtime.hasRollback(id) },
+                                    onResetFailures = { id -> runtime.resetFailureScore(id) },
                                 )
 
                                 "files" -> FileManagerScreen(

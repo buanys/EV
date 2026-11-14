@@ -39,6 +39,12 @@ val appVersionName = "0.1.0"
 val appVersionCode = 1
 
 android {
+    packaging {
+        // native 库要落到 nativeLibraryDir 的实际文件（而不是留在 APK 里 mmap），
+        // agent 进程需要的是一个可执行的路径。
+        jniLibs.useLegacyPackaging = true
+    }
+
     namespace = "ev.buan"
     compileSdk = 37
 
@@ -228,3 +234,20 @@ tasks.register("releaseGate") {
     description = "release 构建 + 发布密钥/共享包/禁忌包/版本一致性四重校验"
     dependsOn(verifyReleaseSigning, verifySharedPackagesInDex, verifyForbiddenPackages, verifyReleaseVersion)
 }
+
+// agent 进程以 native library 的形式进 APK：`files/` 下的 ELF 被 SELinux 拒绝执行，
+// 而 nativeLibraryDir 是应用唯一能 exec 的地方。文件不存在时构建继续，运行时由
+// AgentRuntimeService 返回 null，插件会报"这台机器没有 agent 运行时"而不是崩。
+val stageAgentd = tasks.register<Copy>("stageAgentd") {
+    val source = rootProject.file("../ev-agent/target/aarch64-unknown-linux-musl/release/ev-agentd")
+    onlyIf { source.isFile }
+    from(source) { rename { "libev_agentd.so" } }
+    into(layout.buildDirectory.dir("agentd/arm64-v8a"))
+}
+
+android {
+    // AGP 9 不接受 Provider 形式的 srcDir，这里给字符串路径；文件由 stageAgentd 在 preBuild 前写入。
+    sourceSets.getByName("main").jniLibs.srcDir("${buildDir}/agentd")
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(stageAgentd) }

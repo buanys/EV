@@ -1,5 +1,10 @@
 plugins {
     id("com.android.library")
+    // 必须开：`UiSlotRegistryImpl.contribute` 的参数是 `@Composable () -> Unit`。
+    // 不开这个插件，编译器把它当普通 lambda 编成 Function0，而 host-api 的接口
+    // （开了 compose）编成 Function2——两边 Kotlin 类型相同、JVM 描述符不同，
+    // 编译能过，运行时就是 AbstractMethodError。
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -7,6 +12,9 @@ android {
     compileSdk = 37
     defaultConfig {
         minSdk = 33
+    }
+    buildFeatures {
+        compose = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
