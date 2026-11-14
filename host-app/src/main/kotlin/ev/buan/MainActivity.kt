@@ -77,6 +77,13 @@ class MainActivity : ComponentActivity() {
                         // 只有一个退出点：每屏的返回都回 chat。不引入导航库——
                         // 现在只有三个目的地，加一个 NavController 是给自己造抽象。
                         var screen by rememberSaveable { mutableStateOf("chat") }
+                        // 把系统返回键接进 screen 状态机：不接的话，返回键走 Activity
+                        // 默认行为——直接关掉应用。用户在设置页按返回，预期是"回到上一页"，
+                        // 实际是"应用没了"，这是状态机与系统语义脱节最典型的样子。
+                        // 只在离开对话页时拦截；对话页按返回就是退出，保持系统默认。
+                        androidx.activity.compose.BackHandler(enabled = screen != "chat") {
+                            screen = if (screen == "model") "settings" else "chat"
+                        }
                         // 槽位内容的导航出口：插件点"模型端点"走这里进 "model" 页。
                         // 注册表是 host-runtime 的单例，页面栈在这里；组合时把 lambda 挂上去。
                         ev.buan.UiSlotNav.handler = { pageId: String ->
