@@ -24,6 +24,7 @@ import ev.buan.files.FileManagerScreen
 import ev.buan.permissions.PermissionCenterScreen
 import ev.buan.plugins.PluginManagerScreen
 import ev.buan.settings.SettingsScreen
+import ev.buan.agent.AgentScreen
 import ev.buan.ui.EvTheme
 import org.cordis.api.UiSlot
 import ev.buan.ui.evSystemBarsPadding
@@ -93,6 +94,11 @@ class MainActivity : ComponentActivity() {
                                     onResetFailures = { id -> runtime.resetFailureScore(id) },
                                 )
 
+                                "agent" -> AgentScreen(
+                                    services = runtime.services,
+                                    onBack = { screen = "chat" },
+                                )
+
                                 "files" -> FileManagerScreen(
                                     onBack = { screen = "chat" },
                                 )
@@ -119,6 +125,7 @@ class MainActivity : ComponentActivity() {
                                     state = chat,
                                     onOpenSettings = { screen = "settings" },
                                     onOpenPlugins = { screen = "plugins" },
+                                    onOpenAgent = { screen = "agent" },
                                     onOpenPermissions = { screen = "permissions" },
                                     onOpenFiles = { screen = "files" },
                                 )

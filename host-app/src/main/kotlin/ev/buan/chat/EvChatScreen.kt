@@ -68,6 +68,7 @@ fun EvChatScreen(
     state: ChatState,
     onOpenSettings: () -> Unit,
     onOpenPlugins: () -> Unit,
+    onOpenAgent: () -> Unit,
     onOpenPermissions: () -> Unit,
     onOpenFiles: () -> Unit,
     modifier: Modifier = Modifier,
@@ -232,6 +233,8 @@ fun EvChatScreen(
             SideEntry("文件管理", EvIcon.Folder) { onOpenFiles(); sideOpen = false }
             SideEntry("权限中心", EvIcon.Shield) { onOpenPermissions(); sideOpen = false }
             SideEntry("插件管理", EvIcon.Apps) { onOpenPlugins(); sideOpen = false }
+            // Agent 的运行时状态单独一页：进程、参数、重启——它比"插件是否启用"更需要被看清。
+            SideEntry("Agent", EvIcon.Apps) { onOpenAgent(); sideOpen = false }
             SideEntry("设置", EvIcon.Setting) { onOpenSettings(); sideOpen = false }
             SlotHost(
                 UiSlot.DrawerItems,
