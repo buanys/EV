@@ -39,7 +39,12 @@ fun EvIcon(name: EvIcon): ImageVector {
         EvIcon.Apps -> CouiIcons.Filled.Grid
         EvIcon.NewChat -> CouiIcons.Outlined.WandSpark
         EvIcon.Shield -> CouiIcons.Filled.ShieldCheck
-        EvIcon.Folder -> CouiIcons.Filled.BookOpen
+        // 抽屉里的图标必须**同一重量**：`BookOpen` 是描边、`AI` 是细花瓣，
+        // 和 `ShieldCheck`／`Grid`／`Setting` 这三个实心图标并排时，
+        // 一列五个里两个轻三个重——眼睛会以为是两种状态。
+        // 换成两个实心的：SafeBox（存储/文件）、Radar（感知，Agent 的语义也对得上）。
+        EvIcon.Folder -> CouiIcons.Filled.SafeBox
+        EvIcon.Agent -> CouiIcons.Filled.Radar
     }
 }
 

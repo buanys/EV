@@ -7,6 +7,7 @@ import com.itos.coui.switch.Switch
 import com.itos.coui.text.CouiTextKind
 import ev.buan.SlotHost
 import ev.buan.ui.EvAppearance
+import ev.buan.ui.EvDivider
 import ev.buan.ui.EvPage
 import ev.buan.ui.EvRow
 import ev.buan.ui.EvSection
@@ -42,7 +43,9 @@ fun SettingsScreen(
     EvPage(title = "设置", onBack = onBack) {
         EvSection(title = "外观") {
             ThemeModeRow("跟随系统", EvThemeMode.SYSTEM, appearance, onThemeMode)
+            EvDivider()
             ThemeModeRow("浅色", EvThemeMode.LIGHT, appearance, onThemeMode)
+            EvDivider()
             ThemeModeRow("深色", EvThemeMode.DARK, appearance, onThemeMode)
         }
         EvSection(title = "深色主题", footnote = "只在深色下生效。") {
@@ -52,6 +55,7 @@ fun SettingsScreen(
                 checked = appearance.pureBlackEnabled,
                 onCheckedChange = onPureBlack,
             )
+            EvDivider()
             SwitchRow(
                 title = "玻璃模糊",
                 summary = "关掉之后悬浮面变成纯色",

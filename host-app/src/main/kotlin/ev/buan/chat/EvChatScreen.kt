@@ -48,6 +48,7 @@ import ev.buan.ui.LocalEvBackdrop
 import ev.buan.ui.EvButton
 import ev.buan.ui.EvCollapsible
 import ev.buan.ui.Chevron
+import com.itos.coui.effect.couiButtonFeedback
 import ev.buan.ui.EvColors
 import ev.buan.SlotHost
 import ev.buan.ui.EvComposer
@@ -317,38 +318,52 @@ fun EvChatScreen(
         // 侧页的 hero 是"这台机器现在什么状态"：连接与否决定这一屏能不能用。
         // 三行入口只是它下面的动作，不该和状态平起平坐。
         EvSidePage(visible = sideOpen, onDismiss = { sideOpen = false }) {
-            Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 18.dp)) {
-                EvText("EV", kind = CouiTextKind.Description, tone = EvTone.Muted)
+            Column(Modifier.padding(start = EvPageInset, end = EvPageInset, top = 20.dp, bottom = 20.dp)) {
+                EvText("EV", kind = CouiTextKind.Category, tone = EvTone.Muted)
                 Spacer(Modifier.height(10.dp))
-                EvText(
-                    if (state.connected) "已连接" else "还没连上",
-                    kind = CouiTextKind.PageTitle,
-                )
+                // 状态用「一个色点 + 一句话」，不用 30sp 的大标题。
+                // 上一版把"已连接"写成 PageTitle，抽屉里最大的字是状态而不是品牌，
+                // 读起来像"这是一张状态报告"。状态是次要信息，形状（点）比字号更合适。
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(7.dp)
+                            .background(
+                                if (state.connected) EvColors.accent else EvColors.textTertiary,
+                                CouiCapsuleShape,
+                            ),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    EvText(
+                        if (state.connected) "已连接" else "还没连上",
+                        kind = CouiTextKind.Body,
+                        weight = FontWeight.Medium,
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
                 EvText(
                     if (state.connected) "说点什么，它就动手。" else "对话插件还没就位。",
-                    kind = CouiTextKind.PreferenceSummary,
+                    kind = CouiTextKind.Description,
                     tone = EvTone.Muted,
                 )
             }
-            EvDivider()
-            Spacer(Modifier.height(6.dp))
+            EvDivider(startOffset = EvPageInset, endOffset = EvPageInset)
             SideEntry("文件管理", EvIcon.Folder) { onOpenFiles(); sideOpen = false }
             SideEntry("权限中心", EvIcon.Shield) { onOpenPermissions(); sideOpen = false }
             SideEntry("插件管理", EvIcon.Apps) { onOpenPlugins(); sideOpen = false }
             // Agent 的运行时状态单独一页：进程、参数、重启——它比"插件是否启用"更需要被看清。
-            SideEntry("Agent", EvIcon.Apps) { onOpenAgent(); sideOpen = false }
+            SideEntry("Agent", EvIcon.Agent) { onOpenAgent(); sideOpen = false }
             SideEntry("设置", EvIcon.Setting) { onOpenSettings(); sideOpen = false }
             SlotHost(
                 UiSlot.DrawerItems,
-                Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
             Spacer(Modifier.weight(1f))
             EvText(
                 if (state.connected) "已连接 · EV 0.1.0" else "未连接 · EV 0.1.0",
                 kind = CouiTextKind.Description,
                 tone = EvTone.Muted,
-                modifier = Modifier.padding(start = 20.dp, bottom = 12.dp),
+                modifier = Modifier.padding(start = EvPageInset, bottom = 16.dp),
             )
         }
     }
@@ -373,21 +388,28 @@ private fun UserBubble(text: String) {
 /** 侧页的一行：图标 + 标题。图标压在左侧 19dp，标题从同一条基线上开始。 */
 @Composable
 private fun SideEntry(label: String, icon: EvIcon, onClick: () -> Unit) {
+    // 抽屉里的导航行**不用** `Item`：那是给"图标 + 标题 + 摘要"三段的设置行设计的，
+    // 图标槽到文字的间距是 30dp。导航项只有一段文字，30dp 的空隙会让图标孤零零地飘着，
+    // 而抽屉只有 247dp 宽，这一截空隙尤其贵。这里用 22dp 图标 + 16dp 间距，
+    // 按压反馈仍然来自 COUI 的 `couiButtonFeedback`——手感不变，只是密度归我控。
     val colors = EvColors
+    val dark = CouiTheme.isDark
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .couiButtonFeedback(dark, interaction, true)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Image(
             painter = rememberVectorPainter(EvIcon(icon)),
             contentDescription = null,
-            colorFilter = ColorFilter.tint(colors.textSecondary),
-            modifier = Modifier.size(19.dp),
+            colorFilter = ColorFilter.tint(colors.textPrimary.copy(alpha = 0.86f)),
+            modifier = Modifier.size(22.dp),
         )
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(16.dp))
         EvText(label, kind = CouiTextKind.Body)
     }
 }

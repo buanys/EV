@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,11 +40,13 @@ import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.rotate
@@ -86,8 +89,8 @@ fun EvComposer(
     // 空输入永远保持紧凑；只有真实的换行内容才需要展开空间。
     val expanded = value.contains('\n')
     val targetHeight = when {
-        expanded -> 96.dp
-        else -> 54.dp
+        expanded -> 92.dp
+        else -> 52.dp
     }
     val animatedHeight by animateDpAsState(
         targetValue = targetHeight,
@@ -96,10 +99,19 @@ fun EvComposer(
     )
 
     // 占位文字和输入文字必须同一套字形：字号或行高差一点，聚焦的那一刻就会跳一下。
+    // 行高 24sp：中文 16sp 配 22 行高（1.375）读起来是挤的，1.5 倍才是中文的正常呼吸。
     val inputStyle = androidx.compose.ui.text.TextStyle(
         fontSize = 16.sp,
-        lineHeight = 22.sp,
+        lineHeight = 24.sp,
         color = colors.textPrimary,
+    )
+    // 聚焦时提亮一级：输入框是本页唯一会"进入"的地方，它需要一点状态反馈。
+    // 颜色只走 alpha/亮度，不弹跳——文字控件上做形变会晃眼。
+    var focused by remember { mutableStateOf(false) }
+    val fieldColor by animateColorAsState(
+        targetValue = if (focused) colors.surface3 else colors.surface2,
+        animationSpec = spring(),
+        label = "composer-focus",
     )
     val body: @Composable () -> Unit = {
         Column(
@@ -109,10 +121,10 @@ fun EvComposer(
                 // 真胶囊：`CouiCapsuleShape` 按高度算半径，不再写死 26dp。
                 // 上一版是 26dp 圆角配 56dp 高——半径差 2dp 就永远不是正圆头，
                 // 这种"差一点"的圆角是最容易看出毛躁的地方。
-                .background(colors.surface2, CouiCapsuleShape)
+                .background(fieldColor, CouiCapsuleShape)
                 // 去掉 1dp 强调色描边：纯色面本身已经把"这里可以写字"说清楚了，
                 // 一圈 16% 透明的蓝边只是让框看起来脏。
-                .padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -121,7 +133,7 @@ fun EvComposer(
                         value = value,
                         onValueChange = onValueChange,
                         enabled = enabled,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
                         textStyle = inputStyle,
                         cursorBrush = SolidColor(colors.accent),
                         maxLines = 3,
@@ -258,11 +270,22 @@ fun EvSidePage(
                 .graphicsLayer { translationX = -offsetPx * (1f - progress) }
                 .background(
                     colors.surface1,
-                    RoundedCornerShape(topEnd = 26.dp, bottomEnd = 26.dp),
-                )
-                .padding(vertical = 10.dp),
+                    // 抽屉只圆外侧两角：左边是屏幕边，圆了会在边上露出一条背景。
+                    // 这是少数不能用 CouiShape（四角同值）的地方，和不对方气泡同理。
+                    RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp),
+                ),
             verticalArrangement = Arrangement.Top,
-            content = content,
-        )
+        ) {
+            // 背景一直铺到屏幕顶（抽屉是贴边的容器），内容是内容避开状态栏。
+            // 反过来做——给整个 Column 加 statusBarsPadding——会让最上面 90px 露出页面背景，
+            // 抽屉看起来"浮在半空"，而且顶端多出一道直边。
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .padding(vertical = 10.dp),
+                content = content,
+            )
+        }
     }
 }

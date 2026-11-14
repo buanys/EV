@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.dp
@@ -46,7 +47,7 @@ fun EvPage(
         topBar = {
             TopAppBar(
                 Modifier.fillMaxWidth(),
-                { EvText(title, kind = CouiTextKind.PageTitle) },
+                { EvText(title, kind = CouiTextKind.PageTitle, weight = FontWeight.Bold) },
                 {
                     if (onBack != null) {
                         TopAppBarButton(onClick = onBack) {
@@ -72,11 +73,9 @@ fun EvPage(
             // 左右边距、分组间距、收尾高度。之前是 20dp / 20dp / 32dp 三个手写的数，
             // 和 COUI 的 `Group` 自带的内边距叠在一起，分组之间就空出一大块——
             // 同一个页面上"分组之间"和"分组内部"的呼吸比例，只有库自己知道。
-            modifier = scrolled.padding(
-                start = CouiPageDefaults.horizontalMargin,
-                end = CouiPageDefaults.horizontalMargin,
-                bottom = CouiPageDefaults.groupSpacing,
-            ),
+            // 水平方向不在这里加边距：二级页的内容全是 `Group`，它自己带页面边距；
+            // 这里再加一层，卡片会比首页的列表窄 200 多 px，两个页面的内容宽度对不上。
+            modifier = scrolled.padding(bottom = CouiPageDefaults.groupSpacing),
             verticalArrangement = Arrangement.spacedBy(CouiPageDefaults.groupSpacing),
             content = content,
         )

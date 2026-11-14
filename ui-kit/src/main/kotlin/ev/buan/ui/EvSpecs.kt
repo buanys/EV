@@ -26,6 +26,8 @@ enum class EvIcon {
     NewChat,
     Shield,
     Folder,
+    /** Agent 运行时：和「插件管理」必须用不同的图标，否则抽屉里两行长得一样。 */
+    Agent,
 }
 
 /**
