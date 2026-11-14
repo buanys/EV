@@ -40,6 +40,10 @@ class ChatState(
     var notice by mutableStateOf<String?>(null)
         private set
 
+    /** 顶部胶囊里的"真实信息"：当前会用的模型名。没有可用端点时为 null。 */
+    var modelLabel by mutableStateOf<String?>(null)
+        private set
+
     private companion object {
         /** `AgentService.Key.name` 的字面量，避免 ui 层依赖 host-api 的服务常量。 */
         const val AGENT_SERVICE = "service:agent/service"
@@ -57,6 +61,11 @@ class ChatState(
         // provides 声明依赖，由宿主在装载它之前把依赖先 ensure 到位。
         if (agent == null) ensure(AGENT_SERVICE)
         connected = agent?.ready == true
+        modelLabel = services()
+            ?.lookup(ev.buan.plugins.agent.api.ModelProviderService.Key)
+            ?.providers()
+            ?.firstOrNull { it.enabled && it.apiKey.isNotBlank() && it.models.isNotEmpty() }
+            ?.let { it.selectedModelId ?: it.models.firstOrNull()?.id }
     }
 
     fun onInputChange(value: String) {

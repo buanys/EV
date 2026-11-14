@@ -103,15 +103,30 @@ fun EvChatScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     EvIconButton(EvIcon.More, "更多", onClick = { sideOpen = true })
-                    // 状态用形状表达，不用文字：一个点是"已连上"，空圈是"还没"。
-                    Box(
-                        Modifier
-                            .size(8.dp)
-                            .background(
-                                if (state.connected) EvColors.accent else EvColors.textTertiary,
-                                CircleShape,
-                            ),
-                    )
+                    // 悬浮胶囊：状态点 + 当前模型名。它是顶部唯一的"信息块"，
+                    // 不放装饰性文字，只放这台机器此刻真的在用哪个模型。
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(EvColors.surface1)
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        Box(
+                            Modifier
+                                .size(7.dp)
+                                .background(
+                                    if (state.connected) EvColors.accent else EvColors.textTertiary,
+                                    CircleShape,
+                                ),
+                        )
+                        EvText(
+                            state.modelLabel ?: "未连接",
+                            kind = EvTextKind.Micro,
+                            tone = if (state.connected) EvTone.Normal else EvTone.Muted,
+                        )
+                    }
                     EvIconButton(EvIcon.NewChat, "新建对话", onClick = { state.newConversation() })
                 }
             }

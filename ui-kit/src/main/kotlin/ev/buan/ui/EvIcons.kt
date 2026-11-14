@@ -34,10 +34,12 @@ fun EvIcon(name: EvIcon): ImageVector {
         // COUI 的图标集里没有箭头，自己画一个：竖线 + 两边斜线，端点是圆的。
         // 用描边而不是填充，18dp 下笔画的粗细才不会糊成一坨。
         EvIcon.Send -> EvSendArrow
-        EvIcon.Apps -> EvAppsIcon
-        EvIcon.NewChat -> EvNewChatIcon
-        EvIcon.Shield -> EvShieldIcon
-        EvIcon.Folder -> EvFolderIcon
+        // 一律用 COUI 自带图标：自家画的线条粗细、圆角、光学尺寸都和它不一致，
+        // 混在一起就是"两套图标"的样子。
+        EvIcon.Apps -> CouiIcons.Filled.Grid
+        EvIcon.NewChat -> CouiIcons.Outlined.WandSpark
+        EvIcon.Shield -> CouiIcons.Filled.ShieldCheck
+        EvIcon.Folder -> CouiIcons.Filled.BookOpen
     }
 }
 
